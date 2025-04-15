@@ -33,7 +33,7 @@ func Generate(
 		SetHashAlgo(hashAlgo).
 		SetWeight(weight)
 
-	f.Index = keyIndex
+	f.Index = uint32(keyIndex)
 
 	p := &keys.Private{
 		Index:    keyIndex,

@@ -31,13 +31,13 @@ type CadenceArgument interface{}
 
 type ProposalKeyJSON struct {
 	Address        string `json:"address"`
-	KeyIndex       int    `json:"keyIndex"`
+	KeyIndex       uint32 `json:"keyIndex"`
 	SequenceNumber uint64 `json:"sequenceNumber"`
 }
 
 type TransactionSignatureJSON struct {
 	Address   string `json:"address"`
-	KeyIndex  int    `json:"keyIndex"`
+	KeyIndex  uint32 `json:"keyIndex"`
 	Signature string `json:"signature"`
 }
 

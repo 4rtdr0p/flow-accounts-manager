@@ -358,7 +358,7 @@ func (s *ServiceImpl) createAccount(ctx context.Context) (*Account, string, erro
 	// Create copies based on the configured key count, changing just the index
 	for i := 0; i < int(s.cfg.DefaultAccountKeyCount); i++ {
 		clonedAccountKey := *accountKey
-		clonedAccountKey.Index = i
+		clonedAccountKey.Index = uint32(i)
 
 		publicKeys = append(publicKeys, &clonedAccountKey)
 	}
@@ -451,7 +451,7 @@ func (s *ServiceImpl) createAccount(ctx context.Context) (*Account, string, erro
 	storableKeys := []keys.Storable{}
 	for _, pbk := range publicKeys {
 		clonedEncryptedAccountKey := encryptedAccountKey
-		clonedEncryptedAccountKey.Index = pbk.Index
+		clonedEncryptedAccountKey.Index = int(pbk.Index)
 		storableKeys = append(storableKeys, clonedEncryptedAccountKey)
 	}
 

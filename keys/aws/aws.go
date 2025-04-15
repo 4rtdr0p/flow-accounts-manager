@@ -86,7 +86,7 @@ func Generate(cfg *configs.Config, ctx context.Context, keyIndex, weight int) (*
 		SetPublicKey(pbk).
 		SetHashAlgo(hashAlgo).
 		SetWeight(weight)
-	f.Index = keyIndex
+	f.Index = uint32(keyIndex)
 
 	pk := &keys.Private{
 		Index:    keyIndex,

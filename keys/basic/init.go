@@ -25,7 +25,7 @@ func (s *KeyManager) InitAdminProposalKeys(ctx context.Context) (uint16, error) 
 	for _, k := range adminAccount.Keys {
 		if !k.Revoked {
 			err = s.store.InsertProposalKey(keys.ProposalKey{
-				KeyIndex: k.Index,
+				KeyIndex: int(k.Index),
 			})
 			if err != nil {
 				return count, err
