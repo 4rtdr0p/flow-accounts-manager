@@ -19,7 +19,7 @@ func (b *Balance) MarshalJSON() ([]byte, error) {
 
 	// Only handle fixed point numbers differently, rest can use the default
 	typeID := b.CadenceValue.Type().ID()
-	if typeID == string(cadence.UFix64Type) || typeID == string(cadence.Fix64Type) {
+	if typeID == "UFix64" || typeID == "Fix64" {
 		return json.Marshal(b.CadenceValue.String())
 	}
 
