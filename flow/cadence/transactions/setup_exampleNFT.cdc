@@ -2,9 +2,9 @@ import NonFungibleToken from "../contracts/NonFungibleToken.cdc"
 import ExampleNFT from "../contracts/ExampleNFT.cdc"
 
 transaction {
-    prepare(signer: AuthAccount) {
+    prepare(signer: auth(Storage, Capabilities) &Account) {
         // Return early if the account already has a collection
-        if signer.borrow<&ExampleNFT.Collection>(from: ExampleNFT.CollectionStoragePath) != nil {
+        if signer.storage.borrow<&ExampleNFT.Collection>(from: ExampleNFT.CollectionStoragePath) != nil {
             return
         }
 
@@ -12,9 +12,12 @@ transaction {
         let collection <- ExampleNFT.createEmptyCollection()
 
         // save it to the account
-        signer.save(<-collection, to: ExampleNFT.CollectionStoragePath)
+        signer.storage.save(<-collection, to: ExampleNFT.CollectionStoragePath)
 
         // create a public capability for the collection
-        signer.link<&NonFungibleToken.Collection>(ExampleNFT.CollectionPublicPath, target: ExampleNFT.CollectionStoragePath)
+        let cap = signer.capabilities.storage.issue<&NonFungibleToken.Collection>(
+            ExampleNFT.CollectionStoragePath
+        )
+        signer.capabilities.publish(cap, at: ExampleNFT.CollectionPublicPath)
     }
 }

@@ -2,7 +2,7 @@ package template_strings
 
 const AddAccountContractWithAdmin = `
 transaction(name: String, code: String) {
-	prepare(signer: AuthAccount) {
+	prepare(signer: auth(Contracts) &Account) {
 		signer.contracts.add(name: name, code: code.decodeHex(), adminAccount: signer)
 	}
 }
@@ -10,11 +10,20 @@ transaction(name: String, code: String) {
 
 const CreateAccount = `
 transaction(publicKeys: [String]) {
-	prepare(signer: AuthAccount) {
-		let acct = AuthAccount(payer: signer)
+	prepare(signer: auth(CreateAccount) &Account) {
+		let acct = Account(payer: signer)
 
 		for key in publicKeys {
-			acct.addPublicKey(key.decodeHex())
+			let publicKey = PublicKey(
+				publicKey: key.decodeHex(),
+				signatureAlgorithm: SignatureAlgorithm.ECDSA_P256
+			)
+			
+			acct.keys.add(
+				publicKey: publicKey,
+				hashAlgorithm: HashAlgorithm.SHA3_256,
+				weight: 1000.0
+			)
 		}
 	}
 }
@@ -27,8 +36,8 @@ import TOKEN_DECLARATION_NAME from TOKEN_ADDRESS
 transaction(amount: UFix64, recipient: Address) {
   let sentVault: @FungibleToken.Vault
 
-  prepare(signer: AuthAccount) {
-    let vaultRef = signer
+  prepare(signer: auth(Storage) &Account) {
+    let vaultRef = signer.storage
       .borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
       ?? panic("failed to borrow reference to sender vault")
 
@@ -37,8 +46,8 @@ transaction(amount: UFix64, recipient: Address) {
 
   execute {
     let receiverRef = getAccount(recipient)
-      .getCapability(TOKEN_RECEIVER)
-      .borrow<&{FungibleToken.Receiver}>()
+      .capabilities
+      .borrow<&{FungibleToken.Receiver}>(TOKEN_RECEIVER)
       ?? panic("failed to borrow reference to recipient vault")
 
     receiverRef.deposit(from: <-self.sentVault)
@@ -51,32 +60,32 @@ import FungibleToken from "./FungibleToken.cdc"
 import TOKEN_DECLARATION_NAME from TOKEN_ADDRESS
 
 transaction {
-  prepare(signer: AuthAccount) {
+  prepare(signer: auth(Storage, Capabilities) &Account) {
 
-    let existingVault = signer.borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
+    let existingVault = signer.storage.borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
 
     if (existingVault != nil) {
         panic("vault exists")
     }
 
-    signer.save(<-TOKEN_DECLARATION_NAME.createEmptyVault(), to: TOKEN_VAULT)
+    signer.storage.save(<-TOKEN_DECLARATION_NAME.createEmptyVault(), to: TOKEN_VAULT)
 
-    signer.link<&TOKEN_DECLARATION_NAME.Vault{FungibleToken.Receiver}>(
-      TOKEN_RECEIVER,
-      target: TOKEN_VAULT
+    let cap = signer.capabilities.storage.issue<&TOKEN_DECLARATION_NAME.Vault{FungibleToken.Receiver}>(
+      TOKEN_VAULT
     )
+    signer.capabilities.publish(cap, at: TOKEN_RECEIVER)
 
-    signer.link<&TOKEN_DECLARATION_NAME.Vault{FungibleToken.Balance}>(
-      TOKEN_BALANCE,
-      target: TOKEN_VAULT
+    let balanceCap = signer.capabilities.storage.issue<&TOKEN_DECLARATION_NAME.Vault{FungibleToken.Balance}>(
+      TOKEN_VAULT
     )
+    signer.capabilities.publish(balanceCap, at: TOKEN_BALANCE)
   }
 }
 `
 
 const AddProposalKeyTransaction = `
 transaction(adminKeyIndex: Int, numProposalKeys: UInt16) {
-  prepare(account: AuthAccount) {
+  prepare(account: auth(Keys) &Account) {
     let key = account.keys.get(keyIndex: adminKeyIndex)!
     var count: UInt16 = 0
     while count < numProposalKeys {
@@ -94,7 +103,7 @@ transaction(adminKeyIndex: Int, numProposalKeys: UInt16) {
 // TODO: sigAlgo & hashAlgo as params, add pre-&post-conditions
 const AddAccountKeysTransaction = `
 transaction(publicKeys: [String]) {
-  prepare(signer: AuthAccount) {
+  prepare(signer: auth(Keys) &Account) {
     for pbk in publicKeys {
       let key = PublicKey(
         publicKey: pbk.decodeHex(),

@@ -5,7 +5,7 @@
 ## `FungibleToken` contract interface
 
 The interface that all fungible token contracts would have to conform to.
-If a users wants to deploy a new token contract, their contract
+If a users want to deploy a new token contract, their contract
 would need to implement the FungibleToken interface.
 
 Their contract would have to follow all the rules and naming
@@ -13,62 +13,58 @@ that the interface specifies.
 
 ## `Vault` resource
 
-Each account that owns tokens would need to have an instance
-of the Vault resource stored in their account storage.
-
-The Vault resource has methods that the owner and other users can call.
+The resource that holds the balance of a users tokens.
 
 ## `Provider`, `Receiver`, and `Balance` resource interfaces
 
-These interfaces declare pre-conditions and post-conditions that restrict
-the execution of the functions in the Vault.
+These interfaces declare functions with specific requirements that
+the implementer can use to communicate with other token objects
 
-They are separate because it gives the user the ability to share
-a reference to their Vault that only exposes the fields functions
-in one or more of the interfaces.
+## `TokensInitialized`, `TokensWithdrawn`, and `TokensDeposited` events
 
-It also gives users the ability to make custom resources that implement
-these interfaces to do various things with the tokens.
-For example, a faucet can be implemented by conforming
-to the Provider interface.
+Events that are emitted when a token contract is created
+and when tokens are moved between accounts.
 
-By using resources and interfaces, users of FungibleToken contracts
-can send and receive tokens peer-to-peer, without having to interact
-with a central ledger smart contract. To send tokens to another user,
-a user would simply withdraw the tokens from their Vault, then call
-the deposit function on another user's Vault to complete the transfer.
-
+Repo reference: https://github.com/onflow/flow-ft
 */
+
+import "ViewResolver"
 
 /// FungibleToken
 ///
-/// The interface that fungible token contracts implement.
+/// The interface that fungible token contracts should implement.
 ///
-pub contract interface FungibleToken {
+access(all) contract interface FungibleToken: ViewResolver {
+
+    /// An entitlement for allowing the withdrawal of tokens from a Vault
+    access(all) entitlement Withdraw
+
+    /// An entitlement for allowing the deposit of tokens into a Vault
+    access(all) entitlement Deposit
 
     /// The total number of tokens in existence.
     /// It is up to the implementer to ensure that the total supply
     /// stays accurate and up to date
     ///
-    pub var totalSupply: UFix64
+    access(all) var totalSupply: UFix64
 
     /// TokensInitialized
     ///
     /// The event that is emitted when the contract is created
     ///
-    pub event TokensInitialized(initialSupply: UFix64)
+    access(all) event TokensInitialized(initialSupply: UFix64)
 
     /// TokensWithdrawn
     ///
     /// The event that is emitted when tokens are withdrawn from a Vault
     ///
-    pub event TokensWithdrawn(amount: UFix64, from: Address?)
+    access(all) event TokensWithdrawn(amount: UFix64, from: Address?, uuid: UInt64, providerUUID: UInt64)
 
     /// TokensDeposited
     ///
-    /// The event that is emitted when tokens are deposited into a Vault
+    /// The event that is emitted when tokens are deposited to a Vault
     ///
-    pub event TokensDeposited(amount: UFix64, to: Address?)
+    access(all) event TokensDeposited(amount: UFix64, to: Address?, uuid: UInt64, receiverUUID: UInt64)
 
     /// Provider
     ///
@@ -79,29 +75,50 @@ pub contract interface FungibleToken {
     /// because it leaves open the possibility of creating custom providers
     /// that do not necessarily need their own balance.
     ///
-    pub resource interface Provider {
-
-        /// withdraw subtracts tokens from the owner's Vault
-        /// and returns a Vault with the removed tokens.
+    access(all) resource interface Provider {
+        /// withdraw
         ///
-        /// The function's access level is public, but this is not a problem
-        /// because only the owner storing the resource in their account
-        /// can initially call this function.
+        /// The main function of the Provider interface, withdraw, allows
+        /// anyone with a reference to this resource, given valid authorization,
+        /// to withdraw tokens from it.
         ///
-        /// The owner may grant other accounts access by creating a private
-        /// capability that allows specific other users to access
-        /// the provider resource through a reference.
+        /// The Provider must verify that the Vault's balance is at least
+        /// the withdrawal amount, or else the Vault would have a negative balance.
         ///
-        /// The owner may also grant all accounts access by creating a public
-        /// capability that allows all users to access the provider
-        /// resource through a reference.
+        /// Parameters:
+        ///   - amount: The amount of tokens to withdraw
         ///
-        pub fun withdraw(amount: UFix64): @Vault {
+        /// Returns: A Vault containing the withdrawn tokens.
+        ///
+        access(Withdraw) fun withdraw(amount: UFix64): @{FungibleToken.Vault} {
             post {
-                // `result` refers to the return value
                 result.balance == amount:
-                    "Withdrawal amount must be the same as the balance of the withdrawn Vault"
+                    "FungibleToken.Provider.withdraw: Incorrect amount returned. Expected: ".concat(amount.toString()).concat(", Actual: ").concat(result.balance.toString())
+                emit TokensWithdrawn(amount: amount, from: self.owner?.address, uuid: result.uuid, providerUUID: self.uuid)
             }
+        }
+        
+        /// getSupportedVaultTypes
+        ///
+        /// Returns an array of Types that the implementing type supports for withdrawal.
+        ///
+        /// Returns: An array of Types.
+        ///
+        access(all) view fun getSupportedVaultTypes(): [Type] {
+            return []
+        }
+        
+        /// isAvailableToWithdraw
+        ///
+        /// Checks if a given amount is available to withdraw from the Vault.
+        ///
+        /// Parameters:
+        ///   - amount: The amount to withdraw
+        ///
+        /// Returns: true if the requested amount is available to withdraw, false otherwise.
+        ///
+        access(all) view fun isAvailableToWithdraw(amount: UFix64): Bool {
+            return false
         }
     }
 
@@ -115,11 +132,49 @@ pub contract interface FungibleToken {
     /// can do custom things with the tokens, like split them up and
     /// send them to different places.
     ///
-    pub resource interface Receiver {
-
-        /// deposit takes a Vault and deposits it into the implementing resource type
+    access(all) resource interface Receiver {
+        /// deposit
         ///
-        pub fun deposit(from: @Vault)
+        /// The main function of the Receiver interface, deposit, allows
+        /// anyone with a reference to this resource to deposit tokens into it.
+        ///
+        /// Parameters:
+        ///   - from: A Vault containing the tokens to deposit
+        ///
+        access(all) fun deposit(from: @{FungibleToken.Vault}) {
+            pre {
+                from.balance > 0.0:
+                    "FungibleToken.Receiver.deposit: Cannot deposit a Vault with zero balance."
+                from.getType() != self.getType():
+                    "FungibleToken.Receiver.deposit: Cannot deposit a Vault of the same type as the receiver."
+            }
+            post {
+                emit TokensDeposited(amount: from.balance, to: self.owner?.address, uuid: from.uuid, receiverUUID: self.uuid)
+            }
+        }
+
+        /// getSupportedVaultTypes
+        ///
+        /// Returns an array of Types that the implementing type supports for deposit.
+        ///
+        /// Returns: An array of Types.
+        ///
+        access(all) view fun getSupportedVaultTypes(): [Type] {
+            return []
+        }
+
+        /// isAvailableToDeposit
+        ///
+        /// Checks if a given Vault is available to deposit into the Vault.
+        ///
+        /// Parameters:
+        ///   - from: The vault to check
+        ///
+        /// Returns: true if the vault is accepted for deposit, false otherwise.
+        ///
+        access(all) view fun isAvailableToDeposit(from: &{FungibleToken.Vault}): Bool {
+            return false
+        }
     }
 
     /// Balance
@@ -128,79 +183,53 @@ pub contract interface FungibleToken {
     /// and enforces that when new Vaults are created, the balance
     /// is initialized correctly.
     ///
-    pub resource interface Balance {
-
+    access(all) resource interface Balance {
         /// The total balance of a vault
         ///
-        pub var balance: UFix64
-
-        init(balance: UFix64) {
-            post {
-                self.balance == balance:
-                    "Balance must be initialized to the initial balance"
-            }
-        }
+        access(all) var balance: UFix64
     }
 
     /// Vault
     ///
     /// The resource that contains the functions to send and receive tokens.
     ///
-    pub resource Vault: Provider, Receiver, Balance {
+    access(all) resource interface Vault: Provider, Receiver, Balance, ViewResolver.Resolver {
+        /// balance of the vault
+        access(all) var balance: UFix64
 
-        // The declaration of a concrete type in a contract interface means that
-        // every Fungible Token contract that implements the FungibleToken interface
-        // must define a concrete `Vault` resource that conforms to the `Provider`, `Receiver`,
-        // and `Balance` interfaces, and declares their required fields and functions
-
-        /// The total balance of the vault
+        /// withdrawn
         ///
-        pub var balance: UFix64
-
-        // The conforming type must declare an initializer
-        // that allows prioviding the initial balance of the Vault
-        //
-        init(balance: UFix64)
-
-        /// withdraw subtracts `amount` from the Vault's balance
-        /// and returns a new Vault with the subtracted balance
+        /// The Event that is emitted when tokens are withdrawn from the vault
         ///
-        pub fun withdraw(amount: UFix64): @Vault {
-            pre {
-                self.balance >= amount:
-                    "Amount withdrawn must be less than or equal than the balance of the Vault"
-            }
+        access(all) event TokenResourceDestroyed(uuid: UInt64 = self.uuid, balance: UFix64 = self.balance)
+
+        /// createEmptyVault
+        ///
+        /// Function that creates a new Vault with a zero balance.
+        ///
+        /// Returns: A new Vault resource with a balance of zero.
+        ///
+        access(all) fun createEmptyVault(): @{FungibleToken.Vault} {
             post {
-                // use the special function `before` to get the value of the `balance` field
-                // at the beginning of the function execution
-                //
-                self.balance == before(self.balance) - amount:
-                    "New Vault balance must be the difference of the previous balance and the withdrawn Vault"
-            }
-        }
-
-        /// deposit takes a Vault and adds its balance to the balance of this Vault
-        ///
-        pub fun deposit(from: @Vault) {
-            // Assert that the concrete type of the deposited vault is the same
-            // as the vault that is accepting the deposit
-            pre {
-                from.isInstance(self.getType()):
-                    "Cannot deposit an incompatible token type"
-            }
-
-            post {
-                self.balance == before(self.balance) + before(from.balance):
-                    "New Vault balance must be the sum of the previous balance and the deposited Vault"
+                result.balance == 0.0:
+                    "FungibleToken.Vault.createEmptyVault: Balance must be zero when creating a new Vault!"
+                result.getType() == self.getType():
+                    "FungibleToken.Vault.createEmptyVault: Type of created vault must be the same as the creating vault!"
             }
         }
     }
 
-    /// createEmptyVault allows any user to create a new Vault that has a zero balance
+    /// createEmptyVault
     ///
-    pub fun createEmptyVault(): @Vault {
+    /// Function that creates a new Vault with a zero balance that is used
+    /// by the contract that implements the Vault interface.
+    ///
+    /// Returns: A new Vault resource with a balance of zero
+    ///
+    access(all) fun createEmptyVault(): @{FungibleToken.Vault} {
         post {
-            result.balance == 0.0: "The newly created Vault must have zero balance"
+            result.balance == 0.0:
+                "FungibleToken.createEmptyVault: Balance must be zero when creating a new Vault!"
         }
     }
 }
