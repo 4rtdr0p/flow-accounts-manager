@@ -9,7 +9,7 @@ view fun main(account: Address): UFix64 {
 
     let vaultRef = getAccount(account)
         .capabilities
-        .borrow<&{FungibleToken.Balance}>(TOKEN_BALANCE)
+        .borrow<&TOKEN_DECLARATION_NAME.Vault & FungibleToken.Balance>(TOKEN_BALANCE)
         ?? panic("failed to borrow reference to vault")
 
     return vaultRef.balance

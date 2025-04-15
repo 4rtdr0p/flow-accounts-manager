@@ -42,7 +42,7 @@ func Test_TokensSetup(t *testing.T) {
 			name: "success",
 			input: input{
 				sync:      false,
-				tokenName: "fusd",
+				tokenName: "flowToken",
 				address:   testAccount.Address,
 			},
 			expect: expect{
@@ -65,7 +65,7 @@ func Test_TokensSetup(t *testing.T) {
 			name: "fail address not found",
 			input: input{
 				sync:      false,
-				tokenName: "fusd",
+				tokenName: "flowToken",
 				address:   "0x0ae53cb6e3f42a79",
 			},
 			expect: expect{

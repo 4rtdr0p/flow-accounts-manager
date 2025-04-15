@@ -19,7 +19,8 @@ services:
       - emulator
 
   emulator:
-    image: gcr.io/flow-container-registry/emulator:v0.22.0
+    image: gcr.io/flow-container-registry/emulator:latest
+    command: --persist
     ports:
       - "3569:3569"
       - "8080:8080"
@@ -28,6 +29,8 @@ services:
       - FLOW_SERVICEKEYSIGALGO=ECDSA_P256
       - FLOW_SERVICEKEYHASHALGO=SHA3_256
       - FLOW_VERBOSE=true
+    volumes:
+      - emulator-data:/flowdb
 
   db:
     image: postgres:13-alpine

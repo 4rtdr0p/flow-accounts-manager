@@ -94,7 +94,7 @@ pub contract ExampleNFT: NonFungibleToken {
 
         // mintNFT mints a new NFT with a new ID
         // and deposit it in the recipients collection using their collection reference
-        pub fun mintNFT(recipient: &{NonFungibleToken.CollectionPublic}) {
+        pub fun mintNFT(recipient: &ExampleNFT.Collection & NonFungibleToken.CollectionPublic) {
 
             // create a new NFT
             var newNFT <- create NFT(initID: ExampleNFT.totalSupply)
@@ -120,7 +120,7 @@ pub contract ExampleNFT: NonFungibleToken {
         self.account.save(<-collection, to: self.CollectionStoragePath)
 
         // create a public capability for the collection
-        self.account.link<&{NonFungibleToken.CollectionPublic}>(
+        self.account.link<&ExampleNFT.Collection & NonFungibleToken.CollectionPublic>(
             self.CollectionPublicPath,
             target: self.CollectionStoragePath
         )
