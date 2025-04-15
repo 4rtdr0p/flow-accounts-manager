@@ -9,10 +9,14 @@ import (
 	"os/signal"
 	"time"
 
+	flowgorm "github.com/flow-hydraulics/flow-wallet-api/datastore/gorm"
+	access "github.com/onflow/flow-go-sdk/access/grpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
-	"github.com/flow-hydraulics/flow-wallet-api/datastore/gorm"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
@@ -24,11 +28,8 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/mux"
-	access "github.com/onflow/flow-go-sdk/access/grpc"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const version = "0.9.0"
@@ -77,8 +78,10 @@ func runServer(cfg *configs.Config) {
 	// TODO: WithInsecure()?
 	fc, err := access.NewClient(
 		cfg.AccessAPIHost,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.GrpcMaxCallRecvMsgSize)),
+		access.WithGRPCDialOptions(
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(cfg.GrpcMaxCallRecvMsgSize)),
+		),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -91,11 +94,11 @@ func runServer(cfg *configs.Config) {
 	}()
 
 	// Database
-	db, err := gorm.New(cfg)
+	db, err := flowgorm.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer gorm.Close(db)
+	defer flowgorm.Close(db)
 
 	systemService := system.NewService(
 		system.NewGormStore(db),
