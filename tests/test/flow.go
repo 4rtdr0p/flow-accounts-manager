@@ -25,7 +25,10 @@ var (
 )
 
 func NewFlowClient(t *testing.T, cfg *configs.Config) flow_helpers.FlowClient {
-	fc, err := access.NewClient(cfg.AccessAPIHost, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	fc, err := access.NewClient(
+		cfg.AccessAPIHost,
+		access.WithGRPCDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

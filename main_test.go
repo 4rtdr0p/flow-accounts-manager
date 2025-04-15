@@ -1134,7 +1134,7 @@ func TestTokenHandlers(t *testing.T) {
 		tokens.WithdrawalRequest{
 			TokenName: exampleNft.Name,
 			Recipient: testAccounts[1].Address,
-			NftID:     reflect.ValueOf(nftIDs[0].ToGoValue()).Uint(),
+			NftID:     reflect.ValueOf(nftIDs[0].String()).Uint(),
 		},
 	)
 	fatal(t, err)
@@ -1232,7 +1232,7 @@ func TestTokenHandlers(t *testing.T) {
 			name:        "create ExampleNFT withdrawal valid sync",
 			sync:        true,
 			method:      http.MethodPost,
-			body:        strings.NewReader(fmt.Sprintf(`{"recipient":"%s","nftId":%d}`, cfg.AdminAddress, nftIDs[1].ToGoValue())),
+			body:        strings.NewReader(fmt.Sprintf(`{"recipient":"%s","nftId":%s}`, cfg.AdminAddress, nftIDs[1].String())),
 			contentType: "application/json",
 			url:         fmt.Sprintf("/%s/non-fungible-tokens/%s/withdrawals", testAccounts[0].Address, exampleNft.Name),
 			expected:    `(?m)^{"transactionId":".+"}$`,
@@ -1242,7 +1242,7 @@ func TestTokenHandlers(t *testing.T) {
 			name:        "create ExampleNFT withdrawal with missing NFT",
 			sync:        true,
 			method:      http.MethodPost,
-			body:        strings.NewReader(fmt.Sprintf(`{"recipient":"%s","nftId":%d}`, cfg.AdminAddress, nftIDs[1].ToGoValue())),
+			body:        strings.NewReader(fmt.Sprintf(`{"recipient":"%s","nftId":%s}`, cfg.AdminAddress, nftIDs[1].String())),
 			contentType: "application/json",
 			url:         fmt.Sprintf("/%s/non-fungible-tokens/%s/withdrawals", testAccounts[1].Address, exampleNft.Name),
 			expected:    `missing NFT`,

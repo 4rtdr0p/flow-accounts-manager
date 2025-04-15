@@ -56,7 +56,10 @@ func TestIsChainConnectionError(t *testing.T) {
 	})
 
 	t.Run("non existent gateway", func(t *testing.T) {
-		fc, err := access.NewClient("non-existent-address", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		fc, err := access.NewClient(
+			"non-existent-address",
+			access.WithGRPCDialOptions(grpc.WithTransportCredentials(insecure.NewCredentials())),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
