@@ -37,8 +37,18 @@ func (h *ChainEventHandler) handleDeposit(ctx context.Context, event flow.Event)
 		return
 	}
 
-	amountOrNftID := event.Value.Fields[0]
-	accountAddress := event.Value.Fields[1]
+	// Acceder a los campos del evento usando SearchFieldByName
+	amountOrNftID := event.Value.SearchFieldByName("amount")
+	if amountOrNftID == nil {
+		// Para NFTs, intentar con id
+		amountOrNftID = event.Value.SearchFieldByName("id")
+	}
+	accountAddress := event.Value.SearchFieldByName("to")
+
+	if amountOrNftID == nil || accountAddress == nil {
+		log.WithField("event", event.Type).Warn("Could not find required fields in event")
+		return
+	}
 
 	// Get the target account from database
 	account, err := h.AccountService.Details(flow_helpers.HexString(accountAddress.String()))
