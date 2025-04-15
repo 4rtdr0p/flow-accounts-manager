@@ -7,7 +7,6 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
-	"github.com/flow-hydraulics/flow-wallet-api/templates/template_strings"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
 	log "github.com/sirupsen/logrus"
@@ -82,7 +81,23 @@ func (s *ServiceImpl) addAdminProposalKeys(ctx context.Context, count uint16) er
 		return err
 	}
 
-	code := template_strings.AddProposalKeyTransaction
+	// Definimos manualmente el código de la transacción compatible con Cadence 1.0
+	code := `
+	transaction(adminKeyIndex: Int, numProposalKeys: UInt16) {
+		prepare(account: auth(Keys) &Account) {
+			let key = account.keys.get(keyIndex: adminKeyIndex)!
+			var count: UInt16 = 0
+			while count < numProposalKeys {
+				account.keys.add(
+					publicKey: key.publicKey,
+					hashAlgorithm: key.hashAlgorithm,
+					weight: 0.0
+				)
+				count = count + 1
+			}
+		}
+	}
+	`
 
 	flowTx := flow.NewTransaction()
 	flowTx.
