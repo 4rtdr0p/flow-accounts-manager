@@ -29,6 +29,7 @@ Repo reference: https://github.com/onflow/flow-ft
 */
 
 import "ViewResolver"
+import "Burner"
 
 /// FungibleToken
 ///
@@ -193,43 +194,86 @@ access(all) contract interface FungibleToken: ViewResolver {
     ///
     /// The resource that contains the functions to send and receive tokens.
     ///
-    access(all) resource interface Vault: Provider, Receiver, Balance, ViewResolver.Resolver {
+    access(all) resource interface Vault: Provider, Receiver, Balance, ViewResolver.Resolver, Burner.Burnable {
         /// balance of the vault
         access(all) var balance: UFix64
 
         /// withdrawn
         ///
-        /// The Event that is emitted when tokens are withdrawn from the vault
+        /// The function called when withdrawing the tokens from the vault
+        /// with the withdraw function. Does nothing but verify the withdrawal
+        /// by default, but can be overriden to implement processes that happen
+        /// on each withdrawal.
         ///
-        access(all) event TokenResourceDestroyed(uuid: UInt64 = self.uuid, balance: UFix64 = self.balance)
-
-        /// createEmptyVault
+        /// Parameters:
+        ///   - amount: The amount of tokens withdrawn
         ///
-        /// Function that creates a new Vault with a zero balance.
-        ///
-        /// Returns: A new Vault resource with a balance of zero.
-        ///
-        access(all) fun createEmptyVault(): @{FungibleToken.Vault} {
-            post {
-                result.balance == 0.0:
-                    "FungibleToken.Vault.createEmptyVault: Balance must be zero when creating a new Vault!"
-                result.getType() == self.getType():
-                    "FungibleToken.Vault.createEmptyVault: Type of created vault must be the same as the creating vault!"
+        access(all) fun withdrawn(amount: UFix64) {
+            pre {
+                self.balance >= amount: 
+                    "FungibleToken.Vault.withdrawn: Cannot withdraw more than the balance of the Vault. Balance: ".concat(self.balance.toString()).concat(", Requested amount: ").concat(amount.toString())
             }
+            post {
+                self.balance == before(self.balance) - amount: 
+                    "FungibleToken.Vault.withdrawn: The balance must be updated correctly. Before Balance: ".concat(before(self.balance).toString()).concat(", After Balance: ").concat(self.balance.toString()).concat(", Amount: ").concat(amount.toString())
+            }
+        }
+
+        /// deposited
+        ///
+        /// The function called when depositing the tokens to the vault
+        /// with the deposit function. Does nothing but verify the deposit
+        /// by default, but can be overriden to implement processes that happen
+        /// on each deposit.
+        ///
+        /// Parameters:
+        ///   - amount: The amount of tokens deposited
+        ///
+        access(all) fun deposited(amount: UFix64) {
+            post {
+                self.balance == before(self.balance) + amount: 
+                    "FungibleToken.Vault.deposited: The balance must be updated correctly. Before Balance: ".concat(before(self.balance).toString()).concat(", After Balance: ").concat(self.balance.toString()).concat(", Amount: ").concat(amount.toString())
+            }
+        }
+
+        /// burnCallback
+        ///
+        /// Called when a fungible token is burned via the `Burner.burn()` method
+        /// Implementations can do any bookkeeping or emit any events
+        /// that should be emitted when a vault is destroyed.
+        /// Many implementations will want to update the token's total supply
+        /// to reflect that the tokens have been burned and removed from the supply.
+        /// Implementations also need to set the balance to zero before the end of the function
+        /// This is to prevent vault owners from spamming fake Burned events.
+        access(contract) fun burnCallback() {
+            pre {
+                emit TokensBurned(amount: self.balance, fromUUID: self.uuid)
+            }
+            post {
+                self.balance == 0.0:
+                    "FungibleToken.Vault.burnCallback: Cannot burn this Vault with Burner.burn(). "
+                    .concat("The balance must be set to zero during the burnCallback method so that it cannot be spammed.")
+            }
+            self.balance = 0.0
         }
     }
 
+    /// The event that is emitted when tokens are burned
+    ///
+    access(all) event TokensBurned(amount: UFix64, fromUUID: UInt64)
+
     /// createEmptyVault
     ///
-    /// Function that creates a new Vault with a zero balance that is used
-    /// by the contract that implements the Vault interface.
+    /// The function that creates a new Vault with a balance of zero
+    /// and returns it to the calling context. A user must call this function
+    /// and store the returned Vault in their storage in order to allow their
+    /// account to be able to receive deposits of this token type.
     ///
-    /// Returns: A new Vault resource with a balance of zero
+    /// Returns: A new Vault with a balance of zero
     ///
     access(all) fun createEmptyVault(): @{FungibleToken.Vault} {
         post {
-            result.balance == 0.0:
-                "FungibleToken.createEmptyVault: Balance must be zero when creating a new Vault!"
+            result.balance == 0.0: "FungibleToken.createEmptyVault: The balance of the returned Vault must be 0."
         }
     }
 }

@@ -19,7 +19,6 @@ access(all) contract ExampleNFT: NonFungibleToken {
     access(all) let CollectionPublicPath: PublicPath
     access(all) let MinterStoragePath: StoragePath
 
-
     access(all) resource NFT: NonFungibleToken.NFT, ViewResolver.Resolver {
         access(all) let id: UInt64
 
@@ -29,27 +28,31 @@ access(all) contract ExampleNFT: NonFungibleToken {
             self.id = initID
             self.metadata = {}
         }
-        
-        // Implementación de ViewResolver.Resolver
+
+        // Implement ViewResolver.Resolver interface
         access(all) view fun getViews(): [Type] {
             return []
         }
-        
+
         access(all) view fun resolveView(_ view: Type): AnyStruct? {
             return nil
         }
-        
-        // Implementación de NonFungibleToken.NFT
+
+        // Implement NonFungibleToken.NFT interface
         access(all) fun createEmptyCollection(): @{NonFungibleToken.Collection} {
             return <-ExampleNFT.createEmptyCollection()
         }
-        
+
         access(all) view fun getAvailableSubNFTS(): {Type: [UInt64]} {
             return {}
         }
+
+        access(all) fun getSubNFT(type: Type, id: UInt64): &{NonFungibleToken.NFT}? {
+            return nil
+        }
     }
 
-    access(all) resource Collection: NonFungibleToken.Provider, NonFungibleToken.Receiver, NonFungibleToken.CollectionPublic {
+    access(all) resource Collection: NonFungibleToken.Collection {
         // dictionary of NFT conforming tokens
         // NFT is a resource type with an `UInt64` ID field
         access(all) var ownedNFTs: @{UInt64: NonFungibleToken.NFT}
@@ -89,25 +92,25 @@ access(all) contract ExampleNFT: NonFungibleToken {
 
         // borrowNFT gets a reference to an NFT in the collection
         // so that the caller can read its metadata and call its methods
-        access(all) view fun borrowNFT(id: UInt64): &{NonFungibleToken.NFT} {
+        access(all) view fun borrowNFT(id: UInt64): &{NonFungibleToken.NFT}? {
             return &self.ownedNFTs[id] as &{NonFungibleToken.NFT}
         }
-        
-        // Implementar métodos requeridos por NonFungibleToken
-        access(all) view fun getSupportedNFTTypes(): {Type: Bool} {
-            return {Type<@ExampleNFT.NFT>(): true}
-        }
-        
-        access(all) view fun isSupportedNFTType(type: Type): Bool {
-            return type == Type<@ExampleNFT.NFT>()
-        }
-        
+
+        // Implement required functions from NonFungibleToken.Collection
         access(all) view fun getLength(): Int {
             return self.ownedNFTs.length
         }
+
+        access(all) view fun getSupportedNFTTypes(): {Type: Bool} {
+            return {Type<@ExampleNFT.NFT>(): true}
+        }
+
+        access(all) view fun isSupportedNFTType(type: Type): Bool {
+            return type == Type<@ExampleNFT.NFT>()
+        }
     }
 
-    // public function that anyone can call to create a new empty collection
+    // Function that anyone can call to create a new empty collection
     access(all) fun createEmptyCollection(): @{NonFungibleToken.Collection} {
         return <- create Collection()
     }

@@ -47,12 +47,12 @@ Collection to complete the transfer.
 
 */
 
-import "ViewResolver"
+import ViewResolver from "./ViewResolver.cdc"
 
 /// The main NFT contract interface. Other NFT contracts will import
 /// and implement this interface as well the interfaces defined in this interface
 ///
-access(all) contract interface NonFungibleToken: ViewResolver {
+access(all) contract interface NonFungibleToken {
 
     /// An entitlement for allowing the withdrawal of tokens from a Vault
     access(all) entitlement Withdraw
@@ -196,98 +196,33 @@ access(all) contract interface NonFungibleToken: ViewResolver {
         access(all) view fun isSupportedNFTType(type: Type): Bool
     }
 
-    /// Kept for backwards-compatibility reasons
+    /// Interface to enable a collection that stores NFTs
     access(all) resource interface CollectionPublic {
-        access(all) fun deposit(token: @{NFT})
-        access(all) view fun getLength(): Int
+        access(all) view fun deposit(token: @{NonFungibleToken.NFT})
         access(all) view fun getIDs(): [UInt64]
-        access(all) fun forEachID(_ f: fun (UInt64): Bool): Void
-        access(all) view fun borrowNFT(_ id: UInt64): &{NFT}?
+        access(all) view fun borrowNFT(id: UInt64): &{NonFungibleToken.NFT}?
+        access(all) view fun getSupportedNFTTypes(): {Type: Bool}
+        access(all) view fun isSupportedNFTType(type: Type): Bool
     }
 
-    /// Requirement for the concrete resource type in the implementing contract
-    /// to implement this interface. Since this interface inherits from
-    /// all the other necessary interfaces, resources that implement it do not 
-    /// also need to include the other interfaces in their conformance lists
-    ///
-    access(all) resource interface Collection: Provider, Receiver, CollectionPublic, ViewResolver.ResolverCollection {
-
-        /// Field that contains all the NFTs that the collection owns
-        access(all) var ownedNFTs: @{UInt64: {NonFungibleToken.NFT}}
-
-        /// deposit takes a NFT as an argument and stores it in the collection
-        /// @param token: The NFT to deposit into the collection
-        access(all) fun deposit(token: @{NonFungibleToken.NFT}) {
-            pre {
-                // We emit the deposit event in the `Collection` interface
-                // because the `Collection` interface is almost always the final destination
-                // of tokens and deposit emissions from custom receivers could be confusing
-                // and hard to reconcile to event listeners
-                emit Deposited(type: token.getType().identifier, id: token.id, uuid: token.uuid, to: self.owner?.address, collectionUUID: self.uuid)
-            }
-        }
-
-        /// Gets the amount of NFTs stored in the collection
-        /// @return An integer indicating the size of the collection
-        access(all) view fun getLength(): Int {
-            return self.ownedNFTs.length
-        }
-
-        /// Allows a given function to iterate through the list
-        /// of owned NFT IDs in a collection without first
-        /// having to load the entire list into memory
-        access(all) fun forEachID(_ f: fun (UInt64): Bool): Void {
-            self.ownedNFTs.forEachKey(f)
-        }
-
-        /// Borrows a reference to an NFT stored in the collection
-        /// If the NFT with the specified ID is not in the collection,
-        /// the function should return `nil` and not panic.
-        ///
-        /// @param id: The desired nft id in the collection to return a referece for.
-        /// @return An optional reference to the NFT
-        access(all) view fun borrowNFT(_ id: UInt64): &{NonFungibleToken.NFT}? {
-            post {
-                (result == nil) || (result?.id == id): 
-                    "NonFungibleToken.Collection.borrowNFT: Cannot borrow NFT reference! "
-                    .concat("The ID of the returned reference (")
-                    .concat(result!.id.toString())
-                    .concat(") does not match the ID that was specified (")
-                    .concat(id.toString())
-                    .concat(")")
-            }
-        }
-
-        /// createEmptyCollection creates an empty Collection of the same type
-        /// and returns it to the caller
-        /// @return A an empty collection of the same type
-        access(all) fun createEmptyCollection(): @{Collection} {
-            post {
-                result.getType() == self.getType(): 
-                    "NonFungibleToken.Collection.createEmptyCollection: Cannot create empty collection! "
-                    .concat("The created collection type <")
-                    .concat(result.getType().identifier)
-                    .concat("> does not have the same type as the collection that was used to create it <")
-                    .concat(self.getType().identifier)
-                    .concat(">.")
-                result.getLength() == 0:
-                    "NonFungibleToken.Collection.createEmptyCollection: Cannot create empty collection! "
-                    .concat("The created collection has a non-zero length.")
-                    .concat(" A newly created collection must be empty!")
-            }
-        }
+    /// Interface to enable a collection that stores NFTs
+    access(all) resource interface Collection: Provider, Receiver, CollectionPublic {
+        /// Returns the length of the collection
+        access(all) view fun getLength(): Int
     }
 
-    /// createEmptyCollection creates an empty Collection for the specified NFT type
-    /// and returns it to the caller so that they can own NFTs
-    /// @param nftType: The desired nft type to return a collection for.
-    /// @return An array of NFT Types that the implementing contract defines.
-    access(all) fun createEmptyCollection(nftType: Type): @{NonFungibleToken.Collection} {
-        post {
-            result.getIDs().length == 0: 
-                "NonFungibleToken.createEmptyCollection: Cannot create empty collection! "
-                .concat("The created collection has a non-zero length. ")
-                .concat("A newly created collection must be empty!")
-        }
-    }
+    /// The total number of tokens of this type in existence
+    access(all) view fun totalSupply(): UInt64
+
+    /// The event that is emitted when a token is withdrawn from a Collection
+    access(all) event Withdraw(id: UInt64, from: Address?)
+
+    /// The event that is emitted when a token is deposited into a Collection
+    access(all) event Deposit(id: UInt64, to: Address?)
+
+    /// The Entitlements
+    access(all) entitlement CollectionsGuardian
+    access(all) entitlement ProxyWithdraw
+
+    access(all) view fun resolveView(view: Type): AnyStruct?
 }
