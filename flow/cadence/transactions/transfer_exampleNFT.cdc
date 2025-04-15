@@ -2,7 +2,7 @@ import NonFungibleToken from "../contracts/NonFungibleToken.cdc"
 import ExampleNFT from "../contracts/ExampleNFT.cdc"
 
 transaction(recipient: Address, withdrawID: UInt64) {
-    prepare(signer: auth(Storage) &Account) {
+    prepare(signer: auth(Storage, NonFungibleToken.Withdraw) &Account) {
         let recipient = getAccount(recipient)
         
         let collectionRef = signer.storage

@@ -36,7 +36,7 @@ import TOKEN_DECLARATION_NAME from TOKEN_ADDRESS
 transaction(amount: UFix64, recipient: Address) {
   let sentVault: @FungibleToken.Vault
 
-  prepare(signer: auth(Storage) &Account) {
+  prepare(signer: auth(Storage, FungibleToken.Withdraw) &Account) {
     let vaultRef = signer.storage
       .borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
       ?? panic("failed to borrow reference to sender vault")

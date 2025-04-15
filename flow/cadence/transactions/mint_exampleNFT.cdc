@@ -23,7 +23,7 @@ transaction(recipient: Address, name: String, description: String, thumbnail: St
             recipient: recipientCollection,
             name: name,
             description: description,
-            thumbnail: thumbnail,
+            thumbnail: thumbnail
         )
     }
 }
