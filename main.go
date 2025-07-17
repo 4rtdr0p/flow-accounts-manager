@@ -70,6 +70,29 @@ func main() {
 }
 
 func runServer(cfg *configs.Config) {
+	// Apply lightweight mode configuration if enabled
+	if cfg.LightweightMode {
+		log.Info("Running in lightweight mode with simplified dependencies")
+		
+		// Force SQLite as database
+		cfg.DatabaseType = "sqlite"
+		if cfg.DatabaseDSN == "" || cfg.DatabaseDSN == "wallet.db" {
+			// Use a more explicit path for the SQLite database in lightweight mode
+			cfg.DatabaseDSN = "./data/wallet-lightweight.db"
+		}
+		
+		// Disable idempotency middleware to remove Redis dependency
+		cfg.DisableIdempotencyMiddleware = true
+		
+		// Optimize worker settings for lighter usage
+		if cfg.WorkerCount > 4 {
+			cfg.WorkerCount = 4
+		}
+		if cfg.WorkerQueueCapacity > 500 {
+			cfg.WorkerQueueCapacity = 500
+		}
+	}
+	
 	configs.ConfigureLogger(cfg.LogLevel)
 
 	log.Info("Starting server")

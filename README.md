@@ -1,18 +1,20 @@
-# Flow Wallet API
+# Phoenix Wallet API for Flow
 
-**NOTE: This repository is currently not maintained.**
+The Phoenix Wallet API (formerly Flow Wallet API) is a REST HTTP service that allows developers to integrate wallet functionality into a larger Flow application infrastructure.
+This service can be used by applications that need to manage Flow user accounts and the assets inside them.
 
-The Flow Wallet API is a REST HTTP service that allows a developer to integrate wallet functionality into a larger Flow application infrastructure.
-This service can be used by an application that needs to manage Flow user accounts and the assets inside them.
+**NOTE: This is a community-maintained fork of the original Flow Wallet API, updated to support Cadence 1.0 and with additional deployment options.**
 
 ## Features
 
-- Create new Flow accounts
-- Securely store account private keys
-- Send a transaction from an account
+- Create and manage Flow accounts
+- Securely store account private keys (local or via KMS)
+- Send transactions from accounts
 - Transfer fungible tokens (e.g. FLOW, FUSD)
 - Detect fungible token deposits
-- _Transfer NFTs (e.g. FLOW, FUSD) (coming soon)_
+- Support for Cadence 1.0
+- Lightweight deployment option (SQLite-based, no Redis dependency)
+- _Transfer NFTs (coming soon)_
 - _Detect NFT deposits (coming soon)_
 
 View full list of functionality in the [API documentation](https://flow-hydraulics.github.io/flow-wallet-api/).
@@ -58,6 +60,8 @@ Create a configuration file:
 cp .env.example .env # and edit
 ```
 
+#### Standard Deployment
+
 Start the Wallet API, Flow Emulator, Postgres and Redis:
 
 ```sh
@@ -71,6 +75,48 @@ Once you're finished, run this to stop the containers:
 ```sh
 docker-compose down
 ```
+
+#### Lightweight Deployment
+
+For development or simpler use cases, you can use the lightweight deployment which doesn't require Postgres or Redis:
+
+```sh
+docker-compose -f docker-compose.lightweight.yml up -d
+```
+
+Or using the provided Makefile:
+
+```sh
+make lightweight
+```
+
+The lightweight mode:
+- Uses SQLite instead of PostgreSQL
+- Disables the idempotency middleware (no Redis dependency)
+- Optimizes worker settings for lighter usage
+- Stores data in a persistent volume
+- Includes Swagger UI for API exploration and testing
+
+This mode is ideal for development, testing, or smaller production deployments with lower transaction volumes.
+
+#### API Documentation
+
+The lightweight deployment includes Swagger UI, which provides interactive documentation for all API endpoints. Once the containers are running, you can access it at:
+
+**http://localhost:8080**
+
+This unified interface allows you to:
+- Browse and test the API documentation directly
+- Access the API at http://localhost:8080/v1/
+- View the emulator admin interface at http://localhost:8080/emulator/ (optional)
+
+This interface allows you to:
+- Browse all available endpoints
+- Test API calls directly from your browser
+- View request and response schemas
+- Understand the API capabilities
+
+For the standard deployment, you can add Swagger UI by including the service from the lightweight configuration.
 
 ## Configuration
 
@@ -308,14 +354,77 @@ To enable multiple keys for custodial accounts you'll need to set `FLOW_WALLET_D
 
 NOTE: Changing `FLOW_WALLET_DEFAULT_ACCOUNT_KEY_COUNT` does not affect _existing_ accounts.
 
+### Lightweight Mode
+
+The lightweight mode simplifies deployment by reducing dependencies. To enable it, set:
+
+```
+FLOW_WALLET_LIGHTWEIGHT_MODE=true
+```
+
+When lightweight mode is enabled, the following configurations are automatically applied:
+
+- SQLite is used as the database backend (regardless of `DATABASE_TYPE` setting)
+- Idempotency middleware is disabled (no Redis dependency)
+- Worker settings are optimized for lighter usage
+- Data is stored in `./data/wallet-lightweight.db` by default
+
+This mode is ideal for:
+- Development environments
+- Testing and CI/CD pipelines
+- Small-scale production deployments
+- Situations where setting up PostgreSQL and Redis is impractical
+
+To use lightweight mode with Docker Compose:
+
+```sh
+docker-compose -f docker-compose.lightweight.yml up -d
+```
+
+**Limitations of lightweight mode:**
+- Lower throughput for high-volume transaction processing
+- No support for idempotent API requests
+- Limited scalability (not suitable for multi-instance deployments)
+
 ### All possible configuration variables
 
 Refer to [configs/configs.go](configs/configs.go) for details and documentation.
 
+## Future Roadmap
+
+Our vision for Phoenix Wallet API extends beyond its current capabilities. We are committed to its continuous evolution and aim to introduce features that further empower developers:
+
+### Simplified Deployment Options
+- Lightweight versions of the API that can operate without complex dependencies (✓ Implemented)
+- Further optimizations for development environments
+
+### Enhanced Database Flexibility
+- Database abstraction layer to support a wider variety of SQL or NoSQL solutions
+- Improved migration tools between deployment modes
+
+### MCP Server Integration
+- Configuration as a Model Context Protocol (MCP) server
+- Expose functionalities as tools within compatible AI agent environments
+
+### Natural Language Transaction Processing
+- Integration with Large Language Models (LLMs)
+- Allow users to initiate transactions using natural language commands
+
+### NFT Support
+- Full support for Non-Fungible Token (NFT) transfers
+- NFT deposit detection
+
+### Developer Experience
+- GraphQL API alongside REST
+- WebSocket support for real-time updates
+- SDK generation for multiple languages
+
 ## Credit
 
-The Flow Wallet API is developed and maintained by [Equilibrium](https://equilibrium.co/),
+The original Flow Wallet API was developed by [Equilibrium](https://equilibrium.co/),
 with support from the Flow core contributors.
+
+This Phoenix Wallet API fork is community-maintained and updated to support Cadence 1.0 and modern deployment options.
 
 <a href="https://equilibrium.co/"><img src="equilibrium.svg" alt="Equilibrium" width="200"/></a>
 

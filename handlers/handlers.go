@@ -21,7 +21,12 @@ var EmptyBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err
 var InvalidBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("invalid body")}
 
 func UseCors(h http.Handler) http.Handler {
-	return gorilla.CORS(gorilla.AllowedOrigins([]string{"*"}))(h)
+	return gorilla.CORS(
+		gorilla.AllowedOrigins([]string{"*"}),
+		gorilla.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+		gorilla.AllowedHeaders([]string{"Content-Type", "Authorization", "Idempotency-Key"}),
+		gorilla.AllowCredentials(),
+	)(h)
 }
 
 func UseLogging(h http.Handler) http.Handler {

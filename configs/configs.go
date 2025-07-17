@@ -14,6 +14,13 @@ import (
 
 type Config struct {
 
+	// -- Deployment Mode --
+	
+	// LightweightMode enables a simplified deployment with minimal dependencies
+	// When enabled, it automatically configures SQLite, disables idempotency middleware,
+	// and optimizes worker settings for simpler deployments
+	LightweightMode bool `env:"LIGHTWEIGHT_MODE" envDefault:"false"`
+
 	// -- Logger config --
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
 
