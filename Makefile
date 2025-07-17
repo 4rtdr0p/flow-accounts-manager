@@ -2,6 +2,19 @@
 # This works with both Docker Compose V2 and V1
 DOCKER_COMPOSE_CMD = docker compose
 
+# Detect OS for local commands
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    OPEN_CMD = xdg-open
+    KILL_CMD = pkill -f
+else ifeq ($(UNAME_S),Darwin)
+    OPEN_CMD = open
+    KILL_CMD = pkill -f
+else
+    OPEN_CMD = echo "Unsupported OS for open command:"
+    KILL_CMD = echo "Unsupported OS for kill command:"
+endif
+
 # Only check for flow and go when running commands that need them
 check-flow:
 ifeq (, $(shell which flow))
@@ -104,3 +117,50 @@ stop-test-suite:
 .PHONY: clean-test-suite
 clean-test-suite:
 	@$(test-suite) run --rm api go clean -testcache
+
+# Local commands without Docker
+.PHONY: local-start
+local-start: check-flow check-go
+	@echo "Starting Phoenix Wallet API services locally..."
+	@echo "Creating necessary directories..."
+	@mkdir -p ./data
+	
+	@echo "Starting Flow Emulator..."
+	@cd flow && { flow emulator --persist --storage-dir="../data/flowdb" --port=3569 & echo $$! > ../emulator.pid; }
+	@echo "Flow Emulator started with PID: $$(cat emulator.pid)"
+	@sleep 3
+	
+	@echo "Starting Swagger UI (using npx)..."
+	@npx swagger-ui-dist@latest serve ./openapi.yml -p 8081 & echo $$! > swagger.pid
+	@echo "Swagger UI started with PID: $$(cat swagger.pid)"
+	@sleep 2
+	
+	@echo "Building and starting Phoenix Wallet API..."
+	@go build -o ./phoenix-wallet-api
+	@FLOW_WALLET_LIGHTWEIGHT_MODE=true \
+	FLOW_WALLET_ACCESS_API_HOST=localhost:3569 \
+	FLOW_WALLET_CHAIN_ID=flow-emulator \
+	FLOW_WALLET_DATABASE_DSN=./data/wallet.db \
+	./phoenix-wallet-api & echo $$! > api.pid
+	@echo "Phoenix Wallet API started with PID: $$(cat api.pid)"
+	
+	@echo "All services started successfully!"
+	@echo "API: http://localhost:3000"
+	@echo "Swagger UI: http://localhost:8081"
+	@echo "Flow Emulator: localhost:3569"
+	@$(OPEN_CMD) http://localhost:8081
+
+.PHONY: local-stop
+local-stop:
+	@echo "Stopping all Phoenix Wallet API services..."
+	@if [ -f emulator.pid ]; then kill $$(cat emulator.pid) && rm emulator.pid && echo "Flow Emulator stopped"; else echo "Flow Emulator not running"; fi
+	@if [ -f swagger.pid ]; then kill $$(cat swagger.pid) && rm swagger.pid && echo "Swagger UI stopped"; else echo "Swagger UI not running"; fi
+	@if [ -f api.pid ]; then kill $$(cat api.pid) && rm api.pid && echo "Phoenix Wallet API stopped"; else echo "Phoenix Wallet API not running"; fi
+	@echo "All services stopped successfully!"
+
+.PHONY: local-status
+local-status:
+	@echo "Checking status of Phoenix Wallet API services..."
+	@if [ -f emulator.pid ] && ps -p $$(cat emulator.pid) > /dev/null; then echo "Flow Emulator: Running (PID: $$(cat emulator.pid))"; else echo "Flow Emulator: Not running"; fi
+	@if [ -f swagger.pid ] && ps -p $$(cat swagger.pid) > /dev/null; then echo "Swagger UI: Running (PID: $$(cat swagger.pid))"; else echo "Swagger UI: Not running"; fi
+	@if [ -f api.pid ] && ps -p $$(cat api.pid) > /dev/null; then echo "Phoenix Wallet API: Running (PID: $$(cat api.pid))"; else echo "Phoenix Wallet API: Not running"; fi
