@@ -20,6 +20,10 @@ type Config struct {
 	// When enabled, it automatically configures SQLite, disables idempotency middleware,
 	// and optimizes worker settings for simpler deployments
 	LightweightMode bool `env:"LIGHTWEIGHT_MODE" envDefault:"false"`
+	
+	// LightweightIdempotency enables idempotency in lightweight mode using SQLite
+	// Only takes effect when LightweightMode is true
+	LightweightIdempotency bool `env:"LIGHTWEIGHT_IDEMPOTENCY" envDefault:"false"`
 
 	// -- Logger config --
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
