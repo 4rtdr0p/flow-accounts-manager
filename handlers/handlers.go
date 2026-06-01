@@ -17,6 +17,9 @@ import (
 
 const SyncQueryParameter = "sync"
 
+type AuthOptions = middleware.AuthOptions
+type AuthRule = middleware.AuthRule
+
 var EmptyBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("empty body")}
 var InvalidBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("invalid body")}
 
@@ -44,6 +47,10 @@ func UseJson(h http.Handler) http.Handler {
 
 func UseIdempotency(h http.Handler, opts IdempotencyHandlerOptions, store IdempotencyStore) http.Handler {
 	return IdempotencyHandler(h, opts, store)
+}
+
+func UseAuth(h http.Handler, opts AuthOptions) http.Handler {
+	return middleware.AuthHandler(h, opts)
 }
 
 // handleError is a helper function for unified HTTP error handling.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"time"
 
 	flowgorm "github.com/flow-hydraulics/flow-wallet-api/datastore/gorm"
@@ -73,14 +74,14 @@ func runServer(cfg *configs.Config) {
 	// Apply lightweight mode configuration if enabled
 	if cfg.LightweightMode {
 		log.Info("Running in lightweight mode with simplified dependencies")
-		
+
 		// Force SQLite as database
 		cfg.DatabaseType = "sqlite"
 		if cfg.DatabaseDSN == "" || cfg.DatabaseDSN == "wallet.db" {
 			// Use a more explicit path for the SQLite database in lightweight mode
 			cfg.DatabaseDSN = "./data/wallet-lightweight.db"
 		}
-		
+
 		// Configure idempotency for lightweight mode
 		if cfg.LightweightIdempotency {
 			log.Info("Lightweight mode: Enabling idempotency with SQLite storage")
@@ -90,7 +91,7 @@ func runServer(cfg *configs.Config) {
 			log.Info("Lightweight mode: Disabling idempotency middleware")
 			cfg.DisableIdempotencyMiddleware = true
 		}
-		
+
 		// Optimize worker settings for lighter usage
 		if cfg.WorkerCount > 4 {
 			cfg.WorkerCount = 4
@@ -99,7 +100,7 @@ func runServer(cfg *configs.Config) {
 			cfg.WorkerQueueCapacity = 500
 		}
 	}
-	
+
 	configs.ConfigureLogger(cfg.LogLevel)
 
 	log.Info("Starting server")
@@ -334,6 +335,14 @@ func runServer(cfg *configs.Config) {
 		}, is)
 	}
 
+	h = handlers.UseAuth(h, handlers.AuthOptions{
+		Enabled:  cfg.AuthEnabled,
+		Secret:   cfg.AuthJWTSecret,
+		Issuer:   cfg.AuthJWTIssuer,
+		Audience: cfg.AuthJWTAudience,
+		Rules:    walletAuthRules(),
+	})
+
 	// Server boilerplate
 	srv := &http.Server{
 		Handler:      h,
@@ -418,5 +427,54 @@ func runServer(cfg *configs.Config) {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Warnf("Error in server shutdown: %s", err)
+	}
+}
+
+func walletAuthRules() []handlers.AuthRule {
+	return []handlers.AuthRule{
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/debug$`), RequiredScope: "system.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/health/ready$`), RequiredScope: "health.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/health/liveness$`), RequiredScope: "health.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/system/settings$`), RequiredScope: "system.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/system/settings$`), RequiredScope: "system.write"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/system/sync-account-key-count$`), RequiredScope: "account.key.sync"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/jobs$`), RequiredScope: "job.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/jobs/[^/]+$`), RequiredScope: "job.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/tokens$`), RequiredScope: "token.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/tokens$`), RequiredScope: "token.write"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/tokens/[^/]+$`), RequiredScope: "token.read"},
+		{Method: http.MethodDelete, PathPattern: regexp.MustCompile(`^/v1/tokens/[^/]+$`), RequiredScope: "token.write"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/fungible-tokens$`), RequiredScope: "token.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/non-fungible-tokens$`), RequiredScope: "token.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/transactions$`), RequiredScope: "transaction.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/transactions/[^/]+$`), RequiredScope: "transaction.read"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts$`), RequiredScope: "account.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts$`), RequiredScope: "account.create"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+$`), RequiredScope: "account.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/sign$`), RequiredScope: "account.sign"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/transactions$`), RequiredScope: "transaction.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/transactions$`), RequiredScope: "transaction.create"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/transactions/[^/]+$`), RequiredScope: "transaction.read"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/watchlist/accounts$`), RequiredScope: "watchlist.write"},
+		{Method: http.MethodDelete, PathPattern: regexp.MustCompile(`^/v1/watchlist/accounts/[^/]+$`), RequiredScope: "watchlist.write"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/scripts$`), RequiredScope: "script.execute"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens$`), RequiredScope: "account.setup"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+$`), RequiredScope: "account.setup"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+$`), RequiredScope: "account.setup"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+/withdrawals$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+/withdrawals$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+/withdrawals/[^/]+$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+/deposits$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/fungible-tokens/[^/]+/deposits/[^/]+$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens$`), RequiredScope: "account.setup"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+$`), RequiredScope: "account.setup"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+$`), RequiredScope: "account.setup"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+/withdrawals$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodPost, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+/withdrawals$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+/withdrawals/[^/]+$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+/deposits$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/accounts/[^/]+/non-fungible-tokens/[^/]+/deposits/[^/]+$`), RequiredScope: "account.transfer"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/ops/missing-fungible-token-vaults/start$`), RequiredScope: "ops.run"},
+		{Method: http.MethodGet, PathPattern: regexp.MustCompile(`^/v1/ops/missing-fungible-token-vaults/stats$`), RequiredScope: "ops.read"},
 	}
 }
