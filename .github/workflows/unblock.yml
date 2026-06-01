@@ -1,0 +1,26 @@
+# Drop into an execution repo (e.g. flow-accounts-manager) at .github/workflows/unblock.yml
+# Requires plan/tasks.yaml + plan/sync_issues.py present in that repo (copy from artdrop-protocol).
+# Reopens tasks whose deps are now done, on every issue close.
+name: Unblock
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  unblock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      # Default GITHUB_TOKEN handles INTRA-repo deps (e.g. wallet W-* are self-contained).
+      # For CROSS-repo deps (CMS/deploy), set repo secret PLAN_TOKEN = a PAT with org `repo`
+      # scope and use it here instead, or just run the sync manually.
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 plan/sync_issues.py --repo "${{ github.repository }}"

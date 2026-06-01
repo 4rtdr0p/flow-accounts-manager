@@ -1,0 +1,1835 @@
+# ArtDrop Protocol V2 — task plan (source of truth)
+#
+# Each task is mirrored to a GitHub Issue via plan/sync_issues.py.
+# The ID (C-01, I-03, ...) is stable and maps to a section of the architecture PDF.
+# STATUS does not live here: it lives in the issue (open/closed) and the PR. Here, scope only.
+#
+# Owners -> labels: claudio | rey | ariel-edgar | team
+# Phases (milestones): P0 Research | P1 Core | P2 Modules | P3 Integration
+#
+# NOTE: external audit / firm tasks (engagement, audit package, remediation, Flow Foundation)
+# are tracked off this board (business/external), by lead decision.
+#
+# Task bodies keep the lead's original Spanish wording (the domain detail). Titles/structure are EN.
+
+phases:
+  P0: "P0 · Research & Decisiones"
+  P1: "P1 · Core Architecture"
+  P2: "P2 · Módulos Secundarios"
+  P3: "P3 · Integración / Hardening / Deploy"
+
+tasks:
+
+# ───────────────────────────── SETUP ─────────────────────────────
+
+  - id: S-00
+    repo: artdrop-protocol
+    title: "Repo setup: CI (flow test) + branch protection"
+    phase: P0
+    domain: infra
+    owner: [claudio]
+    depends_on: []
+    context: >
+      Bootstrap the repo CI/CD. First issue and first PR — exercises the whole loop
+      (branch -> PR -> flow test check -> Closes # -> merge) before any real task starts.
+    steps:
+      - Add GitHub Actions workflow .github/workflows/ci.yml running `flow test`.
+      - Add a minimal passing Cadence test (tests/smoke_test.cdc) so main is green.
+      - Open this task as task/S-00-repo-setup and verify CI runs on the PR.
+      - Enable branch protection on main (PR + 1 approval, required check `flow test`, no direct push).
+    validate:
+      - CI runs on every PR and reports the `flow test` status check.
+      - The setup PR merges via squash and auto-closes this issue.
+      - Direct push to main is rejected after protection is on.
+    risks:
+      - Flow CLI install step drifts — pin or re-check the installer.
+    why: >
+      Validate the delivery pipeline once, on a throwaway change, so every later task inherits a
+      working gate instead of discovering a broken CI mid-feature.
+
+# ───────────────────────────── P0 · RESEARCH ─────────────────────────────
+
+  - id: R-01
+    repo: artdrop-protocol
+    title: Profile CU of monolithic router (Option A)
+    phase: P0
+    domain: research
+    owner: [claudio]
+    ref: "Sec. L · Architecture Decision"
+    depends_on: []
+    context: >
+      Antes de comprometernos a una arquitectura específica, necesitamos números reales de CU
+      sobre testnet. Esta task construye stubs de la Opción A (todo el state en ArtDropCore) que
+      solo ejecutan los cross-contract calls sin lógica de negocio.
+    steps:
+      - Crear stubs vacíos de ArtDropCore con resources Originals, Editions, Certificates.
+      - Crear stubs vacíos de PaymentLogic, MultiplierLogic, EscrowLogic con funciones que solo retornan constantes.
+      - Implementar capabilities y router pattern conectando todo.
+      - Crear transactions de prueba para los 4 flujos - mint, transfer, escrow release, claim.
+      - Ejecutar 10 iteraciones por flujo en testnet y promediar CU consumido.
+      - Documentar resultados en un spreadsheet comparativo para R-03.
+    validate:
+      - Cada flujo se ejecuta sin panic en testnet.
+      - CU reportados consistentes (varianza < 5% entre iteraciones).
+      - Mediciones cubren los 4 flujos críticos.
+    risks:
+      - Comparación incompleta si los stubs no reflejan el patrón de capability calls real.
+      - Varianza alta si el testnet está saturado.
+    why: >
+      La decisión Router vs Split no puede tomarse por intuición. Sin datos terminás haciendo lo
+      que suena bonito, no lo que escala. El stub vale poco trabajo y elimina ambigüedad.
+
+  - id: R-02
+    repo: artdrop-protocol
+    title: Profile CU of registry split (Option B)
+    phase: P0
+    domain: research
+    owner: [claudio]
+    ref: "Sec. L2"
+    depends_on: [R-01]
+    context: >
+      Misma medición que R-01 pero con arquitectura distribuida - OriginalRegistry, EditionRegistry,
+      CertificateContract y EscrowManager como contratos separados, con ArtDropCore como control plane.
+    steps:
+      - Crear stubs de los 4 registries más el control plane.
+      - Wirear las capabilities entre control plane y cada registry.
+      - Replicar los 4 flujos de R-01 atravesando registries separados.
+      - Medir CU bajo las mismas condiciones que R-01 (misma testnet, misma hora si posible).
+      - Calcular el ratio CU(B) / CU(A) por flujo.
+    validate:
+      - Mismos 4 flujos ejecutables en Opción B.
+      - Comparación con varianza similar a R-01.
+      - Ratio por flujo documentado, no solo el promedio.
+    risks:
+      - Comparar manzanas con peras si los stubs hacen trabajo distinto. Mantenerlos equivalentes en complejidad.
+    why: >
+      El argumento intuitivo es 'separar es mejor por blast radius'. Pero el blast radius solo importa
+      si los CU son aceptables. Si Split cuesta 1.5x más por operación, paga ese costo todo el tiempo.
+
+  - id: R-03
+    repo: artdrop-protocol
+    title: Decide monolithic Router vs Split (ADR)
+    phase: P0
+    domain: research
+    owner: [claudio, rey]
+    ref: "Sec. L4"
+    depends_on: [R-01, R-02]
+    context: >
+      Decisión arquitectónica con consecuencias para todo P1. Aplicar los criterios objetivos de la
+      sección L4 y documentar la decisión y su justificación.
+    steps:
+      - Revisar tabla de criterios de la sección L4.
+      - Calcular CU(B) / CU(A) promedio y por flujo.
+      - Proyectar storage growth para Opción A asumiendo 100, 1000, 10000 ediciones activas.
+      - Reunión con Rey para presentar números y aplicar criterios.
+      - Documentar la decisión final en un ADR corto.
+      - Comunicar al equipo la arquitectura elegida antes de iniciar P1.
+    validate:
+      - Decisión respaldada por números, no opiniones.
+      - ADR documentado con fecha y razones.
+      - Equipo notificado y alineado.
+    risks:
+      - Decisión emocional sin números que la respalden.
+      - Cambio de decisión a mitad de P1 si las mediciones se hicieron mal.
+    why: >
+      Una decisión arquitectónica documentada y justificada por datos te protege en una auditoría y
+      en cualquier discusión interna futura.
+
+  - id: R-04
+    repo: artdrop-protocol
+    title: Profile Feistel Solidity on Flow EVM
+    phase: P0
+    domain: research
+    owner: [claudio]
+    ref: "Sec. H · feistel runtime"
+    depends_on: []
+    context: >
+      Antes de comprometer la arquitectura a cross-VM, confirmar que la implementación Solidity de
+      Feistel consume el gas esperado (~5-10k). Valida la decisión H.
+    steps:
+      - Implementar FeistelPermutation.sol con 4 rondas y cycle-walking.
+      - Deploy en Flow EVM testnet.
+      - Llamar la función con 100 inputs distintos y registrar gas consumido.
+      - Calcular gas promedio, mediana, p99.
+      - Comparar contra el target (~5-10k gas) y documentar.
+    validate:
+      - Función produce permutaciones correctas (bijection sobre [0, max)).
+      - Gas dentro del target estimado.
+      - Cycle-walking converge en pocas iteraciones (< 2 promedio para max cercano a potencia de 2).
+    risks:
+      - Si gas resulta >20k, reconsiderar Cadence nativo.
+      - Inputs degenerados (cerca del borde) pueden requerir cycle-walking más largo.
+    why: >
+      Decidimos cross-VM por gas predictability y libraries battle-tested. Si los números no respaldan
+      eso, la decisión cambia. Validar antes de construir encima.
+
+  - id: R-05
+    repo: artdrop-protocol
+    title: Measure cross-VM call cost
+    phase: P0
+    domain: research
+    owner: [claudio]
+    depends_on: [R-04]
+    context: >
+      El overhead de EVM.call() desde Cadence no está bien documentado. Esta task mide el costo real
+      del cross-VM y lo compara con un equivalente nativo.
+    steps:
+      - Implementar un stub en Cadence que llama a una función trivial (return 1) en Flow EVM.
+      - Implementar el equivalente nativo en Cadence (return 1).
+      - Medir CU de ambos.
+      - Calcular overhead absoluto y relativo del cross-VM.
+      - Sumar overhead + gas Feistel y comparar contra Feistel nativo en Cadence (estimado).
+    validate:
+      - Overhead cross-VM documentado en CU absoluto y relativo.
+      - Decisión final cross-VM vs nativo respaldada por los números combinados.
+    risks:
+      - Cross-VM podría agregar cientos de CU. Si pasa, el ahorro del Solidity Feistel se pierde.
+    why: >
+      Confiamos en cross-VM por arquitectura, pero la confianza tiene que ser numérica. Si el overhead
+      es prohibitivo, el plan B (Feistel en Cadence) entra en juego.
+
+  - id: R-06
+    repo: artdrop-protocol
+    title: Define multisig composition (ADR)
+    phase: P0
+    domain: governance
+    owner: [rey, claudio]
+    ref: "Sec. J1"
+    depends_on: []
+    context: >
+      La sección J1 presenta tres composiciones (Lean 2-de-3, Balanced 3-de-5, Distributed 4-de-7).
+      Hay que elegir una y los signers concretos.
+    steps:
+      - Reunión con Rey para revisar las tres opciones.
+      - Identificar candidatos a signer concretos.
+      - Decidir composición.
+      - Documentar los signers en un ADR aparte.
+      - Validar que los signers tengan capacidad operativa para emergencias.
+    validate:
+      - Composición decidida con signers concretos.
+      - Signers tienen wallets seguras y procedimientos de backup.
+      - Procedimiento de emergencia documentado (qué pasa si un signer pierde acceso).
+    risks:
+      - Signers que no entienden su responsabilidad pueden no actuar en emergencia.
+      - Composición muy distribuida ralentiza operación normal.
+    why: >
+      El multisig protege a coleccionistas. Su composición debe reflejar quién carga la responsabilidad,
+      no solo quién está disponible. Mejor pocos signers comprometidos que muchos pasivos.
+
+  - id: R-07
+    repo: artdrop-protocol
+    title: Confirm loyalty parameters
+    phase: P0
+    domain: loyalty
+    owner: [claudio, rey]
+    ref: "Sec. H · loyalty"
+    depends_on: []
+    context: >
+      Los pesos por defecto del PDF (0.02 / 0.05 / 0.01 con cap 1.5x) son una propuesta. Validar con
+      Rey que se alinea con la intención del producto.
+    steps:
+      - Mostrar a Rey el ejemplo numérico (Alice/Bob/Carla/Donna).
+      - Discutir si los multiplicadores resultantes (1.155x, 1.36x, 1.40x, 1.50x cap) reflejan lo que se quiere premiar.
+      - Ajustar pesos si Rey quiere premiar más alguna dimensión.
+      - Decidir si el cap es 1.5x o algo distinto.
+      - Documentar los parámetros finales.
+    validate:
+      - Parámetros decididos y justificados.
+      - Ejemplo numérico re-ejecutado con los pesos finales para sanity check.
+    risks:
+      - Pesos muy generosos vuelven el sistema dominado por whales.
+      - Pesos muy conservadores hacen el incentivo invisible.
+    why: >
+      Estos números configuran el comportamiento de coleccionistas durante años. Definirlos con Rey
+      explícitamente evita que el parámetro 'mágico' quede colgado de tu criterio personal.
+
+  - id: R-08
+    repo: artdrop-protocol
+    title: Close the 10 design assumptions
+    phase: P0
+    domain: research
+    owner: [rey]
+    ref: "Sec. Closing"
+    depends_on: []
+    context: >
+      El cierre del PDF lista 10 assumptions abiertas que requieren confirmación antes de implementar.
+      Afectan diseños downstream.
+    steps:
+      - Compartir el PDF con Rey, marcando la sección de assumptions.
+      - Validar cada una - custodial continúa, Original immutable, profit split fijo, community pool opt-in,
+        yield necesita legal sign-off, compliance modules out of scope día 1, epoch-based yield scoring,
+        5-role split estructural, MarketMode arranca PrimaryOnly, multi-token admin-managed.
+      - Documentar las decisiones (sí / no / modificación).
+      - Si alguna assumption se rechaza, evaluar impacto en arquitectura.
+    validate:
+      - Las 10 assumptions tienen respuesta documentada de Rey.
+      - Cualquier modificación tiene impacto evaluado.
+    risks:
+      - Rey puede no entender alguna assumption - ahí tenés que explicar mejor.
+      - Cambio en una assumption puede invalidar trabajo de P1 si no se detecta a tiempo.
+    why: >
+      Estas assumptions protegen tu diseño en caso de revisión externa. Cada una está ahí por una razón
+      regulatoria, técnica o de UX. Cerrarlas elimina ambigüedad antes de que cueste retrabajo.
+
+# ───────────────────────────── P1 · CORE ─────────────────────────────
+
+  - id: C-01
+    repo: artdrop-protocol
+    title: ArtDropCore skeleton
+    phase: P1
+    domain: core
+    owner: [claudio]
+    ref: "Sec. B1"
+    depends_on: [R-03]
+    context: >
+      El esqueleto del router. Solo state y la estructura de capabilities, sin lógica de negocio.
+      Define los storage paths y las entitlements que todo lo demás va a respetar.
+    steps:
+      - Crear contract ArtDropCore con resources Originals, Editions, Certificates como dicts indexados por id.
+      - Definir storage paths con namespace - /storage/ArtDrop_Original_{addr}_{id}, _Edition_, _Certificate_.
+      - Definir entitlements - Admin, AddArtist, Editions, Owner, ProtocolTransfer.
+      - "Implementar dict implementations (Kind -> Capability) con 5 keys: .payment, .multiplier, .escrow, .loyalty, .yieldReserve."
+      - Implementar dict complianceModules [Capability], vacío día 1.
+      - Implementar getters de capability para uso de implementations.
+    validate:
+      - Storage paths siguen el namespace acordado.
+      - Entitlements compilan y son accesibles desde otros contratos.
+      - Capability dicts inicializan vacíos correctamente.
+      - Tests unitarios cubren la inicialización del contract.
+    risks:
+      - Storage paths mal definidos crean colisiones futuras imposibles de migrar.
+      - Entitlements demasiado amplios abren puertas que no se pueden cerrar después.
+    why: >
+      Este contract es la base de todo. Tomate el tiempo de definir bien storage paths y entitlements -
+      son la única parte que no es fácil cambiar después.
+
+  - id: C-02
+    repo: artdrop-protocol
+    title: MarketMode + transitions
+    phase: P1
+    domain: core
+    owner: [ariel-edgar]
+    ref: "Sec. C4"
+    depends_on: [C-01]
+    context: >
+      Enum global de tres estados (PrimaryOnly / Restricted / Open) que controla qué transfers están
+      permitidos. Día 1 deploya en PrimaryOnly por postura regulatoria.
+    steps:
+      - Definir enum MarketMode con los 3 valores.
+      - Implementar field marketMode en ArtDropCore.
+      - Función setMarketMode(newMode) con auth(Admin).
+      - Función canTransfer(from, to, mode) que retorna Bool según el modo actual.
+      - Implementar bypass por ProtocolTransfer entitlement - siempre puede transferir, independiente del modo.
+    validate:
+      - Transiciones bidireccionales entre los 3 modos.
+      - ProtocolTransfer bypasea MarketMode en los 3 modos.
+      - canTransfer retorna false en PrimaryOnly para transfers user-initiated.
+      - Tests cubren los 9 combos (3 modos x 3 tipos de transfer).
+    risks:
+      - Bypass mal implementado deja agujero permanente.
+      - Owner entitlement confundido con ProtocolTransfer puede saltarse el modo.
+    why: >
+      Día 1 en PrimaryOnly te protege regulatoriamente - el NFT no se comporta como token.
+      ProtocolTransfer existe para que las operaciones del protocolo funcionen incluso en PrimaryOnly.
+
+  - id: C-03
+    repo: artdrop-protocol
+    title: Original resource + creation flow
+    phase: P1
+    domain: core
+    owner: [ariel-edgar]
+    ref: "Sec. D3"
+    depends_on: [C-01]
+    context: >
+      Original es la raíz on-chain. Una vez creado es inmutable. Cada Original tiene su propio pool
+      donde se acumulan los rewards.
+    steps:
+      - Definir resource Original con campos - id, artistAddress, name, description, originalPrice, pool (@Vault).
+      - Función createOriginal(name, desc, price, artist) en ArtDropCore con auth(Admin).
+      - Antes de crear, ejecutar compliance.canCreate (vacío día 1).
+      - Incrementar totalOriginals counter.
+      - Crear y storar el resource.
+      - Emitir evento OriginalCreated.
+    validate:
+      - Original creado con id correlativo único.
+      - Pool vault inicializa en 0.
+      - Evento OriginalCreated emitido con todos los campos.
+      - Compliance checkpoint ejecuta (aunque sea vacío).
+    risks:
+      - Si Original no es realmente inmutable, abre puerta a manipulación de royalties post-venta.
+      - Olvidar el compliance hook complica integrar módulos futuros.
+    why: >
+      Inmutabilidad de Original es la garantía a coleccionistas - 'el artist no puede subir el precio
+      después'. El compliance hook tiene que estar listo aunque esté vacío día 1.
+
+  - id: C-04
+    repo: artdrop-protocol
+    title: Edition resource + creation flow
+    phase: P1
+    domain: core
+    owner: [ariel-edgar]
+    ref: "Sec. D4, B1"
+    depends_on: [C-01, C-03]
+    context: >
+      Edition es la unidad replicable. Define cuántos prints, qué precios, qué rareza, qué split de
+      ganancias y el seed block para el Feistel.
+    steps:
+      - Definir resource Edition con id, originalId, prices, reprintLimit, totalMinted, rarityCurve, shuffleSeedBlock, profitSplit, state, multiplierWeights.
+      - Función createEdition(originalId, rarityCurve, prices, split, ...) con auth(AddArtist).
+      - Validar profitSplit.sum == 1.0.
+      - Validar rarityCurve.totalCount == reprintLimit.
+      - Setear shuffleSeedBlock = currentBlock + 1.
+      - Emitir auth(Editions) capability al inbox del artista.
+      - Emitir EditionCreated.
+    validate:
+      - Edition no se crea si profitSplit no suma 1.0.
+      - rarityCurve consistente con reprintLimit.
+      - shuffleSeedBlock referencia un bloque futuro.
+      - Artista puede claim la capability desde su inbox.
+    risks:
+      - profitSplit mal validado deja royalties que no suman 100%.
+      - shuffleSeedBlock mal calculado puede ser pasado al momento del primer reveal.
+      - Capability mal emitida - el artista no puede mintear.
+    why: >
+      La Edition es el contrato entre artist y coleccionista. Si el profitSplit no se valida, alguien
+      recibe menos de lo prometido. Si shuffleSeedBlock no es futuro, el seed se puede mirar antes de
+      que existan compradores.
+
+  - id: C-05
+    repo: artdrop-protocol
+    title: Edition lifecycle state machine
+    phase: P1
+    domain: core
+    owner: [ariel-edgar]
+    ref: "Sec. C1"
+    depends_on: [C-04]
+    context: >
+      Estados Draft → Active → Locked → SoldOut con Paused y Archived. Algunas transiciones son
+      automáticas (first mint → Locked, reprintLimit → SoldOut), otras son admin.
+    steps:
+      - Definir enum EditionState con los 6 estados.
+      - Implementar la matriz de transiciones permitidas.
+      - Auto-transición Active → Locked en el primer mintCertificateNFT.
+      - Auto-transición Locked → SoldOut cuando totalMinted == reprintLimit.
+      - Admin transitions - pause, resume, archive.
+      - Validar transiciones inválidas con pre-conditions panicantes.
+      - Emitir EditionStateChanged en cada transición.
+    validate:
+      - Solo transiciones permitidas se ejecutan.
+      - Tests para todos los happy paths y todos los caminos prohibidos (deben panic).
+      - Eventos emitidos correctamente.
+    risks:
+      - Confundir Locked con SoldOut pierde el modelo de scarcity.
+      - Paused mal implementado deja Editions colgadas sin posibilidad de reanudar.
+    why: >
+      El state machine protege la promesa de escasez. 'Limited edition de 100' significa que después
+      del 100 no se mintan más. Si el state machine es laxo, esa promesa es marketing, no un contrato.
+
+  - id: C-06
+    repo: artdrop-protocol
+    title: Administrator resource
+    phase: P1
+    domain: core
+    owner: [claudio]
+    ref: "Sec. B1"
+    depends_on: [C-01]
+    context: >
+      Resource con todos los entitlements de Admin. Día 1 vive solo en una cuenta. Después se gatea
+      con multisig (G-04).
+    steps:
+      - Definir resource Administrator con funciones bajo auth(Admin).
+      - Implementar setMarketMode, setYieldEnabled (legacy, para Y-01), swapImplementation, registerComplianceModule, unregisterComplianceModule, changePlatformFee.
+      - Cada función emite el evento correspondiente.
+      - Decidir storage path - /storage/ArtDropAdministrator.
+      - Documentar quién tiene acceso al Administrator día 1 (single key custodial).
+    validate:
+      - Cada función admin emite evento.
+      - Funciones panic si llamadas sin auth(Admin).
+      - Storage path único, no colisiona.
+    risks:
+      - Single key admin día 1 es centralización extrema hasta que multisig esté arriba.
+      - Funciones admin sin evento dejan opciones invisibles para observadores.
+    why: >
+      Día 1 el riesgo se mitiga con MarketMode = PrimaryOnly, yield off, compliance empty - no hay
+      mucho que romper. El evento por cada acción admin permite detectar abuso.
+
+  - id: C-07
+    repo: artdrop-protocol
+    title: Core unit tests (>90%)
+    phase: P1
+    domain: core
+    owner: [ariel-edgar]
+    depends_on: [C-03, C-04]
+    context: Cobertura completa de los core resources antes de avanzar. >90% es el target.
+    steps:
+      - Setup test framework (Cadence test).
+      - Tests de creación de Original - happy path y errores.
+      - Tests de creación de Edition - incluir validación de profitSplit y rarityCurve.
+      - Tests de state machine de Edition - todas las transiciones.
+      - Tests de Administrator - auth correcto y panic sin auth.
+      - Tests de capability claiming.
+    validate:
+      - Cobertura > 90% medible.
+      - Tests pasan en CI antes de cualquier merge.
+      - Tests cubren happy path Y error paths.
+    risks:
+      - Tests solo del happy path dejan fugas. Cubrir todos los validates y panics.
+    why: >
+      La auditoría va a usar tus tests como punto de partida. Cobertura alta y casos bien pensados =
+      auditoría más barata y rápida.
+
+  - id: I-01
+    repo: artdrop-protocol
+    title: PaymentLogic V1
+    phase: P1
+    domain: implementation
+    owner: [ariel-edgar]
+    ref: "Sec. B2, E1"
+    depends_on: [C-01]
+    context: >
+      Implementation con el split de profit y la distribución. 5 roles - artist, ArtDrop platform (5%),
+      reserve/yield (10%), community pool si existe (5%), otros (variable). Multi-token día 1.
+    steps:
+      - Definir interface PaymentLogic con distribute(payment, edition).
+      - Implementar resource PaymentLogicV1 que implementa la interface.
+      - distribute() - leer profitSplit de la Edition, dividir el payment vault, depositar a cada role.
+      - 10% al pool del Original (vía YieldReserve cuando exista, día 1 puede ser stub).
+      - Soporte para FLOW y USDC vía dispatch por type.
+      - Función validateProfitSplit que verifica sum == 1.0.
+      - Función calculateRoyalty para secondary sales.
+    validate:
+      - Sum de distribuciones == payment total (no se pierden fondos).
+      - Múltiples tokens distribuyen correctamente.
+      - Tests con splits 5-role y splits irregulares.
+      - Edge case - vault con 0 balance.
+    risks:
+      - Rounding errors pueden hacer que la suma no sea exacta - usar floor + remainder to artist.
+      - Tipo Vault mal manejado puede romper transferencias.
+    why: >
+      PaymentLogic toca dinero. Cualquier bug acá es plata perdida o duplicada. El test crítico es
+      'suma de outputs == input' siempre - no negociar eso.
+
+  - id: I-02
+    repo: artdrop-protocol
+    title: MultiplierLogic V1 orchestration
+    phase: P1
+    domain: implementation
+    owner: [claudio]
+    ref: "Sec. B2, H"
+    depends_on: [C-04]
+    context: >
+      La logic que orquesta el reveal - lee el seed, llama Feistel via cross-VM, hace CDF lookup,
+      aplica bonuses (earlyAdopter, staking, loyalty), retorna el multiplier final.
+    steps:
+      - Definir interface MultiplierLogic.
+      - Implementar tierAtPosition(position, rarityCurve) con CDF lookup.
+      - Implementar applyComponents(baseTier, cert, edition) que multiplica baseTier x earlyAdopter x staking x loyalty (cada uno opt-in y capped).
+      - Implementar computeFinalMultiplier(certId) como orchestrator (llamará a Feistel en I-04).
+      - Aplicar caps por componente según MultiplierWeights de la Edition.
+    validate:
+      - tierAtPosition retorna el tier correcto en bordes de CDF.
+      - Caps se respetan en todos los componentes.
+      - Opt-in funciona - si useStaking=false, el factor staking es 1.0.
+    risks:
+      - CDF mal indexada da el tier equivocado en los bordes (off-by-one).
+      - Caps mal aplicados permiten multiplier por encima de lo declarado en la Edition.
+    why: >
+      El multiplier es el valor económico real del NFT cuando yield activa. Cada error distorsiona el
+      reparto del pool. Los caps son la única protección contra concentración.
+
+  - id: I-03
+    repo: artdrop-protocol
+    title: Feistel Solidity contract
+    phase: P1
+    domain: implementation
+    owner: [claudio]
+    ref: "Sec. H · feistel runtime"
+    depends_on: [R-04]
+    context: >
+      FeistelPermutation.sol en Flow EVM. Función pure que mapea serial → unique position con seed del
+      Random Beacon. 4 rondas + cycle-walking.
+    steps:
+      - Implementar FeistelPermutation.sol con feistelPermute(uint64 input, uint64 seed, uint64 max) external pure returns (uint64).
+      - 4 rondas con round function F(R, seed, roundIdx).
+      - Cycle-walking - si output >= max, re-aplicar Feistel.
+      - Límite de iteraciones de cycle-walk (50) - si no converge, revert.
+      - Deploy en Flow EVM testnet (mainnet cuando llegue).
+      - Documentar dirección del contract y ABI para uso en Cadence.
+    validate:
+      - Función produce bijection - 100 inputs distintos → 100 outputs distintos.
+      - Cycle-walking converge para todos los inputs testeados.
+      - Gas dentro del target (validar contra R-04).
+      - Función pure - no escribe state.
+    risks:
+      - Round function débil puede tener correlaciones que reduzcan la entropía.
+      - Cycle-walk loop sin límite puede consumir gas hasta tx revert.
+      - Cambios al contract después del deploy necesitan proceso de versionado.
+    why: >
+      Feistel es la columna del proof of support. Si tiene un bug, el reparto de tiers es injusto y
+      vulnerable. Usar implementación battle-tested baja riesgo enorme. La auditoría lo revisa con lupa.
+
+  - id: I-04
+    repo: artdrop-protocol
+    title: Cross-VM wrapper in MultiplierLogic
+    phase: P1
+    domain: implementation
+    owner: [claudio]
+    depends_on: [I-02, I-03]
+    context: >
+      El wrapper que llama Feistel desde Cadence. ABI encoding del input, EVM.call, decode del output,
+      manejo de errores.
+    steps:
+      - Importar el contrato EVM en MultiplierLogic.
+      - Implementar encodeFeistelCall(serial, seed, max) con ABI encoding manual.
+      - Implementar decodeFeistelResult(bytes).
+      - Función feistelPermute(serial, seed, max) que invoca EVM.run con calldata.
+      - Si EVM revert, propagar como panic en Cadence (toda la tx revierte).
+      - Logs útiles para debugging cross-VM.
+    validate:
+      - ABI encoding produce calldata válida.
+      - Decode retorna el position correcto.
+      - EVM revert → Cadence revert (atomicity).
+      - Test con 1000 inputs verificando consistencia entre on-chain y off-chain Feistel.
+    risks:
+      - ABI mal codificada puede llamar la función equivocada en Solidity.
+      - Decode mal hecho puede leer offset incorrecto y retornar basura.
+      - Diferencias de endianness Cadence vs EVM.
+    why: >
+      El cross-VM call es el punto de unión entre los dos lados de tu arquitectura. Si falla acá, falla
+      el reveal entero. Test exhaustivo contra implementación de referencia off-chain en JS.
+
+  - id: I-05
+    repo: artdrop-protocol
+    title: EscrowLogic V1
+    phase: P1
+    domain: escrow
+    owner: [ariel-edgar]
+    ref: "Sec. C2, B2"
+    depends_on: [C-01]
+    context: >
+      Implementation del lifecycle del escrow - Pending (locked) → ChipActivated → Released. Con timeout
+      que pasa a Refunded, y cancel pre-unlock que pasa a Cancelled.
+    steps:
+      - Definir resource Escrow con id, buyer, seller, vault, chipId, unlockAt, status.
+      - Función createEscrow(buyer, seller, vault, chipId, unlockAt) - crea escrow en Pending.
+      - Función activateChip(escrowId, signature) - valida firma de chipId, pasa a ChipActivated.
+      - Función releaseEscrow(escrowId) - verifica ChipActivated, ejecuta payment.distribute, pasa a Released.
+      - Función refund(escrowId) - solo si status==Pending y now > unlockAt, devuelve vault al buyer.
+      - Función cancel(escrowId) - solo buyer, solo si status==Pending.
+    validate:
+      - Lifecycle se respeta (no se puede release sin ChipActivated).
+      - Refund solo después de unlockAt.
+      - Cancel solo pre-unlock y solo por buyer.
+      - Signature de chip valida correctamente.
+    risks:
+      - Signature mal validada permite activación fraudulenta de chip.
+      - Race condition entre activateChip y refund cerca de unlockAt.
+      - Vault con balance != precio acordado.
+    why: >
+      Escrow protege al buyer hasta que recibe el producto físico (chip). Si la activación se puede
+      simular sin el chip real, todo el modelo se cae. La signature del chip es el único proveedor de
+      truth de 'el buyer está en posesión física'.
+
+  - id: I-06
+    repo: artdrop-protocol
+    title: Tests Feistel cross-VM
+    phase: P1
+    domain: implementation
+    owner: [claudio]
+    depends_on: [I-03, I-04]
+    context: Tests exhaustivos del Feistel + cross-VM. Validar propiedades matemáticas e integración.
+    steps:
+      - Implementar Feistel de referencia en JavaScript.
+      - "Test 1 - bijection - 1000 serials → 1000 positions distintas."
+      - "Test 2 - scarcity - para una rarityCurve dada, verificar que la distribución de tiers es exacta."
+      - "Test 3 - determinismo - mismo input + seed → mismo output siempre."
+      - "Test 4 - cross-VM consistency - output Cadence == output JS para los mismos inputs."
+      - "Test 5 - cycle-walking convergence - todos los inputs convergen en < 10 iteraciones."
+    validate:
+      - Los 5 tests pasan.
+      - Documentar la implementación JS de referencia para uso del CMS y verificación pública.
+    risks:
+      - Implementación JS de referencia con bugs invalida las comparaciones.
+      - Tests solo con N pequeños no capturan problemas con N grandes.
+    why: >
+      Feistel es matemática pura. Si los tests muestran bijection, scarcity y determinismo, podés
+      confiar en producción. La implementación JS de referencia hace el sistema verificable off-chain.
+
+  - id: I-07
+    repo: artdrop-protocol
+    title: Tests PaymentLogic + EscrowLogic
+    phase: P1
+    domain: implementation
+    owner: [ariel-edgar]
+    depends_on: [I-01, I-05]
+    context: Tests integrales de Payment y Escrow, los dos contratos que tocan plata.
+    steps:
+      - Tests de distribute con varios profit splits.
+      - "Test 'suma de outputs == input' para todos los profit splits."
+      - Tests del lifecycle de Escrow completo (Pending → Released).
+      - Tests de refund post-timeout.
+      - Tests de cancel pre-unlock.
+      - Test de signature inválida en activateChip.
+      - Edge case - vault con 0 balance, vault con balance enorme.
+    validate:
+      - Suma de outputs == input en TODOS los splits testeados.
+      - Lifecycle no permite saltarse estados.
+      - Refund/cancel se ejecutan solo bajo las condiciones correctas.
+    risks:
+      - Tests demasiado happy path. Cubrir errores explícitamente.
+    why: >
+      Estos dos contratos van a estar bajo escrutinio de la auditoría. Tests sólidos reducen findings
+      y costos.
+
+  - id: N-01
+    repo: artdrop-protocol
+    title: CertificateNFT resource
+    phase: P1
+    domain: certificate
+    owner: [ariel-edgar]
+    ref: "Sec. B1"
+    depends_on: [C-01]
+    context: >
+      El NFT siguiendo NonFungibleToken standard de Flow. Campos críticos - serial (posición en la
+      edition), chipId (link al producto físico), baseTier optional (UFix64?) - null hasta reveal.
+    steps:
+      - Definir resource CertificateNFT que implementa NonFungibleToken.NFT.
+      - Fields - id, editionId, serial, chipId, baseTier (UFix64?), lastTransferTs, revealStatus.
+      - Funciones standard NonFungibleToken.
+      - Función revealMultiplier (skeleton, implementación real en N-04).
+      - Función getViews / resolveView para metadatos (wallets).
+    validate:
+      - Resource cumple NonFungibleToken standard.
+      - baseTier inicializa en nil.
+      - Metadatos resolvibles por wallets (Flow Wallet, Blocto, etc).
+    risks:
+      - No cumplir el standard rompe compatibilidad con wallets y marketplaces.
+      - Campos opcionales mal manejados pueden causar panics en read.
+    why: >
+      Cumplir el NonFungibleToken standard es lo que hace al NFT utilizable fuera de ArtDrop. Wallets,
+      marketplaces e indexers asumen ese standard.
+
+  - id: N-02
+    repo: artdrop-protocol
+    title: Certificate lifecycle (Unrevealed durable)
+    phase: P1
+    domain: certificate
+    owner: [claudio]
+    ref: "Sec. C3"
+    depends_on: [N-01]
+    context: >
+      El estado Unrevealed es durable - no expira, no hay force-reveal por admin. El holder decide si
+      y cuándo revelar.
+    steps:
+      - Definir enum CertificateState con Unrevealed y Revealed.
+      - NFT nace en Unrevealed (en N-03).
+      - Función isRevealed() pública.
+      - Solo el holder con auth(NonFungibleToken.Update) puede ejecutar reveal.
+      - Sin admin function de force-reveal.
+      - Documentar que NFTs Unrevealed no participan en yield distribution.
+    validate:
+      - No existe función pública (ni admin) para force-reveal.
+      - isRevealed retorna correctamente.
+      - Filter para distribución de yield excluye Unrevealed.
+    risks:
+      - Si Unrevealed permite force por admin, la 'agencia del holder' se pierde.
+    why: >
+      Unrevealed durable es la diferencia entre 'vos decidís cuándo revelar' vs 'tenés N días o se
+      revela solo'. Lo primero respeta al collector como agente. Es decisión filosófica del producto.
+
+  - id: N-03
+    repo: artdrop-protocol
+    title: Mint flow (commit randomness)
+    phase: P1
+    domain: certificate
+    owner: [ariel-edgar]
+    ref: "Sec. D5"
+    depends_on: [N-01, I-01]
+    context: >
+      El mint crea el NFT en Unrevealed con baseTier nil. La randomness ya está committed al
+      shuffleSeedBlock de la Edition. No hay scheduler, no hay Handler.
+    steps:
+      - Función mintCertificateNFT(editionId, serial, chipId) con auth(Editions).
+      - Validar compliance.canMint.
+      - Incrementar totalMinted en la Edition.
+      - Auto-transición Active → Locked en primer mint.
+      - Crear CertificateNFT con baseTier = nil.
+      - Distribuir payment via PaymentLogic.
+      - Depositar NFT al artist (artist holds hasta chip activation).
+      - Emitir CertificateMinted.
+    validate:
+      - NFT creado en Unrevealed.
+      - Edition.totalMinted incrementa correctamente.
+      - Edition pasa a Locked en first mint.
+      - Payment se distribuye.
+      - NFT queda en custody del artist.
+    risks:
+      - Si totalMinted no se incrementa, podés mintear más allá del reprintLimit.
+      - Si payment falla a mitad de tx, el NFT queda sin distribuir el revenue.
+    why: >
+      Separar mint de reveal permite que el reveal sea atómico con chip activation (E-01). Si el mint
+      también revelara, el buyer se queda sin la 'sorpresa' del chip tap.
+
+  - id: N-04
+    repo: artdrop-protocol
+    title: revealMultiplier holder-triggered
+    phase: P1
+    domain: certificate
+    owner: [claudio]
+    ref: "Sec. D7, H"
+    depends_on: [N-01, I-04]
+    context: >
+      Función que el holder llama (con auth(NonFungibleToken.Update)) para revelar el tier. Llama
+      Feistel via cross-VM, asigna baseTier, calcula finalMultiplier, emite el evento.
+    steps:
+      - Función revealMultiplier en CertificateNFT con auth(NFT.Update).
+      - Pre-conditions - cert no revelado, shuffleSeedBlock ya sellado.
+      - Leer seed del RandomBeaconHistory @ shuffleSeedBlock.
+      - Llamar MultiplierLogic.computeFinalMultiplier(serial, seed) via cross-VM.
+      - Asignar baseTier al cert.
+      - Cambiar revealStatus a Revealed.
+      - Emitir MultiplierRevealed.
+    validate:
+      - Solo el holder puede llamar (auth check).
+      - Doble reveal panic (cert ya revealed).
+      - Seed mal calculado panic.
+      - Multiplier dentro de rangos de la rarityCurve.
+    risks:
+      - Auth check débil deja que cualquiera revele NFTs ajenos.
+      - Race entre dos calls de reveal en la misma tx puede causar inconsistencias.
+    why: >
+      Reveal holder-triggered respeta su agency. Via cross-VM da gas predictability. Seed del beacon
+      hace imposible manipularlo. Las tres decisiones juntas hacen el sistema fair y predictable.
+
+  - id: N-05
+    repo: artdrop-protocol
+    title: ProtocolTransfer entitlement
+    phase: P1
+    domain: certificate
+    owner: [claudio]
+    ref: "Sec. B1"
+    depends_on: [N-01]
+    context: >
+      Entitlement que permite mover NFTs en operaciones del protocolo (chip claim, escrow release)
+      bypaseando MarketMode. En cualquier modo, ProtocolTransfer puede mover.
+    steps:
+      - Definir entitlement ProtocolTransfer en ArtDropCore.
+      - Función protocolTransfer(certificateId, to) que requiere auth(ProtocolTransfer).
+      - Internamente hace withdraw + deposit ignorando MarketMode.canTransfer.
+      - Emitir CertificateTransferred con viaProtocolTransfer true.
+      - Documentar quién tiene la auth(ProtocolTransfer) por defecto - solo el EscrowLogic resource.
+    validate:
+      - Función trabaja en los 3 MarketModes.
+      - Sin auth(ProtocolTransfer), call panic.
+      - Evento emitido con flag viaProtocolTransfer.
+    risks:
+      - auth(ProtocolTransfer) escapada a terceros = bypass total de MarketMode.
+      - Sin distinguir viaProtocolTransfer en eventos, los indexers no pueden diferenciar transfers.
+    why: >
+      MarketMode=PrimaryOnly significa 'no secondary trading'. Pero ArtDrop sigue necesitando mover
+      NFTs. ProtocolTransfer es la grieta intencional. La auditoría revisa quién tiene esta auth con lupa.
+
+  - id: N-06
+    repo: artdrop-protocol
+    title: Tests Certificate lifecycle + reveal
+    phase: P1
+    domain: certificate
+    owner: [ariel-edgar]
+    depends_on: [N-02, N-04]
+    context: Tests del lifecycle del NFT y del reveal.
+    steps:
+      - "Test - NFT nace en Unrevealed."
+      - "Test - holder puede revelar."
+      - "Test - non-holder no puede revelar."
+      - "Test - doble reveal panic."
+      - "Test - NFT permanece Unrevealed si el holder no llama reveal (no expira)."
+      - "Test - ProtocolTransfer mueve NFT en los 3 MarketModes."
+      - "Test - Owner transfer panic en PrimaryOnly."
+    validate:
+      - Cobertura completa del lifecycle.
+      - Edge cases cubiertos.
+    risks:
+      - Faltar tests de los edge cases que la auditoría va a explorar.
+    why: >
+      Estos tests son la prueba para el auditor de que el modelo Unrevealed-durable es real. Sin tests
+      explícitos, el auditor pregunta y perdés tiempo.
+
+  - id: E-01
+    repo: artdrop-protocol
+    title: Chip activation atomic flow
+    phase: P1
+    domain: escrow
+    owner: [claudio, ariel-edgar]
+    ref: "Sec. D6"
+    depends_on: [I-05, N-05]
+    context: >
+      El flujo principal del producto. Cuando el buyer hace tap del chip, en una tx se hace escrow
+      release, payment distribute, NFT transfer y reveal (try-mode).
+    steps:
+      - Función activateChip(escrowId, signature) en EscrowLogic.
+      - Validar signature del chip vs chipId del escrow.
+      - "Ejecutar atómico - 1) escrow.release, 2) payment.distribute, 3) certificateNFT.protocolTransfer(buyer)."
+      - Try-mode reveal (E-02).
+      - Emitir ChipActivated, EscrowReleased, CertificateTransferred.
+    validate:
+      - Los 3 pasos atómicos suceden juntos o nada.
+      - Signature inválida revierte todo.
+      - NFT termina en custody del buyer.
+      - Escrow.status pasa a Released.
+    risks:
+      - Si alguno de los 3 pasos falla y los otros no revierten, escrow inconsistente.
+      - Signature replay attack si no se incluye nonce.
+    why: >
+      Atomicidad acá es la promesa - 'pagás, activás, recibís el NFT'. Es el flujo que más va a
+      ejecutarse en producción - tiene que ser sólido.
+
+  - id: E-02
+    repo: artdrop-protocol
+    title: Try-mode wrapper for reveal
+    phase: P1
+    domain: escrow
+    owner: [claudio]
+    ref: "Sec. D6"
+    depends_on: [E-01, N-04]
+    context: >
+      El reveal dentro del activateChip se hace en try-mode - si falla (cross-VM hiccup, beacon edge
+      case), settlement sigue y el NFT queda Unrevealed.
+    steps:
+      - Wrapper alrededor de revealMultiplier que captura panic.
+      - Si reveal falla, log el error pero no revertir.
+      - NFT queda Unrevealed, holder puede reintentar con N-04.
+      - Emitir RevealAttemptFailed (evento opcional) para observabilidad.
+    validate:
+      - Settlement completa incluso si reveal falla.
+      - NFT queda en Unrevealed coherente.
+      - Holder puede llamar reveal después independientemente.
+    risks:
+      - Try-mode que silencia errores que no debería puede esconder bugs serios.
+      - Distinguir errores esperados (cycle-walk no converge) de graves (signature mal validada).
+    why: >
+      Settlement es el camino crítico del dinero. Reveal es la experiencia pero no debe bloquear el
+      dinero. Try-mode es 'fail soft' en UX, 'fail hard' en fondos.
+
+  - id: E-03
+    repo: artdrop-protocol
+    title: Tests escrow + chip activation E2E
+    phase: P1
+    domain: escrow
+    owner: [ariel-edgar]
+    depends_on: [E-01, E-02]
+    context: Tests end-to-end del flujo completo de activación, incluyendo edge cases.
+    steps:
+      - "Test happy path - escrow → activate → release → transfer → reveal."
+      - "Test signature inválida revierte todo."
+      - "Test timeout - refund funciona."
+      - "Test cancel pre-unlock."
+      - "Test try-mode - simular fallo en reveal, verificar settlement completa."
+      - "Test concurrencia - dos activateChip en paralelo para el mismo escrow."
+    validate:
+      - Happy path y todos los error paths cubiertos.
+      - Try-mode probado explícitamente.
+    risks:
+      - Concurrencia no testeada deja race conditions silenciosas.
+    why: >
+      Este flujo es lo que la auditoría va a abusar buscando lugares donde el escrow se rompe. Tests
+      profundos acá ahorran findings.
+
+# ───────────────────────────── P2 · MÓDULOS ─────────────────────────────
+
+  - id: W-01
+    repo: flow-accounts-manager
+    title: Wallet API - Auth layer (Bearer token + HSM)
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. F5"
+    depends_on: []
+    context: >
+      La Wallet API necesita auth real. Cada endpoint requiere Bearer token scoped por operación.
+      Private keys nunca salen del HSM.
+    steps:
+      - Setup del HSM (provider a definir con Rey - AWS KMS, Google Cloud KMS, o HSM físico).
+      - Definir scopes de tokens - account.create, account.setup, account.sign, account.transfer, etc.
+      - Implementar middleware de auth que valida Bearer y verifica scope por endpoint.
+      - Documentar el flow de issuance de tokens.
+      - Logs de auth fallidos para alerting.
+    validate:
+      - Sin Bearer válido, todos los endpoints retornan 401.
+      - Token con scope incorrecto retorna 403.
+      - Logs de auth funcionando.
+    risks:
+      - HSM mal configurado = keys expuestas.
+      - Scopes demasiado amplios anulan el beneficio del scoping.
+    why: >
+      La Wallet API custodial es la pieza más sensible del sistema. Sin auth, cualquiera con la URL
+      mueve fondos de cualquier usuario. No-negociable desde día 1.
+
+  - id: W-02
+    repo: flow-accounts-manager
+    title: Account creation endpoints
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. F1, I"
+    depends_on: [W-01]
+    context: >
+      Los tres endpoints que arrancan un user - POST /accounts (genera keypair en HSM, crea Flow
+      account), GET /jobs/:id (poll async), POST /:addr/setup (init Collection + Vaults).
+    steps:
+      - "POST /accounts - generar keypair en HSM, submitear tx createAccount a Flow, retornar jobId."
+      - "GET /jobs/:id - chequear status del tx, retornar address cuando COMPLETE."
+      - "POST /:addr/setup - ejecutar setup tx (Collection NFT + Vaults FLOW/USDC)."
+      - Implementar idempotency (no crear accounts duplicadas si retry).
+      - Tests de cada endpoint.
+    validate:
+      - Account creation completa en testnet.
+      - Polling de jobId retorna status correcto.
+      - Setup deja la account lista para recibir NFTs.
+      - Idempotency funciona.
+    risks:
+      - Sin idempotency, retries crean múltiples accounts y descontrolan el counter.
+      - Setup mal hecho deja accounts que no pueden recibir NFTs.
+    why: >
+      Este es el on-ramp del producto. Si falla, el usuario nunca usa ArtDrop. Confiable + idempotente.
+
+  - id: W-03
+    repo: flow-accounts-manager
+    title: /artist-activate + /community-pool-enable
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. F2, D2"
+    depends_on: [W-02]
+    context: >
+      Endpoints para artistas. /artist-activate marca el flag (no crea nueva address).
+      /community-pool-enable es opt-in explícito para una segunda address.
+    steps:
+      - "POST /:addr/artist-activate - marca el flag isArtist en ArtistProfile."
+      - "POST /:addr/community-pool-enable - opt-in para crear una segunda address asociada."
+      - Validar que el caller es admin (no cualquiera marca artistas).
+      - Tests.
+    validate:
+      - Artist activation no crea segunda address por default.
+      - Community pool requiere opt-in explícito.
+      - Solo admin puede activar artistas.
+    risks:
+      - Si la segunda address se crea automáticamente, vuelve al modelo legacy de rewards/artist split.
+    why: >
+      El opt-in del community pool es decisión consciente del artista. Default 'no' respeta su agency.
+
+  - id: W-04
+    repo: flow-accounts-manager
+    title: /rotate-key
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. F3"
+    depends_on: [W-02]
+    context: >
+      Rotación de keys - generar nueva key en HSM, ejecutar single tx que add new + revoke old. Account
+      nunca queda sin key activa.
+    steps:
+      - Generar nuevo keypair en HSM.
+      - Construir tx que agregue newKey (weight 1000) Y revoque oldKey en una sola operación.
+      - Submitear y esperar success.
+      - Archivar oldKey (no eliminar - para auditoría).
+      - Retornar newKeyId, oldKeyRevoked status.
+    validate:
+      - Account nunca queda sin key.
+      - Old key archivada y no más utilizable.
+      - Tx atomic - si revoke falla, add no se aplica.
+    risks:
+      - Si add y revoke no son atómicos, podés dejar account sin keys.
+      - Old key activa después de rotación = compromiso continuo.
+    why: >
+      Rotation es la respuesta a 'mi key está comprometida'. Si toma dos txs, hay ventana de
+      vulnerabilidad. Atómico cierra esa ventana.
+
+  - id: W-05
+    repo: flow-accounts-manager
+    title: /graduate-to-self-custody
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. F4"
+    depends_on: [W-02]
+    context: >
+      El usuario entrega su public key (de una wallet propia). API agrega esa key y revoca la custodial
+      en una tx. Misma address, custodia cambia.
+    steps:
+      - "POST /:addr/graduate-to-self-custody con body {userPublicKey}."
+      - Validar que userPublicKey es válida (formato, etc).
+      - "Tx - add userKey + revoke custodial key."
+      - Marcar la account en la DB como 'self-custody' - API ya no firma para ella.
+      - Retornar status.
+    validate:
+      - Después de graduation, API rechaza /sign para esa account.
+      - User puede firmar con su key (test manual con wallet externa).
+      - NFTs + balances de la account intactos.
+    risks:
+      - Si la API sigue firmando, no es self-custody real.
+      - User publica una key inválida y queda con account sin keys.
+    why: >
+      Graduation es la promesa de no-lock-in. Si podés irte cuando querés, el producto es ético.
+
+  - id: W-06
+    repo: flow-accounts-manager
+    title: /transfer + /sign
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    ref: "Sec. I"
+    depends_on: [W-02]
+    context: >
+      /transfer hace protocol transfer (chip claim flow). /sign es genérico para que el CMS firme txs
+      de operaciones admin. Auth scoping importante.
+    steps:
+      - "POST /:addr/transfer body {certificateId, to}."
+      - "POST /sign body {address, txEnvelope}."
+      - "Scope - token con scope account.transfer no puede /sign y viceversa."
+      - Tests de scoping.
+    validate:
+      - /transfer respeta auth scoping.
+      - /sign retorna signature, nunca key material.
+      - Logs de cada firma para auditoría.
+    risks:
+      - Scope laxo permite que un token de /transfer haga /sign de cualquier tx.
+      - /sign expone key material si está mal implementado.
+    why: >
+      Estos dos endpoints son los más sensibles después de /accounts. Scope estricto y logs exhaustivos.
+
+  - id: W-07
+    repo: flow-accounts-manager
+    title: Tests Wallet API E2E
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    depends_on: [W-02, W-04, W-05]
+    context: Tests end-to-end de toda la API con escenarios de auth.
+    steps:
+      - "Test flujo completo - create account → setup → mint NFT → transfer → rotate-key → graduate."
+      - "Tests de auth - token expirado, scope incorrecto, signature inválida."
+      - Tests de idempotency.
+      - "Stress test - 100 account creations en paralelo."
+      - "Test de graduation - validar que post-graduate API rechaza /sign."
+    validate:
+      - Happy path full ejecutable.
+      - Error paths cubiertos.
+      - Stress test no rompe HSM ni Flow connection.
+    risks:
+      - Stress test débil deja problemas de scaling para production.
+    why: >
+      Wallet API es la pieza más probada por usuarios reales. Tests fuertes dan confianza de uptime.
+
+  - id: Y-01
+    repo: artdrop-protocol
+    title: YieldReserve contract (Day 1, accounting-only)
+    phase: P2
+    domain: yield
+    owner: [claudio]
+    ref: "Sec. G1"
+    depends_on: [C-01]
+    context: >
+      Contrato accounting-only. Pools acumulan, balances son visibles, nada se distribuye. NO claim,
+      NO withdraw, NO distribute - esas funciones simplemente NO existen en el código.
+    steps:
+      - Crear contract YieldReserve con resource Pool por Original.
+      - Función depositToPool(originalId, vault) - acepta depósitos.
+      - Función poolBalance(originalId) - read-only.
+      - Función calculateClaimable(holder, originalId) - pure, proyección sin distribuir.
+      - Asegurar que claimYield, distribute, withdrawFromPool NO existen como funciones.
+      - Emitir PoolDeposited en cada deposit.
+    validate:
+      - depositToPool funciona y acumula.
+      - Read functions retornan valores correctos.
+      - Inspección del bytecode confirma - no hay path de withdrawal/distribution.
+      - calculateClaimable es pure (no escribe state).
+    risks:
+      - Tentación de 'dejar gateado por flag'. Si está gateado, regulatoriamente sigue existiendo. NO.
+    why: >
+      Eliminar claim del código fuente día 1 es lo que hace que el sistema legalmente NO sea
+      yield-bearing. Flag-gated yield es 'dormant code' que un regulator puede argumentar como intent.
+      Sin código, no hay intent.
+
+  - id: Y-02
+    repo: artdrop-protocol
+    title: Integrate YieldReserve with PaymentLogic
+    phase: P2
+    domain: yield
+    owner: [ariel-edgar]
+    ref: "Sec. G1"
+    depends_on: [Y-01, I-01]
+    context: Cada venta deposita 10% al pool del Original correspondiente.
+    steps:
+      - "Modificar distribute() de PaymentLogic para que el role 'yield' (10%) deposite via YieldReserve.depositToPool."
+      - Mapear edition → originalId para saber a qué pool depositar.
+      - Tests de integración.
+    validate:
+      - 10% de cada venta deposita correctamente.
+      - Pool balances acumulan visiblemente.
+      - Eventos emitidos.
+    risks:
+      - Si el routing falla silencioso, el 10% se pierde sin que nadie note.
+    why: >
+      Sin esta integración los pools quedan vacíos y el día que se active yield no hay nada para
+      repartir. Acumular desde día 1 da credibilidad al feature futuro.
+
+  - id: Y-03
+    repo: artdrop-protocol
+    title: Tests YieldReserve
+    phase: P2
+    domain: yield
+    owner: [ariel-edgar]
+    depends_on: [Y-01, Y-02]
+    context: Verificar depósitos, read functions, y confirmar que no hay path de distribución.
+    steps:
+      - Tests de depositToPool.
+      - Tests de poolBalance.
+      - Tests de calculateClaimable.
+      - Inspección estática del contrato para confirmar ausencia de claim/withdraw/distribute.
+    validate:
+      - Pools acumulan correctamente.
+      - Read functions correctas.
+      - Audit estático limpio.
+    risks:
+      - Tests que asumen distribute() existe - refactor olvidado.
+    why: >
+      El audit estático es la evidencia técnica de la postura regulatoria. Tests que lo verifican
+      automatizan la garantía.
+
+  - id: L-01
+    repo: artdrop-protocol
+    title: LoyaltyLogic calculateLoyalty
+    phase: P2
+    domain: loyalty
+    owner: [claudio]
+    ref: "Sec. H · loyalty"
+    depends_on: [R-07, N-01]
+    context: >
+      Función calculateLoyalty(holder, artistId) que computa loyalty on-demand desde events históricos.
+      Sin storage persistente.
+    steps:
+      - Definir interface LoyaltyLogic.
+      - Implementar calculateLoyalty que llama a los 3 helpers (purchases, holdYears, chips).
+      - "Aplicar fórmula - min(1.0 + purchases*0.02 + holdYears*0.05 + chips*0.01, maxLoyaltyCap)."
+      - Sin escribir state - function view.
+      - Documentar la fórmula en comments del código.
+    validate:
+      - Función pure / view (no escribe).
+      - Resultado consistente con ejemplos Alice/Bob/Carla/Donna.
+      - Cap se respeta.
+    risks:
+      - Si se cambia a state persistente, abre door a farming.
+      - Pesos hardcoded sin opción de cambio fácil.
+    why: >
+      Loyalty calculada on-demand desde events es la garantía anti-farming. State persistente puede ser
+      manipulado, events históricos no. Esto distingue ArtDrop de loyalty programs farmeables EVM legacy.
+
+  - id: L-02
+    repo: artdrop-protocol
+    title: Loyalty component helpers
+    phase: P2
+    domain: loyalty
+    owner: [claudio]
+    ref: "Sec. H · loyalty"
+    depends_on: [L-01]
+    context: >
+      Tres helpers - countPrimaryPurchases (solo primary, no resales), avgHoldDurationYears (solo
+      currently held), countUniqueChipActivations.
+    steps:
+      - Implementar countPrimaryPurchases(holder, artist) leyendo CertificateMinted events filtrados.
+      - Implementar avgHoldDurationYears leyendo lastTransferTs de los NFTs actualmente held.
+      - Implementar countUniqueChipActivations contando ChipActivated events únicos por chipId.
+      - Tests para cada helper con datasets simulados.
+    validate:
+      - Helpers retornan valores correctos para datasets conocidos.
+      - Performance aceptable (no escanea TODO el evento history).
+    risks:
+      - Performance si escanea cada vez todo el event history - usar indexes off-chain si necesario.
+      - Inconsistencia entre eventos y state real si el filtrado es laxo.
+    why: >
+      Cada helper encarna 'qué cuenta como compromiso'. countPrimaryPurchases excluye resales para no
+      premiar wash trading. avgHoldDurationYears requiere tenencia actual para no premiar buy-and-dump.
+
+  - id: L-03
+    repo: artdrop-protocol
+    title: Hard rules anti-farming
+    phase: P2
+    domain: loyalty
+    owner: [claudio]
+    ref: "Sec. H · loyalty rules"
+    depends_on: [L-01]
+    context: >
+      Filtros a nivel event reader que blindan contra patrones de gaming - self-transfers,
+      re-activaciones, cap absoluto.
+    steps:
+      - "Filtro - ignorar CertificateTransferred donde from == to."
+      - "Filtro - contar solo el primer ChipActivated por chipId."
+      - "Cap hard-coded maxLoyaltyCap = 1.5 (o lo que decida R-07)."
+      - Documentar cada regla en comments y en el doc.
+    validate:
+      - Self-transfer no afecta loyalty (test explícito).
+      - Re-activación no incrementa contador (test explícito).
+      - Cap se respeta con valores extremos.
+    risks:
+      - Regla nueva descubierta tarde requiere rework de tests.
+    why: >
+      Cada hard rule cierra una grieta específica. Sin ellas, el sistema es farmeable. La auditoría va
+      a pensar en gaming patterns - anticiparse ahora ahorra findings.
+
+  - id: L-04
+    repo: artdrop-protocol
+    title: LoyaltyLogic tests (Alice/Bob/Carla/Donna)
+    phase: P2
+    domain: loyalty
+    owner: [ariel-edgar]
+    ref: "Sec. H · loyalty example"
+    depends_on: [L-01, L-02, L-03]
+    context: Tests con los casos Alice/Bob/Carla/Donna del PDF.
+    steps:
+      - "Fixtures - Alice (3 mints, 1.5 yrs, 2 chips), Bob (8 mints, 3 yrs, 5 chips), Carla (20 mints, 0 hold, 0 chips), Donna (15 mints, 4 yrs, 11 chips)."
+      - "Test Alice → 1.155x."
+      - "Test Bob → 1.36x."
+      - "Test Carla → 1.40x (raw, sin cap)."
+      - "Test Donna → 1.50x (cap)."
+      - "Tests de anti-farming - self-transfers, re-activations, wash trades."
+    validate:
+      - Resultados coinciden con el ejemplo del PDF.
+      - Anti-farming tests pasan.
+    risks:
+      - Si los tests no coinciden con el PDF, hay un bug - o el código o el documento.
+    why: >
+      Estos casos son los que mostrás a la auditoría y a Rey como prueba de que loyalty funciona. Si el
+      test reproduce el ejemplo del PDF exactamente, ganás confianza.
+
+  - id: M-01
+    repo: artdrop-protocol
+    title: ComplianceModule interface
+    phase: P2
+    domain: compliance
+    owner: [claudio]
+    ref: "Sec. E3, B2"
+    depends_on: [C-01]
+    context: >
+      Interface con 6 checkpoints - canMint, canTransfer, canCreateEscrow, canReleaseEscrow, canClaim,
+      canActivateChip. Cada uno retorna String? (nil = pass).
+    steps:
+      - Definir interface ComplianceModule en ArtDropCore.
+      - Funciones moduleId(), version() para identificación.
+      - Documentar la semántica de retorno - nil pasa, String es la razón del reject.
+    validate:
+      - Interface compilable.
+      - Módulos pueden implementarla.
+      - Semántica clara en comments.
+    risks:
+      - Semántica ambigua → módulos mal implementados.
+    why: >
+      Definir la interface bien desde día 1 permite agregar módulos KYC/geo/anti-bot mañana sin
+      redeploy del core. La extensibilidad sin redeploy protege la inversión arquitectónica.
+
+  - id: M-02
+    repo: artdrop-protocol
+    title: Compliance checkpoint loop
+    phase: P2
+    domain: compliance
+    owner: [claudio]
+    ref: "Sec. E3"
+    depends_on: [M-01]
+    context: >
+      El loop en core que itera los módulos registrados. Empty array → instant pass. Si hay módulos,
+      iterar con early-exit en el primer reject.
+    steps:
+      - Función checkCompliance(operation, ctx) en ArtDropCore.
+      - Si complianceModules vacío → return inmediato.
+      - Iterar módulos, llamar la función correspondiente a la operación.
+      - Early-exit en el primer non-nil.
+      - Si todos retornan nil → pass. Si alguno non-nil → panic con la razón.
+    validate:
+      - Empty array no afecta CU significativamente.
+      - Early-exit funciona.
+      - Panic incluye la razón del primer módulo que rechazó.
+    risks:
+      - Loop sin early-exit gasta CU innecesario.
+      - Razón de panic poco informativa hace debugging horrible.
+    why: >
+      El loop tiene que ser barato cuando está vacío (día 1) y correcto cuando se llena (futuro).
+      Early-exit en non-nil ahorra CU cuando un módulo bloquea.
+
+  - id: M-03
+    repo: artdrop-protocol
+    title: register/unregister ComplianceModule
+    phase: P2
+    domain: compliance
+    owner: [claudio]
+    ref: "Sec. E4"
+    depends_on: [M-01, M-02]
+    context: >
+      Funciones admin para gestión de módulos. Eventualmente gateadas con timelock vía multisig.
+    steps:
+      - Función registerComplianceModule(capability) con auth(Admin).
+      - Función unregisterComplianceModule(moduleId) con auth(Admin).
+      - Emitir ComplianceModuleRegistered/Removed.
+      - Documentar que estas funciones eventualmente pasarán por timelock multisig (G-04).
+    validate:
+      - Solo admin puede register/unregister.
+      - Eventos emitidos.
+      - Módulo registrado se incluye en el loop de M-02.
+    risks:
+      - Sin timelock día 1 es un riesgo - pero P0/P1 son carrera. Multisig viene en P2.
+    why: >
+      Que la función exista pero sea admin-only permite agregar módulos en P2 con timelock cuando el
+      multisig esté arriba. No bloquees P1 por features de governance.
+
+  - id: M-04
+    repo: artdrop-protocol
+    title: NoOp stub module
+    phase: P2
+    domain: compliance
+    owner: [ariel-edgar]
+    depends_on: [M-01]
+    context: Módulo dummy que retorna nil siempre. Sirve para tests de integración del loop.
+    steps:
+      - Crear contract NoOpComplianceModule que implementa ComplianceModule.
+      - Todas las funciones retornan nil.
+      - Útil para tests.
+    validate:
+      - Module compila y se puede registrar.
+      - Cumple la interface.
+    risks:
+      - Confundir NoOp con un módulo real en testnet.
+    why: Sin un módulo concreto que registrar, no podés ejercitar el loop end-to-end. NoOp es el harness mínimo.
+
+  - id: M-05
+    repo: artdrop-protocol
+    title: Tests compliance integration
+    phase: P2
+    domain: compliance
+    owner: [ariel-edgar]
+    depends_on: [M-02, M-03, M-04]
+    context: Tests del loop completo.
+    steps:
+      - "Test empty array → todas las operaciones pasan sin overhead."
+      - "Test 1 módulo NoOp → operaciones pasan."
+      - "Test módulo que rechaza → panic con razón."
+      - "Test múltiples módulos - early-exit en el primer reject."
+    validate:
+      - Cobertura completa de los caminos.
+    risks:
+      - Tests débiles dejan grietas en el loop.
+    why: >
+      El loop de compliance toca cada operación crítica. Tests sólidos previenen que un bug en
+      compliance bloquee TODO.
+
+  - id: G-01
+    repo: artdrop-protocol
+    title: Multisig contract
+    phase: P2
+    domain: governance
+    owner: [claudio]
+    ref: "Sec. J1"
+    depends_on: [R-06]
+    context: Implementar el multisig con threshold configurable. Funciones submit, approve, execute.
+    steps:
+      - Definir resource Multisig con signers [Address], threshold UInt.
+      - Función submit(action, params) - retorna actionId.
+      - Función approve(actionId) - valida signer y registra aprobación.
+      - Función execute(actionId) - valida quórum y ejecuta.
+      - Tests con la composición elegida en R-06.
+    validate:
+      - Quórum verificado on-chain.
+      - Non-signer no puede submit/approve.
+      - Execute solo cuando approvals >= threshold.
+    risks:
+      - Quórum mal calculado deja al multisig inútil.
+      - Submit sin auth deja que cualquiera proponga acciones.
+    why: >
+      El multisig reemplaza al single admin. Sin él, ArtDrop es centralizado. La auditoría lo pone
+      bajo lupa - implementación sólida desde día 1.
+
+  - id: G-02
+    repo: artdrop-protocol
+    title: Timelock + delayed actions queue
+    phase: P2
+    domain: governance
+    owner: [claudio]
+    ref: "Sec. J2, J3"
+    depends_on: [G-01]
+    context: Queue de acciones delayed con eventos para observabilidad.
+    steps:
+      - "Estructura DelayedAction - id, actionType, params, executableAt, status."
+      - "Función schedule(action) - después de quórum, agrega a queue con executableAt = now + timelock."
+      - "Función cancel(actionId) - solo durante el window."
+      - "Función execute(actionId) - solo después de executableAt."
+      - Eventos UpgradeScheduled/Cancelled/Executed.
+      - "Timelocks por tipo de acción según J2 (48h fee, 72h compliance, 168h composition)."
+    validate:
+      - Schedule emite evento.
+      - Cancel funciona durante window.
+      - Execute solo después de timelock.
+      - "Race condition - cancel y execute al filo del expiry."
+    risks:
+      - Window mal calculado (off-by-one en timestamps) puede bloquear cancel legítimo.
+      - Sin evento por scheduled, observers no pueden reaccionar.
+    why: >
+      El timelock es la ventana de defensa de la comunidad contra acciones admin maliciosas. Eventos
+      públicos durante el window son la condición para que esa defensa exista.
+
+  - id: G-03
+    repo: artdrop-protocol
+    title: Immediate pause (no timelock)
+    phase: P2
+    domain: governance
+    owner: [claudio]
+    ref: "Sec. J4"
+    depends_on: [G-01]
+    context: Pause minting, pause escrow, disable implementation. Sin timelock - emergencia.
+    steps:
+      - Función emergencyPause(target) con quórum multisig.
+      - Sin timelock - pause aplica inmediatamente.
+      - Emitir ProtocolPaused.
+      - Función resume con multisig sin timelock.
+    validate:
+      - Pause aplica inmediatamente.
+      - Operaciones target paused panican.
+      - Resume restaura sin requerir timelock.
+    risks:
+      - Pause demasiado amplio puede tirar el sistema entero.
+      - Pause sin auditoría puede esconder abuso.
+    why: >
+      Pause es la respuesta a un exploit en vivo. Tiene que ser rápido - timelock acá no tiene sentido.
+      Pero requiere quórum multisig para no ser unilateral.
+
+  - id: G-04
+    repo: artdrop-protocol
+    title: Integrate multisig with admin actions
+    phase: P2
+    domain: governance
+    owner: [claudio]
+    depends_on: [G-01, G-02, C-06]
+    context: >
+      Migrar swapImplementation, registerCompliance, MarketMode change, fee change a través del
+      multisig + timelock.
+    steps:
+      - Refactorizar Administrator para que las acciones gateadas inicien con multisig.schedule.
+      - Función ejecuta solo cuando el multisig llama execute.
+      - Tests de integración multisig + admin.
+    validate:
+      - Admin actions ya no son inmediatas - pasan por queue.
+      - Tests cubren happy path y cancel.
+    risks:
+      - Refactor mal hecho deja paths antiguos (admin directo) activos.
+    why: >
+      Es donde teoría y práctica se juntan. El multisig solo vale si bloquea las acciones admin reales.
+
+  - id: G-05
+    repo: artdrop-protocol
+    title: Tests multisig + timelock
+    phase: P2
+    domain: governance
+    owner: [ariel-edgar]
+    depends_on: [G-01, G-02, G-03]
+    context: Tests completos del sistema de governance.
+    steps:
+      - "Test quórum - threshold met, threshold not met."
+      - "Test schedule + execute después del delay."
+      - "Test cancel dentro del window."
+      - "Test execute antes del delay → panic."
+      - "Test emergency pause sin timelock."
+      - "Race - cancel y execute simultáneos cerca del expiry."
+    validate:
+      - Cobertura completa del sistema.
+    risks:
+      - Tests laxos dejan race conditions silenciosas.
+    why: >
+      Governance es el sistema más crítico después de payment/escrow. La auditoría va a probarlo
+      agresivamente.
+
+  - id: V-01
+    repo: artdrop-protocol
+    title: ArtDropEvent envelope struct
+    phase: P2
+    domain: events
+    owner: [claudio]
+    ref: "Sec. K1"
+    depends_on: [C-01]
+    context: >
+      El envelope estándar que va con todos los eventos - eventId, eventType, timestamp, blockHeight,
+      txId, actor, resourceId, prev/newState, cmsCorrelationId.
+    steps:
+      - Definir struct ArtDropEventEnvelope.
+      - Helper para construir envelopes en cada emisión.
+      - cmsCorrelationId opcional (se setea cuando el CMS lo pasa).
+      - eventId monotonic incrementing.
+    validate:
+      - Cada evento incluye el envelope completo.
+      - Helpers no duplican lógica de construcción.
+    risks:
+      - Si helpers están mal, todos los eventos están mal.
+    why: >
+      El envelope estándar hace los eventos consumibles por backends, indexers y analytics. Sin él,
+      cada consumidor reinventa parsing.
+
+  - id: V-02
+    repo: artdrop-protocol
+    title: Originals/Editions/Certificates events
+    phase: P2
+    domain: events
+    owner: [ariel-edgar]
+    ref: "Sec. K2"
+    depends_on: [V-01, C-03, C-04, N-03]
+    context: Emitir todos los eventos del catálogo K2 para esta familia.
+    steps:
+      - OriginalCreated, EditionCreated, EditionStateChanged.
+      - EditionLocked, EditionSoldOut.
+      - CertificateMinted, CertificateTransferred (con flag viaProtocolTransfer), MultiplierRevealed.
+      - Cada emisión usa el envelope V-01.
+    validate:
+      - Todos los eventos del catálogo emitidos.
+      - Payload coincide con la spec.
+    risks:
+      - Faltar algún evento deja al CMS sin info crítica.
+    why: >
+      Estos son los eventos que el CMS sincroniza para mostrar al usuario. Si falta uno, hay UI que no
+      actualiza.
+
+  - id: V-03
+    repo: artdrop-protocol
+    title: Escrow/Compliance/Yield events
+    phase: P2
+    domain: events
+    owner: [ariel-edgar]
+    ref: "Sec. K2"
+    depends_on: [V-01, E-01, M-02, Y-02]
+    context: Misma familia, otra parte del catálogo.
+    steps:
+      - EscrowCreated, EscrowReleased, EscrowRefunded, EscrowCancelled.
+      - ComplianceModuleRegistered/Removed, ComplianceCheckFailed.
+      - PoolDeposited.
+    validate:
+      - Todos emitidos con payload correcto.
+    risks:
+      - ComplianceCheckFailed sin razón hace debugging imposible.
+    why: >
+      Estos eventos son los que la auditoría regulatoria va a revisar - quién hizo qué, cuándo, por qué
+      pasó/falló. Logs ricos = defensa fuerte.
+
+  - id: V-04
+    repo: artdrop-protocol
+    title: Governance/Wallet events
+    phase: P2
+    domain: events
+    owner: [ariel-edgar]
+    ref: "Sec. K2"
+    depends_on: [V-01, G-02, W-05]
+    context: Última familia del catálogo.
+    steps:
+      - UpgradeScheduled, Cancelled, Executed.
+      - ProtocolPaused, Resumed.
+      - KeyRotated, GraduatedToSelfCustody, WalletCreated.
+    validate:
+      - Todos emitidos.
+    risks:
+      - Wallet events sin payload completo dificultan auditoría de operaciones.
+    why: >
+      Governance events son los que la comunidad lee para reaccionar a cambios. Wallet events son los
+      que usás para auditar tu propia operación.
+
+  - id: V-05
+    repo: artdrop-protocol
+    title: Verify consistency vs catalog
+    phase: P2
+    domain: events
+    owner: [claudio]
+    depends_on: [V-02, V-03, V-04]
+    context: "Cross-check final - todos los eventos del catálogo emitidos, ninguno fuera de spec."
+    steps:
+      - Listar todos los eventos del catálogo de K2.
+      - Cross-check con el código - cada uno emitido en la operación correcta.
+      - No agregar eventos fuera de catálogo (consistencia).
+      - Actualizar el documento si algo necesita ajuste.
+    validate:
+      - Lista del catálogo == lista emitida.
+      - Documentación coincide con código.
+    risks:
+      - Drift entre código y doc desorienta consumidores.
+    why: >
+      El catálogo es el contrato con el ecosystem de developers. Si emitís algo distinto, rompés
+      integraciones de terceros.
+
+# ───────────────────────────── P3 · INTEGRACIÓN / DEPLOY ─────────────────────────────
+
+  - id: Y-04
+    repo: artdrop-protocol
+    title: YieldClaimModule (design, NO deploy)
+    phase: P3
+    domain: yield
+    owner: [claudio]
+    ref: "Sec. G2"
+    depends_on: [Y-01, R-08]
+    context: >
+      Diseñar el módulo de claim/distribution como contrato separado. NO deploy hasta legal sign-off.
+    steps:
+      - Diseñar interface y resource del YieldClaimModule.
+      - Implementar funciones claimYield, distribute, withdrawFromPool.
+      - Design review interno + con Rey.
+      - Mantener el código en branch separada, NO en main.
+      - Documentar el proceso de registro vía multisig.
+    validate:
+      - Diseño completo y revisado.
+      - Código NO en main branch.
+      - Plan de activación documentado.
+    risks:
+      - Diseño tarde te bloquea cuando legal apruebe.
+      - Mergear a main por error invalida la postura regulatoria.
+    why: >
+      Tener el diseño listo permite activar rápido cuando legal apruebe - pero mantenerlo separado del
+      main es la disciplina regulatoria.
+
+  - id: N-07
+    repo: Payload-Galaxy
+    title: CMS integration (Payload + Node + Mongo)
+    phase: P3
+    domain: infra
+    owner: [ariel-edgar]
+    ref: "Sec. A2, D"
+    depends_on: [W-07, E-03, N-06]
+    context: >
+      Backend que orquesta los flujos D1-D6. Payload CMS como base, Node como runtime, Mongo como
+      storage.
+    steps:
+      - "Setup Payload CMS con colecciones - User, ArtistProfile, Painting, Edition, Print, Chip."
+      - Hooks de creation que llaman Wallet API + ArtDropCore.
+      - Endpoints REST para frontend.
+      - Auth para frontend (separado del Wallet API auth).
+    validate:
+      - Flujos D1-D6 ejecutables end-to-end desde frontend.
+      - Mongo + Flow sincronizados.
+    risks:
+      - CMS y chain desincronizados son source-of-truth conflict.
+      - Auth duplicada (CMS y Wallet API) puede generar confusión.
+    why: >
+      El CMS es la cara del producto para non-crypto users. Sin él, ArtDrop es solo contratos - no es
+      producto.
+
+  - id: N-08
+    repo: Payload-Galaxy
+    title: CMS sync with on-chain events
+    phase: P3
+    domain: infra
+    owner: [ariel-edgar]
+    ref: "Sec. K1"
+    depends_on: [V-05, N-07]
+    context: Event listener que sincroniza state del CMS con eventos del chain.
+    steps:
+      - Implementar listener de eventos Flow (Flow Access API).
+      - Para cada evento, actualizar el record correspondiente en Mongo.
+      - Idempotency - procesar evento duplicado no debe duplicar updates.
+      - Reintentos automáticos en caso de network error.
+    validate:
+      - Updates fluyen en tiempo casi-real.
+      - Idempotency funciona.
+      - Reintentos no pierden eventos.
+    risks:
+      - Listener caído deja CMS desincronizado - necesitás backfill.
+      - Mongo timeout vs Flow event throughput puede generar lag.
+    why: >
+      El listener mantiene CMS y chain consistentes. Sin él, dos sources of truth divergen y termina el
+      caos.
+
+  - id: N-09
+    repo: artdrop-protocol
+    title: Deploy testnet end-to-end
+    phase: P3
+    domain: deploy
+    owner: [claudio]
+    depends_on: [C-07, I-07, N-06, E-03, W-07, Y-03, L-04, M-05, G-05, V-05]
+    context: Deploy de todos los contratos + cross-VM Feistel + wallet API en testnet.
+    steps:
+      - Deploy contracts Cadence en orden de dependencia.
+      - Deploy Feistel.sol en Flow EVM testnet.
+      - Setup wallet API apuntando a testnet.
+      - Setup CMS apuntando a testnet.
+      - "Configuración inicial - MarketMode = PrimaryOnly, yield off (no module), compliance empty."
+      - Documentar todas las addresses.
+    validate:
+      - Sistema completo funciona en testnet.
+      - Configuración inicial correcta.
+      - Documento con addresses y configs.
+    risks:
+      - Deploy mal documentado dificulta repetirlo en mainnet.
+    why: >
+      Testnet es el dress rehearsal. Si todo funciona acá, mainnet es repetir el procedimiento.
+
+  - id: N-10
+    repo: artdrop-protocol
+    title: Testnet integration tests E2E
+    phase: P3
+    domain: deploy
+    owner: [team]
+    depends_on: [N-09]
+    context: Tests end-to-end de los flujos completos con usuarios simulados.
+    steps:
+      - Scripts que ejecutan D1 a D7 con varios users.
+      - "Test edge cases - timeout, refund, cancel, try-mode failure."
+      - Stress test con muchos users en paralelo.
+      - "Tests de governance - schedule, cancel, execute."
+    validate:
+      - Flujos completos funcionan.
+      - Edge cases manejados.
+    risks:
+      - Stress test débil deja problemas de scale para mainnet.
+    why: >
+      Última oportunidad de catchear bugs antes de auditoría. Testnet bien probado = auditoría más
+      enfocada en patterns críticos.
+
+  - id: A-06
+    repo: artdrop-protocol
+    title: Deploy mainnet
+    phase: P3
+    domain: deploy
+    owner: [claudio]
+    depends_on: [N-10]
+    context: >
+      Deploy en producción con multisig + timelock activos. PREREQUISITO EXTERNO - sign-off de
+      auditoría (trackeado fuera de este board).
+    steps:
+      - Deploy todos los contracts en mainnet con multisig configurado.
+      - Setup Feistel.sol en Flow EVM mainnet.
+      - "Configuración inicial - PrimaryOnly, yieldClaimModule NOT deployed, compliance empty."
+      - Wallet API y CMS apuntando a mainnet.
+      - Validar todas las configs ANTES de hacer público.
+    validate:
+      - Sistema completo en mainnet.
+      - Configs iniciales correctas.
+      - Multisig responde a acciones admin.
+      - Auditoría externa firmada (gate externo).
+    risks:
+      - Config mal hecha en mainnet = redeploy.
+      - Multisig mal configurado bloquea operación.
+      - Deploy sin sign-off de auditoría para un producto que maneja dinero.
+    why: >
+      Mainnet es para siempre. Cada minuto en validar config es minuto ahorrado en remediación
+      post-deploy.
+
+  - id: A-07
+    repo: artdrop-protocol
+    title: Monitoring + alerting post-deploy
+    phase: P3
+    domain: infra
+    owner: [team]
+    depends_on: [A-06]
+    context: Setup de observabilidad para operación normal.
+    steps:
+      - Event listeners con alerting (Datadog, Grafana, o similar).
+      - "Dashboards - mints/día, escrows pending, compliance failures, multisig actions."
+      - "Alertas - compliance failures, multisig scheduling, unusual transaction patterns."
+      - Runbook para incidentes comunes.
+    validate:
+      - Dashboards funcionando.
+      - Alertas testeadas.
+      - Runbook documentado y compartido.
+    risks:
+      - Sin monitoring, no sabés si algo está mal hasta que un usuario se queja.
+    why: >
+      Monitoring te da tiempo de respuesta antes de que un problema se vuelva crisis. Es la inversión
+      que pagás antes de necesitarla.
