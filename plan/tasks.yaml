@@ -1121,6 +1121,33 @@ tasks:
     why: >
       Wallet API es la pieza más probada por usuarios reales. Tests fuertes dan confianza de uptime.
 
+  - id: W-08
+    repo: flow-accounts-manager
+    title: Auth scopes desde OpenAPI (fuente única)
+    phase: P2
+    domain: wallet-api
+    owner: [ariel-edgar]
+    depends_on: [W-01]
+    context: >
+      W-01 dejó los scopes duplicados a mano - walletAuthRules() (código) + docs/auth-scopes.md (doc).
+      El openapi.yml existe pero la app no lo usa y está desactualizado. Convertir el OpenAPI en la
+      fuente única de endpoints + scopes y derivar las reglas de ahí, eliminando docs paralelas.
+    steps:
+      - Verificar y actualizar openapi.yml contra las rutas reales del router (hoy no lo lee nadie).
+      - Agregar securitySchemes (Bearer JWT) + scope requerido por operación (x-required-scope).
+      - Derivar las reglas de auth del openapi (parse en runtime o codegen) en vez de la lista a mano.
+      - Eliminar docs/auth-scopes.md (redundante).
+      - Test de paridad rutas del router ↔ openapi.
+    validate:
+      - openapi.yml refleja todas las rutas reales (paridad verificada por test).
+      - Las reglas de auth se derivan del openapi, no de una lista a mano.
+      - docs/auth-scopes.md eliminado.
+    risks:
+      - openapi desactualizado si no hay test de paridad que lo fuerce.
+    why: >
+      Una sola fuente de verdad para endpoints + scopes, en el contrato estándar (OpenAPI) en vez de
+      docs bespoke. Imposible que dripteen reglas y documentación.
+
   - id: Y-01
     repo: artdrop-protocol
     title: YieldReserve contract (Day 1, accounting-only)
