@@ -20,6 +20,10 @@ const SyncQueryParameter = "sync"
 type AuthOptions = middleware.AuthOptions
 type AuthRule = middleware.AuthRule
 
+func NewAuthRule(method string, pathTemplate string, requiredScope string) AuthRule {
+	return middleware.NewAuthRule(method, pathTemplate, requiredScope)
+}
+
 var EmptyBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("empty body")}
 var InvalidBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("invalid body")}
 

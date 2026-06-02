@@ -20,6 +20,7 @@ type AuthOptions struct {
 
 type AuthRule struct {
 	Method        string
+	PathTemplate  string
 	PathPattern   *regexp.Regexp
 	RequiredScope string
 }
@@ -27,6 +28,21 @@ type AuthRule struct {
 type AuthClaims struct {
 	Scope string `json:"scope"`
 	jwt.RegisteredClaims
+}
+
+var pathParamPattern = regexp.MustCompile(`\\\{[^}]+\\\}`)
+
+func NewAuthRule(method string, pathTemplate string, requiredScope string) AuthRule {
+	return AuthRule{
+		Method:        method,
+		PathTemplate:  pathTemplate,
+		PathPattern:   compilePathTemplate(pathTemplate),
+		RequiredScope: requiredScope,
+	}
+}
+
+func (r AuthRule) Key() string {
+	return r.Method + " " + r.PathTemplate
 }
 
 func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
@@ -126,4 +142,10 @@ func requiredScopeForRequest(rules []AuthRule, method string, path string) (stri
 		}
 	}
 	return "", false
+}
+
+func compilePathTemplate(pathTemplate string) *regexp.Regexp {
+	expr := regexp.QuoteMeta(pathTemplate)
+	expr = pathParamPattern.ReplaceAllString(expr, `[^/]+`)
+	return regexp.MustCompile("^" + expr + "$")
 }
