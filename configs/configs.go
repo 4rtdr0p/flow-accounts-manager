@@ -120,6 +120,8 @@ type Config struct {
 	AuthJWTSecret   string `env:"AUTH_JWT_SECRET" envDefault:""`
 	AuthJWTIssuer   string `env:"AUTH_JWT_ISSUER" envDefault:""`
 	AuthJWTAudience string `env:"AUTH_JWT_AUDIENCE" envDefault:""`
+	// Optional path to openapi.yml; when empty the embedded spec in the binary is used.
+	AuthOpenAPISpecPath string `env:"OPENAPI_SPEC_PATH" envDefault:""`
 
 	// Duration for which to wait for a transaction seal, if 0 wait indefinitely. Default: 0.
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
