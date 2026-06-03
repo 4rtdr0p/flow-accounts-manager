@@ -15,12 +15,12 @@ import (
 type Config struct {
 
 	// -- Deployment Mode --
-	
+
 	// LightweightMode enables a simplified deployment with minimal dependencies
 	// When enabled, it automatically configures SQLite, disables idempotency middleware,
 	// and optimizes worker settings for simpler deployments
 	LightweightMode bool `env:"LIGHTWEIGHT_MODE" envDefault:"false"`
-	
+
 	// LightweightIdempotency enables idempotency in lightweight mode using SQLite
 	// Only takes effect when LightweightMode is true
 	LightweightIdempotency bool `env:"LIGHTWEIGHT_IDEMPOTENCY" envDefault:"false"`
@@ -114,6 +114,12 @@ type Config struct {
 	GoogleKMSKeyRingID  string `env:"GOOGLE_KMS_KEYRING_ID"`
 
 	// -- Misc --
+
+	// -- Auth --
+	AuthEnabled     bool   `env:"AUTH_ENABLED" envDefault:"false"`
+	AuthJWTSecret   string `env:"AUTH_JWT_SECRET" envDefault:""`
+	AuthJWTIssuer   string `env:"AUTH_JWT_ISSUER" envDefault:""`
+	AuthJWTAudience string `env:"AUTH_JWT_AUDIENCE" envDefault:""`
 
 	// Duration for which to wait for a transaction seal, if 0 wait indefinitely. Default: 0.
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".

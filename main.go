@@ -73,14 +73,14 @@ func runServer(cfg *configs.Config) {
 	// Apply lightweight mode configuration if enabled
 	if cfg.LightweightMode {
 		log.Info("Running in lightweight mode with simplified dependencies")
-		
+
 		// Force SQLite as database
 		cfg.DatabaseType = "sqlite"
 		if cfg.DatabaseDSN == "" || cfg.DatabaseDSN == "wallet.db" {
 			// Use a more explicit path for the SQLite database in lightweight mode
 			cfg.DatabaseDSN = "./data/wallet-lightweight.db"
 		}
-		
+
 		// Configure idempotency for lightweight mode
 		if cfg.LightweightIdempotency {
 			log.Info("Lightweight mode: Enabling idempotency with SQLite storage")
@@ -90,7 +90,7 @@ func runServer(cfg *configs.Config) {
 			log.Info("Lightweight mode: Disabling idempotency middleware")
 			cfg.DisableIdempotencyMiddleware = true
 		}
-		
+
 		// Optimize worker settings for lighter usage
 		if cfg.WorkerCount > 4 {
 			cfg.WorkerCount = 4
@@ -99,7 +99,7 @@ func runServer(cfg *configs.Config) {
 			cfg.WorkerQueueCapacity = 500
 		}
 	}
-	
+
 	configs.ConfigureLogger(cfg.LogLevel)
 
 	log.Info("Starting server")
@@ -192,97 +192,26 @@ func runServer(cfg *configs.Config) {
 	tokenHandler := handlers.NewTokens(tokenService)
 	opsHandler := handlers.NewOps(opsService)
 
-	r := mux.NewRouter()
-
-	// Catch the api version
-	rv := r.PathPrefix("/{apiVersion}").Subrouter()
-
-	// Debug
-	rv.Handle("/debug", handlers.Debug("https://github.com/flow-hydraulics/flow-wallet-api", sha1ver, buildTime)).Methods(http.MethodGet)
-
-	// Health
-	rv.HandleFunc("/health/ready", handlers.HandleHealthReady).Methods(http.MethodGet)
-	rv.Handle("/health/liveness", handlers.Liveness(func() (interface{}, error) {
-		return wp.Status()
-	})).Methods(http.MethodGet)
-
-	// System
-	rv.Handle("/system/settings", systemHandler.GetSettings()).Methods(http.MethodGet)
-	rv.Handle("/system/settings", systemHandler.SetSettings()).Methods(http.MethodPost)
-
-	rv.Handle("/system/sync-account-key-count", accountHandler.SyncAccountKeyCount()).Methods(http.MethodPost)
-
-	// Jobs
-	rv.Handle("/jobs", jobsHandler.List()).Methods(http.MethodGet)            // list
-	rv.Handle("/jobs/{jobId}", jobsHandler.Details()).Methods(http.MethodGet) // details
-
-	// Token templates
-	rv.Handle("/tokens", templateHandler.ListTokens(templates.NotSpecified)).Methods(http.MethodGet) // list
-	rv.Handle("/tokens", templateHandler.AddToken()).Methods(http.MethodPost)                        // create
-	rv.Handle("/tokens/{id_or_name}", templateHandler.GetToken()).Methods(http.MethodGet)            // details
-	rv.Handle("/tokens/{id}", templateHandler.RemoveToken()).Methods(http.MethodDelete)              // delete
-
-	// List enabled tokens by type
-	rv.Handle("/fungible-tokens", templateHandler.ListTokens(templates.FT)).Methods(http.MethodGet)      // list
-	rv.Handle("/non-fungible-tokens", templateHandler.ListTokens(templates.NFT)).Methods(http.MethodGet) // list
-
-	// Transactions
-	rv.Handle("/transactions", transactionHandler.List()).Methods(http.MethodGet)                    // list
-	rv.Handle("/transactions/{transactionId}", transactionHandler.Details()).Methods(http.MethodGet) // details
-
-	// Account
-	rv.Handle("/accounts", accountHandler.List()).Methods(http.MethodGet)              // list
-	rv.Handle("/accounts", accountHandler.Create()).Methods(http.MethodPost)           // create
-	rv.Handle("/accounts/{address}", accountHandler.Details()).Methods(http.MethodGet) // details
-
-	// Account raw transactions
-	if !cfg.DisableRawTransactions {
-		rv.Handle("/accounts/{address}/sign", transactionHandler.Sign()).Methods(http.MethodPost)                           // sign
-		rv.Handle("/accounts/{address}/transactions", transactionHandler.List()).Methods(http.MethodGet)                    // list
-		rv.Handle("/accounts/{address}/transactions", transactionHandler.Create()).Methods(http.MethodPost)                 // create
-		rv.Handle("/accounts/{address}/transactions/{transactionId}", transactionHandler.Details()).Methods(http.MethodGet) // details
-	} else {
-		log.Info("raw transactions disabled")
+	routerOptions := routeOptions{
+		DisableRawTransactions:   cfg.DisableRawTransactions,
+		DisableFungibleTokens:    cfg.DisableFungibleTokens,
+		DisableNonFungibleTokens: cfg.DisableNonFungibleTokens,
 	}
-
-	// Non-custodial watchlist accounts
-	rv.Handle("/watchlist/accounts", accountHandler.AddNonCustodialAccount()).Methods(http.MethodPost)                // add
-	rv.Handle("/watchlist/accounts/{address}", accountHandler.DeleteNonCustodialAccount()).Methods(http.MethodDelete) // delete
-
-	// Scripts
-	rv.Handle("/scripts", transactionHandler.ExecuteScript()).Methods(http.MethodPost) // execute
-
-	// Fungible tokens
-	if !cfg.DisableFungibleTokens {
-		rv.Handle("/accounts/{address}/fungible-tokens", tokenHandler.AccountTokens(templates.FT)).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}", tokenHandler.Details()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}", tokenHandler.Setup()).Methods(http.MethodPost)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", tokenHandler.ListWithdrawals()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", tokenHandler.CreateWithdrawal()).Methods(http.MethodPost)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals/{transactionId}", tokenHandler.GetWithdrawal()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/deposits", tokenHandler.ListDeposits()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/deposits/{transactionId}", tokenHandler.GetDeposit()).Methods(http.MethodGet)
-	} else {
-		log.Info("fungible tokens disabled")
-	}
-
-	// Non-Fungible tokens
-	if !cfg.DisableNonFungibleTokens {
-		rv.Handle("/accounts/{address}/non-fungible-tokens", tokenHandler.AccountTokens(templates.NFT)).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}", tokenHandler.Details()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}", tokenHandler.Setup()).Methods(http.MethodPost)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", tokenHandler.ListWithdrawals()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", tokenHandler.CreateWithdrawal()).Methods(http.MethodPost)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals/{transactionId}", tokenHandler.GetWithdrawal()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/deposits", tokenHandler.ListDeposits()).Methods(http.MethodGet)
-		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/deposits/{transactionId}", tokenHandler.GetDeposit()).Methods(http.MethodGet)
-	} else {
-		log.Info("non-fungible tokens disabled")
-	}
-
-	// Ops
-	rv.Handle("/ops/missing-fungible-token-vaults/start", opsHandler.InitMissingFungibleVaults()).Methods(http.MethodGet) // start retroactive init job
-	rv.Handle("/ops/missing-fungible-token-vaults/stats", opsHandler.GetMissingFungibleVaults()).Methods(http.MethodGet)  // get number of accounts with missing fungible token vaults
+	r := buildRouter(routerOptions, routeHandlers{
+		System:         systemHandler,
+		Templates:      templateHandler,
+		Jobs:           jobsHandler,
+		Accounts:       accountHandler,
+		Transactions:   transactionHandler,
+		Tokens:         tokenHandler,
+		Ops:            opsHandler,
+		DebugURL:       "https://github.com/flow-hydraulics/flow-wallet-api",
+		DebugSHA:       sha1ver,
+		DebugBuildTime: buildTime,
+		WorkerPoolStatus: func() (interface{}, error) {
+			return wp.Status()
+		},
+	})
 
 	h := http.TimeoutHandler(r, cfg.ServerRequestTimeout, "request timed out")
 	h = handlers.UseCors(h)
@@ -333,6 +262,14 @@ func runServer(cfg *configs.Config) {
 			IgnorePaths: []string{"/v1/scripts"}, // Scripts are read-only
 		}, is)
 	}
+
+	h = handlers.UseAuth(h, handlers.AuthOptions{
+		Enabled:  cfg.AuthEnabled,
+		Secret:   cfg.AuthJWTSecret,
+		Issuer:   cfg.AuthJWTIssuer,
+		Audience: cfg.AuthJWTAudience,
+		Rules:    walletAuthRules(routerOptions),
+	})
 
 	// Server boilerplate
 	srv := &http.Server{
@@ -419,4 +356,165 @@ func runServer(cfg *configs.Config) {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Warnf("Error in server shutdown: %s", err)
 	}
+}
+
+type routeOptions struct {
+	DisableRawTransactions   bool
+	DisableFungibleTokens    bool
+	DisableNonFungibleTokens bool
+}
+
+type routeHandlers struct {
+	System           *handlers.System
+	Templates        *handlers.Templates
+	Jobs             *handlers.Jobs
+	Accounts         *handlers.Accounts
+	Transactions     *handlers.Transactions
+	Tokens           *handlers.Tokens
+	Ops              *handlers.Ops
+	DebugURL         string
+	DebugSHA         string
+	DebugBuildTime   string
+	WorkerPoolStatus func() (interface{}, error)
+}
+
+func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
+	r := mux.NewRouter()
+	rv := r.PathPrefix("/{apiVersion}").Subrouter()
+
+	rv.Handle("/debug", handlers.Debug(hs.DebugURL, hs.DebugSHA, hs.DebugBuildTime)).Methods(http.MethodGet)
+	rv.HandleFunc("/health/ready", handlers.HandleHealthReady).Methods(http.MethodGet)
+	rv.Handle("/health/liveness", handlers.Liveness(hs.WorkerPoolStatus)).Methods(http.MethodGet)
+
+	rv.Handle("/system/settings", hs.System.GetSettings()).Methods(http.MethodGet)
+	rv.Handle("/system/settings", hs.System.SetSettings()).Methods(http.MethodPost)
+	rv.Handle("/system/sync-account-key-count", hs.Accounts.SyncAccountKeyCount()).Methods(http.MethodPost)
+
+	rv.Handle("/jobs", hs.Jobs.List()).Methods(http.MethodGet)
+	rv.Handle("/jobs/{jobId}", hs.Jobs.Details()).Methods(http.MethodGet)
+
+	rv.Handle("/tokens", hs.Templates.ListTokens(templates.NotSpecified)).Methods(http.MethodGet)
+	rv.Handle("/tokens", hs.Templates.AddToken()).Methods(http.MethodPost)
+	rv.Handle("/tokens/{id_or_name}", hs.Templates.GetToken()).Methods(http.MethodGet)
+	rv.Handle("/tokens/{id}", hs.Templates.RemoveToken()).Methods(http.MethodDelete)
+
+	rv.Handle("/fungible-tokens", hs.Templates.ListTokens(templates.FT)).Methods(http.MethodGet)
+	rv.Handle("/non-fungible-tokens", hs.Templates.ListTokens(templates.NFT)).Methods(http.MethodGet)
+
+	rv.Handle("/transactions", hs.Transactions.List()).Methods(http.MethodGet)
+	rv.Handle("/transactions/{transactionId}", hs.Transactions.Details()).Methods(http.MethodGet)
+
+	rv.Handle("/accounts", hs.Accounts.List()).Methods(http.MethodGet)
+	rv.Handle("/accounts", hs.Accounts.Create()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
+
+	if !opts.DisableRawTransactions {
+		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/transactions", hs.Transactions.List()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/transactions", hs.Transactions.Create()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/transactions/{transactionId}", hs.Transactions.Details()).Methods(http.MethodGet)
+	} else {
+		log.Info("raw transactions disabled")
+	}
+
+	rv.Handle("/watchlist/accounts", hs.Accounts.AddNonCustodialAccount()).Methods(http.MethodPost)
+	rv.Handle("/watchlist/accounts/{address}", hs.Accounts.DeleteNonCustodialAccount()).Methods(http.MethodDelete)
+	rv.Handle("/scripts", hs.Transactions.ExecuteScript()).Methods(http.MethodPost)
+
+	if !opts.DisableFungibleTokens {
+		rv.Handle("/accounts/{address}/fungible-tokens", hs.Tokens.AccountTokens(templates.FT)).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}", hs.Tokens.Details()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}", hs.Tokens.Setup()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", hs.Tokens.ListWithdrawals()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", hs.Tokens.CreateWithdrawal()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/withdrawals/{transactionId}", hs.Tokens.GetWithdrawal()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/deposits", hs.Tokens.ListDeposits()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/fungible-tokens/{tokenName}/deposits/{transactionId}", hs.Tokens.GetDeposit()).Methods(http.MethodGet)
+	} else {
+		log.Info("fungible tokens disabled")
+	}
+
+	if !opts.DisableNonFungibleTokens {
+		rv.Handle("/accounts/{address}/non-fungible-tokens", hs.Tokens.AccountTokens(templates.NFT)).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}", hs.Tokens.Details()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}", hs.Tokens.Setup()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", hs.Tokens.ListWithdrawals()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", hs.Tokens.CreateWithdrawal()).Methods(http.MethodPost)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals/{transactionId}", hs.Tokens.GetWithdrawal()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/deposits", hs.Tokens.ListDeposits()).Methods(http.MethodGet)
+		rv.Handle("/accounts/{address}/non-fungible-tokens/{tokenName}/deposits/{transactionId}", hs.Tokens.GetDeposit()).Methods(http.MethodGet)
+	} else {
+		log.Info("non-fungible tokens disabled")
+	}
+
+	rv.Handle("/ops/missing-fungible-token-vaults/start", hs.Ops.InitMissingFungibleVaults()).Methods(http.MethodGet)
+	rv.Handle("/ops/missing-fungible-token-vaults/stats", hs.Ops.GetMissingFungibleVaults()).Methods(http.MethodGet)
+
+	return r
+}
+
+func walletAuthRules(opts routeOptions) []handlers.AuthRule {
+	rules := []handlers.AuthRule{
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/debug", "system.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/health/ready", "health.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/health/liveness", "health.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/system/settings", "system.read"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/system/settings", "system.write"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/system/sync-account-key-count", "account.key.sync"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/jobs", "job.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/jobs/{jobId}", "job.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/tokens", "token.read"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/tokens", "token.write"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/tokens/{id_or_name}", "token.read"),
+		handlers.NewAuthRule(http.MethodDelete, "/{apiVersion}/tokens/{id}", "token.write"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/fungible-tokens", "token.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/non-fungible-tokens", "token.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/transactions", "transaction.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/transactions/{transactionId}", "transaction.read"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts", "account.read"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts", "account.create"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}", "account.read"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/watchlist/accounts", "watchlist.write"),
+		handlers.NewAuthRule(http.MethodDelete, "/{apiVersion}/watchlist/accounts/{address}", "watchlist.write"),
+		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/scripts", "script.execute"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/ops/missing-fungible-token-vaults/start", "ops.run"),
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/ops/missing-fungible-token-vaults/stats", "ops.read"),
+	}
+
+	if !opts.DisableRawTransactions {
+		rules = append(rules,
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/sign", "account.sign"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/transactions", "transaction.read"),
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/transactions", "transaction.create"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/transactions/{transactionId}", "transaction.read"),
+		)
+	}
+
+	if !opts.DisableFungibleTokens {
+		rules = append(rules,
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens", "account.setup"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}", "account.setup"),
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}", "account.setup"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals/{transactionId}", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/deposits", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/deposits/{transactionId}", "account.transfer"),
+		)
+	}
+
+	if !opts.DisableNonFungibleTokens {
+		rules = append(rules,
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens", "account.setup"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}", "account.setup"),
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}", "account.setup"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
+			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals/{transactionId}", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/deposits", "account.transfer"),
+			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/deposits/{transactionId}", "account.transfer"),
+		)
+	}
+
+	return rules
 }

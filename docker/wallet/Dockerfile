@@ -1,5 +1,7 @@
 FROM golang:1.23.7-alpine AS dependencies
 
+ARG TARGETARCH
+
 RUN apk update && apk add --no-cache \
   ca-certificates \
   musl-dev \
@@ -10,7 +12,7 @@ RUN apk update && apk add --no-cache \
 ENV GO111MODULE=on \
   CGO_ENABLED=1 \
   GOOS=linux \
-  GOARCH=amd64
+  GOARCH=${TARGETARCH}
 
 WORKDIR /build
 
