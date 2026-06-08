@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
+	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
@@ -421,6 +421,7 @@ func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
 	rv.Handle("/accounts", hs.Accounts.List()).Methods(http.MethodGet)
 	rv.Handle("/accounts", hs.Accounts.Create()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
+	rv.Handle("/accounts/{address}/setup", hs.Tokens.SetupArtDropAccount()).Methods(http.MethodPost)
 
 	if !opts.DisableRawTransactions {
 		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)

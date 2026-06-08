@@ -14,11 +14,12 @@ func _() {
 	_ = x[FtTransfer-3]
 	_ = x[NftSetup-4]
 	_ = x[NftTransfer-5]
+	_ = x[ArtDropSetup-6]
 }
 
-const _Type_name = "UnknownGeneralFtSetupFtTransferNftSetupNftTransfer"
+const _Type_name = "UnknownGeneralFtSetupFtTransferNftSetupNftTransferArtDropSetup"
 
-var _Type_index = [...]uint8{0, 7, 14, 21, 31, 39, 50}
+var _Type_index = [...]uint8{0, 7, 14, 21, 31, 39, 50, 62}
 
 func (i Type) String() string {
 	if i < 0 || i >= Type(len(_Type_index)-1) {

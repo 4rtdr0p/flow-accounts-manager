@@ -89,6 +89,7 @@ type Config struct {
 
 	EnabledTokens                            []string `env:"ENABLED_TOKENS" envSeparator:","`
 	ScriptPathCreateAccount                  string   `env:"SCRIPT_PATH_CREATE_ACCOUNT" envDefault:""`
+	ScriptPathSetupArtDropAccount            string   `env:"SCRIPT_PATH_SETUP_ARTDROP_ACCOUNT" envDefault:"flow/cadence/transactions/setup_artdrop_account.cdc"`
 	InitFungibleTokenVaultsOnAccountCreation bool     `env:"INIT_FUNGIBLE_TOKEN_VAULTS_ON_ACCOUNT_CREATION" envDefault:"false"`
 
 	// -- Workerpool --
@@ -215,7 +216,7 @@ func ParseTestConfig(t *testing.T) *Config {
 
 	SetenvIfNotSet("FLOW_WALLET_ADMIN_ADDRESS", "0xf8d6e0586b0a20c7")
 	SetenvIfNotSet("FLOW_WALLET_ADMIN_PRIVATE_KEY", "91a22fbd87392b019fbe332c32695c14cf2ba5b6521476a8540228bdf1987068")
-	SetenvIfNotSet("FLOW_WALLET_ACCESS_API_HOST", "localhost:3569")
+	SetenvIfNotSet("FLOW_WALLET_ACCESS_API_HOST", "127.0.0.1:3569")
 	SetenvIfNotSet("FLOW_WALLET_ENCRYPTION_KEY", "faae4ed1c30f4e4555ee3a71f1044a8e")
 	SetenvIfNotSet("FLOW_WALLET_ENCRYPTION_KEY_TYPE", "local")
 	SetenvIfNotSet("FLOW_WALLET_ENABLED_TOKENS", "FlowToken:0x0ae53cb6e3f42a79:flowToken,FUSD:0xf8d6e0586b0a20c7:fusd")
