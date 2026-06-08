@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
@@ -213,6 +214,19 @@ func runServer(cfg *configs.Config) {
 		},
 	})
 
+	openAPISpecBytes, err := loadOpenAPISpec(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	scopeIndex, err := openapi.LoadScopeIndex(openAPISpecBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	authRules, err := openapi.AuthRulesFromRouter(r, scopeIndex)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	h := http.TimeoutHandler(r, cfg.ServerRequestTimeout, "request timed out")
 	h = handlers.UseCors(h)
 	h = handlers.UseLogging(h)
@@ -268,7 +282,7 @@ func runServer(cfg *configs.Config) {
 		Secret:   cfg.AuthJWTSecret,
 		Issuer:   cfg.AuthJWTIssuer,
 		Audience: cfg.AuthJWTAudience,
-		Rules:    walletAuthRules(routerOptions),
+		Rules:    authRules,
 	})
 
 	// Server boilerplate
@@ -453,68 +467,12 @@ func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
 	return r
 }
 
-func walletAuthRules(opts routeOptions) []handlers.AuthRule {
-	rules := []handlers.AuthRule{
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/debug", "system.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/health/ready", "health.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/health/liveness", "health.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/system/settings", "system.read"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/system/settings", "system.write"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/system/sync-account-key-count", "account.key.sync"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/jobs", "job.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/jobs/{jobId}", "job.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/tokens", "token.read"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/tokens", "token.write"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/tokens/{id_or_name}", "token.read"),
-		handlers.NewAuthRule(http.MethodDelete, "/{apiVersion}/tokens/{id}", "token.write"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/fungible-tokens", "token.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/non-fungible-tokens", "token.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/transactions", "transaction.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/transactions/{transactionId}", "transaction.read"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts", "account.read"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts", "account.create"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}", "account.read"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/watchlist/accounts", "watchlist.write"),
-		handlers.NewAuthRule(http.MethodDelete, "/{apiVersion}/watchlist/accounts/{address}", "watchlist.write"),
-		handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/scripts", "script.execute"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/ops/missing-fungible-token-vaults/start", "ops.run"),
-		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/ops/missing-fungible-token-vaults/stats", "ops.read"),
+func loadOpenAPISpec(cfg *configs.Config) ([]byte, error) {
+	if cfg.AuthOpenAPISpecPath != "" {
+		return os.ReadFile(cfg.AuthOpenAPISpecPath)
 	}
-
-	if !opts.DisableRawTransactions {
-		rules = append(rules,
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/sign", "account.sign"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/transactions", "transaction.read"),
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/transactions", "transaction.create"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/transactions/{transactionId}", "transaction.read"),
-		)
+	if len(openAPISpec) == 0 {
+		return nil, fmt.Errorf("embedded openapi spec is empty")
 	}
-
-	if !opts.DisableFungibleTokens {
-		rules = append(rules,
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens", "account.setup"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}", "account.setup"),
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}", "account.setup"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/withdrawals/{transactionId}", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/deposits", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/fungible-tokens/{tokenName}/deposits/{transactionId}", "account.transfer"),
-		)
-	}
-
-	if !opts.DisableNonFungibleTokens {
-		rules = append(rules,
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens", "account.setup"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}", "account.setup"),
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}", "account.setup"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
-			handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/withdrawals/{transactionId}", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/deposits", "account.transfer"),
-			handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts/{address}/non-fungible-tokens/{tokenName}/deposits/{transactionId}", "account.transfer"),
-		)
-	}
-
-	return rules
+	return openAPISpec, nil
 }
