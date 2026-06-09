@@ -12,7 +12,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 )
- 
+
 func TestW02AccountCreateAuth(t *testing.T) {
 	secret := "w02-test-secret"
 	rules := []handlers.AuthRule{
@@ -106,6 +106,57 @@ func TestW02AccountSetupAuth(t *testing.T) {
 		router.ServeHTTP(rr, req)
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("expected %d, got %d", http.StatusCreated, rr.Code)
+		}
+	})
+}
+
+func TestW02JobReadAuth(t *testing.T) {
+	secret := "w02-test-secret"
+	rules := []handlers.AuthRule{
+		handlers.NewAuthRule(http.MethodGet, "/{apiVersion}/jobs/{jobId}", "job.read"),
+	}
+
+	okHandler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	})
+
+	router := mux.NewRouter()
+	router.Handle("/v1/jobs/{jobId}", handlers.UseAuth(okHandler, handlers.AuthOptions{
+		Enabled: true,
+		Secret:  secret,
+		Rules:   rules,
+	})).Methods(http.MethodGet)
+
+	jobURL := "/v1/jobs/00000000-0000-0000-0000-000000000001"
+
+	t.Run("returns 401 without bearer token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, jobURL, nil)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected %d, got %d", http.StatusUnauthorized, rr.Code)
+		}
+	})
+
+	t.Run("returns 403 with wrong scope", func(t *testing.T) {
+		tok := w02SignedToken(t, secret, "account.create", time.Now().Add(5*time.Minute))
+		req := httptest.NewRequest(http.MethodGet, jobURL, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Fatalf("expected %d, got %d", http.StatusForbidden, rr.Code)
+		}
+	})
+
+	t.Run("returns 200 with valid scope", func(t *testing.T) {
+		tok := w02SignedToken(t, secret, "job.read", time.Now().Add(5*time.Minute))
+		req := httptest.NewRequest(http.MethodGet, jobURL, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
 		}
 	})
 }
