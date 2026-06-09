@@ -36,3 +36,4 @@ api-test-scripts/
 *.svg
 *.html
 *.yml
+!openapi.yml
