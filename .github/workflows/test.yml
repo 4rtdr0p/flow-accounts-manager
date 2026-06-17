@@ -44,6 +44,9 @@ jobs:
         run: |
           docker run -d --name flow-emulator \
             -p 3569:3569 \
+            -e FLOW_SERVICEPRIVATEKEY=91a22fbd87392b019fbe332c32695c14cf2ba5b6521476a8540228bdf1987068 \
+            -e FLOW_SERVICEKEYSIGALGO=ECDSA_P256 \
+            -e FLOW_SERVICEKEYHASHALGO=SHA3_256 \
             gcr.io/flow-container-registry/emulator:latest \
             emulator --transaction-expiry 600
           sleep 5
