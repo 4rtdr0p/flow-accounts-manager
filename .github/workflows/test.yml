@@ -31,8 +31,6 @@ jobs:
   # currently out of sync with the modern Flow CLI and is unrelated to this PR.
   integration:
     runs-on: ubuntu-latest
-    env:
-      FLOW_CLI_VERSION: v0.28.3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,21 +40,13 @@ jobs:
         with:
           go-version: '1.24'
 
-      - name: Cache Flow CLI
-        id: cache-flow-cli
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/bin/flow
-          key: ${{ runner.os }}-flow-cli-${{ env.FLOW_CLI_VERSION }}
-
-      - name: Install Flow CLI
-        if: steps.cache-flow-cli.outputs.cache-hit != 'true'
-        run: sh -c "$(curl -fsSL https://storage.googleapis.com/flow-cli/install.sh)" 0 $FLOW_CLI_VERSION
-
-      - name: Run emulator in background
+      - name: Run emulator in Docker
         run: |
-          cd flow && flow emulator -b 100ms --transaction-expiry 600 &
-          sleep 1
+          docker run -d --name flow-emulator \
+            -p 3569:3569 \
+            gcr.io/flow-container-registry/emulator:latest \
+            emulator --transaction-expiry 600
+          sleep 5
 
       - name: Run W-02 integration tests
         env:
