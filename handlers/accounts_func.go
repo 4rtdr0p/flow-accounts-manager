@@ -72,6 +72,30 @@ func (s *Accounts) DetailsFunc(rw http.ResponseWriter, r *http.Request) {
 	handleJsonResponse(rw, http.StatusOK, res)
 }
 
+func (s *Accounts) ActivateArtistFunc(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	res, err := s.service.ActivateArtist(vars["address"])
+	if err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	handleJsonResponse(rw, http.StatusOK, res)
+}
+
+func (s *Accounts) EnableCommunityPoolFunc(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	res, err := s.service.EnableCommunityPool(r.Context(), vars["address"])
+	if err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	handleJsonResponse(rw, http.StatusOK, res)
+}
+
 func (s *Accounts) AddNonCustodialAccountFunc(rw http.ResponseWriter, r *http.Request) {
 	err := checkNonEmptyBody(r)
 	if err != nil {

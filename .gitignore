@@ -141,3 +141,5 @@ flow-wallet-api
 flow/flowdb
 
 .idea/
+.gocache/
+.gomodcache/
