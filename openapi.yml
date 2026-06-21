@@ -531,6 +531,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/account'
+  '/accounts/{address}/setup':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Setup ArtDrop account
+      description: Initialize ArtDrop NFT collection and FLOW/USDC vault placeholders (FlowToken, FUSD, ExampleNFT) in a single transaction.
+      operationId: setupArtDropAccount
+      x-required-scopes:
+        - account.setup
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/sync'
+        - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transaction'
   '/accounts/{address}/sign':
     post:
       summary: Sign a raw transaction

@@ -351,6 +351,185 @@ func TestAccountHandlers(t *testing.T) {
 	}
 }
 
+func TestW02AccountCreationFlow(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	app := test.GetServices(t, cfg)
+
+	svc := app.GetAccounts()
+	jobSvc := app.GetJobs()
+
+	accHandler := handlers.NewAccounts(svc)
+	jobHandler := handlers.NewJobs(jobSvc)
+
+	router := mux.NewRouter()
+	router.Handle("/accounts", accHandler.Create()).Methods(http.MethodPost)
+	router.Handle("/jobs/{jobId}", jobHandler.Details()).Methods(http.MethodGet)
+	router.Handle("/accounts/{address}", accHandler.Details()).Methods(http.MethodGet)
+
+	res := handleStepRequest(httpTestStep{
+		name:     "create account async",
+		method:   http.MethodPost,
+		url:      "/accounts",
+		expected: `(?m)^{"jobId":".+"}$`,
+		status:   http.StatusCreated,
+	}, router, t)
+
+	var rJob jobs.JSONResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &rJob); err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := test.WaitForJob(jobSvc, rJob.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jobRes := handleStepRequest(httpTestStep{
+		name:     "poll job complete",
+		method:   http.MethodGet,
+		url:      fmt.Sprintf("/jobs/%s", rJob.ID.String()),
+		expected: `"state":"COMPLETE"`,
+		status:   http.StatusOK,
+	}, router, t)
+
+	var polledJob jobs.JSONResponse
+	if err := json.Unmarshal(jobRes.Body.Bytes(), &polledJob); err != nil {
+		t.Fatal(err)
+	}
+	if polledJob.Result != job.Result {
+		t.Fatalf("expected job result %q, got %q", job.Result, polledJob.Result)
+	}
+
+	handleStepRequest(httpTestStep{
+		name:     "get custodial account details",
+		method:   http.MethodGet,
+		url:      fmt.Sprintf("/accounts/%s", job.Result),
+		expected: `(?m)^{"address":".+"}$`,
+		status:   http.StatusOK,
+	}, router, t)
+}
+
+func TestW02ArtDropAccountSetup(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	app := test.GetServices(t, cfg)
+
+	accountSvc := app.GetAccounts()
+	templateSvc := app.GetTemplates()
+	tokenSvc := app.GetTokens()
+
+	tokenHandler := handlers.NewTokens(tokenSvc)
+
+	router := mux.NewRouter()
+	router.Handle("/accounts/{address}/setup", tokenHandler.SetupArtDropAccount()).Methods(http.MethodPost)
+	router.Handle("/accounts/{address}/fungible-tokens", tokenHandler.AccountTokens(templates.FT)).Methods(http.MethodGet)
+	router.Handle("/accounts/{address}/non-fungible-tokens", tokenHandler.AccountTokens(templates.NFT)).Methods(http.MethodGet)
+
+	fusd, err := templateSvc.GetTokenByName("FUSD")
+	fatal(t, err)
+
+	err = tokenSvc.DeployTokenContractForAccount(context.Background(), true, fusd.Name, fusd.Address)
+	fatal(t, err)
+
+	setupBytes, err := os.ReadFile(filepath.Join(testCadenceTxBasePath, "setup_exampleNFT.cdc"))
+	fatal(t, err)
+
+	transferBytes, err := os.ReadFile(filepath.Join(testCadenceTxBasePath, "transfer_exampleNFT.cdc"))
+	fatal(t, err)
+
+	balanceBytes, err := os.ReadFile(filepath.Join(testCadenceTxBasePath, "balance_exampleNFT.cdc"))
+	fatal(t, err)
+
+	exampleNft := templates.Token{
+		Name:     "ExampleNFT",
+		Address:  cfg.AdminAddress,
+		Type:     templates.NFT,
+		Setup:    string(setupBytes),
+		Transfer: string(transferBytes),
+		Balance:  string(balanceBytes),
+	}
+
+	err = templateSvc.AddToken(&exampleNft)
+	fatal(t, err)
+
+	err = tokenSvc.DeployTokenContractForAccount(context.Background(), true, exampleNft.Name, exampleNft.Address)
+	fatal(t, err)
+
+	_, account, err := accountSvc.Create(context.Background(), true)
+	fatal(t, err)
+
+	setupURL := fmt.Sprintf("/accounts/%s/setup", account.Address)
+	handleStepRequest(httpTestStep{
+		name:     "setup artdrop account sync",
+		method:   http.MethodPost,
+		url:      setupURL,
+		expected: `(?m)^{"transactionId":".+"}$`,
+		status:   http.StatusCreated,
+		sync:     true,
+	}, router, t)
+
+	ftRes := handleStepRequest(httpTestStep{
+		name:     "list fungible tokens after setup",
+		method:   http.MethodGet,
+		url:      fmt.Sprintf("/accounts/%s/fungible-tokens", account.Address),
+		expected: `(?m)FlowToken.*FUSD|FUSD.*FlowToken`,
+		status:   http.StatusOK,
+	}, router, t)
+	_ = ftRes
+
+	nftRes := handleStepRequest(httpTestStep{
+		name:     "list non-fungible tokens after setup",
+		method:   http.MethodGet,
+		url:      fmt.Sprintf("/accounts/%s/non-fungible-tokens", account.Address),
+		expected: `ExampleNFT`,
+		status:   http.StatusOK,
+	}, router, t)
+	_ = nftRes
+
+	handleStepRequest(httpTestStep{
+		name:     "setup artdrop account idempotent retry",
+		method:   http.MethodPost,
+		url:      setupURL,
+		expected: `(?m)^{"transactionId":".+"}$`,
+		status:   http.StatusCreated,
+		sync:     true,
+	}, router, t)
+}
+
+func TestW02AccountCreateIdempotencyConflict(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	app := test.GetServices(t, cfg)
+
+	accHandler := handlers.NewAccounts(app.GetAccounts())
+	is := handlers.NewIdempotencyStoreLocal()
+
+	router := mux.NewRouter()
+	router.Handle("/accounts", handlers.UseIdempotency(
+		accHandler.Create(),
+		handlers.IdempotencyHandlerOptions{Expiry: time.Hour},
+		is,
+	)).Methods(http.MethodPost)
+
+	ik := "w02-account-create-idempotency-key"
+
+	req, err := http.NewRequest(http.MethodPost, "/accounts", nil)
+	fatal(t, err)
+	req.Header.Set("Idempotency-Key", ik)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected first request status %d, got %d: %s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+
+	req, err = http.NewRequest(http.MethodPost, "/accounts", nil)
+	fatal(t, err)
+	req.Header.Set("Idempotency-Key", ik)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected duplicate idempotency key status %d, got %d: %s", http.StatusConflict, rr.Code, rr.Body.String())
+	}
+}
+
 func TestAccountTransactionHandlers(t *testing.T) {
 	cfg := test.LoadConfig(t)
 	app := test.GetServices(t, cfg)
