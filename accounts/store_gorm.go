@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"github.com/flow-hydraulics/flow-wallet-api/datastore"
-	"github.com/flow-hydraulics/flow-wallet-api/datastore/lib"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
 	"gorm.io/gorm"
 )
@@ -46,7 +45,7 @@ func (s *GormStore) ArchiveKey(id int) error {
 }
 
 func (s *GormStore) RotateKeyState(oldKeyID int, newKey *keys.Storable) error {
-	return lib.GormTransaction(s.db, func(tx *gorm.DB) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Delete(&keys.Storable{}, oldKeyID).Error; err != nil {
 			return err
 		}
