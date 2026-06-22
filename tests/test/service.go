@@ -35,6 +35,7 @@ type Services interface {
 	GetKeyManager() keys.Manager
 	GetListener() chain_events.Listener
 	GetFlowClient() flow_helpers.FlowClient
+	GetDB() *upstreamgorm.DB
 }
 
 type svcs struct {
@@ -49,6 +50,7 @@ type svcs struct {
 	keyManager keys.Manager
 	listener   chain_events.Listener
 	flowClient flow_helpers.FlowClient
+	db         *upstreamgorm.DB
 }
 
 func GetDatabase(t *testing.T, cfg *configs.Config) *upstreamgorm.DB {
@@ -184,6 +186,7 @@ func GetServices(t *testing.T, cfg *configs.Config) Services {
 		keyManager: km,
 		listener:   listener,
 		flowClient: fc,
+		db:         db,
 	}
 }
 
@@ -225,4 +228,8 @@ func (s *svcs) GetSystem() system.Service {
 
 func (s *svcs) GetFlowClient() flow_helpers.FlowClient {
 	return s.flowClient
+}
+
+func (s *svcs) GetDB() *upstreamgorm.DB {
+	return s.db
 }

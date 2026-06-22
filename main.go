@@ -447,11 +447,8 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 	rv.Handle("/accounts", hs.Accounts.List()).Methods(http.MethodGet)
 	rv.Handle("/accounts", hs.Accounts.Create()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
-	// Legacy wrapper that keeps the old /setup route working while the example
-	// plugin owns the new /setup-example route.
-	rv.Handle("/accounts/{address}/setup", example.NewSetupHandler(deps)).Methods(http.MethodPost)
-	rv.Handle("/accounts/{address}/artist-activate", hs.Accounts.ActivateArtist()).Methods(http.MethodPost)
-	rv.Handle("/accounts/{address}/community-pool-enable", hs.Accounts.EnableCommunityPool()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/setup", hs.Tokens.SetupArtDropAccount()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/rotate-key", hs.Accounts.RotateKey()).Methods(http.MethodPost)
 
 	if !opts.DisableRawTransactions {
 		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)
