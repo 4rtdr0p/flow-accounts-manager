@@ -578,6 +578,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/signedTransaction'
+  '/accounts/{address}/transfer':
+    post:
+      summary: Protocol transfer an ArtDrop certificate
+      description: 'Execute an ArtDrop protocol transfer (ArtDropCore.protocolTransfer). Bypasses MarketMode. Requires account.transfer scope.'
+      operationId: protocolTransfer
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/protocolTransferRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — missing or invalid body fields
+        '403':
+          description: Forbidden — wrong scope or graduated account
   '/accounts/{address}/transactions':
     parameters:
       - $ref: '#/components/parameters/address'
@@ -1051,6 +1082,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    protocolTransferRequest:
+      type: object
+      required:
+        - certificateId
+        - to
+      properties:
+        certificateId:
+          type: integer
+          format: int64
+          description: The ArtDrop certificate NFT ID to transfer.
+          example: 42
+        to:
+          type: string
+          description: Recipient Flow account address.
+          example: '0xf8d6e0586b0a20c7'
     jobState:
       type: string
       example: ACCEPTED

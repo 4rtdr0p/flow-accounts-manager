@@ -423,6 +423,8 @@ func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
 	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
 	rv.Handle("/accounts/{address}/setup", hs.Tokens.SetupArtDropAccount()).Methods(http.MethodPost)
 
+	rv.Handle("/accounts/{address}/transfer", hs.Transactions.Transfer()).Methods(http.MethodPost)
+
 	if !opts.DisableRawTransactions {
 		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)
 		rv.Handle("/accounts/{address}/transactions", hs.Transactions.List()).Methods(http.MethodGet)
