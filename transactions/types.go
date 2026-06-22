@@ -12,6 +12,7 @@ const (
 	FtTransfer
 	NftSetup
 	NftTransfer
+	ArtDropSetup
 )
 
 func (s Type) MarshalText() ([]byte, error) {
@@ -37,5 +38,7 @@ func StatusFromText(text string) Type {
 		return NftSetup
 	case "nfttransfer":
 		return NftTransfer
+	case "artdropsetup":
+		return ArtDropSetup
 	}
 }

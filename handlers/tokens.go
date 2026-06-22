@@ -20,6 +20,11 @@ func (s *Tokens) Setup() http.Handler {
 	return h
 }
 
+func (s *Tokens) SetupArtDropAccount() http.Handler {
+	h := http.HandlerFunc(s.SetupArtDropAccountFunc)
+	return h
+}
+
 func (s *Tokens) AccountTokens(tType templates.TokenType) http.Handler {
 	return s.MakeAccountTokensFunc(tType)
 }
