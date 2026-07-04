@@ -554,6 +554,42 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/job'
                   - $ref: '#/components/schemas/transaction'
+  '/accounts/{address}/artist-activate':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Activate artist role
+      description: Marks an existing custodial account as an artist account. Does not create a community pool address.
+      operationId: activateArtistAccount
+      x-required-scopes:
+        - account.artist.activate
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
+  '/accounts/{address}/community-pool-enable':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Enable community pool
+      description: Creates and links a second custodial Flow address for the artist community pool. This only happens when called explicitly.
+      operationId: enableArtistCommunityPool
+      x-required-scopes:
+        - account.community_pool.enable
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
   '/accounts/{address}/sign':
     post:
       summary: Sign a raw transaction
@@ -1101,6 +1137,12 @@ components:
         type:
           type: string
           example: custodial
+        isArtist:
+          type: boolean
+          example: false
+        communityPoolAddress:
+          type: string
+          example: '0x01cf0e2f2f715450'
         createdAt:
           type: string
           minLength: 1
