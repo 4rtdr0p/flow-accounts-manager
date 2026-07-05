@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -27,7 +26,6 @@ const (
 
 type Service interface {
 	Setup(ctx context.Context, sync bool, tokenName, address string) (*jobs.Job, *transactions.Transaction, error)
-	SetupArtDropAccount(ctx context.Context, sync bool, address string) (*jobs.Job, *transactions.Transaction, error)
 	AddAccountToken(tokenName, address string) error
 	AccountTokens(address string, tType templates.TokenType) ([]AccountToken, error)
 	Details(ctx context.Context, tokenName, address string) (*Details, error)
@@ -117,55 +115,6 @@ func (s *ServiceImpl) Setup(ctx context.Context, sync bool, tokenName, address s
 			log.
 				WithFields(log.Fields{"error": err}).
 				Warn("Error while adding account token")
-		}
-	}
-
-	return job, tx, err
-}
-
-var artDropSetupTokenNames = []string{"FlowToken", "FUSD", "ExampleNFT"}
-
-func (s *ServiceImpl) SetupArtDropAccount(ctx context.Context, sync bool, address string) (*jobs.Job, *transactions.Transaction, error) {
-	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if _, err := s.accounts.Details(address); err != nil {
-		return nil, nil, err
-	}
-
-	scriptPath := s.cfg.ScriptPathSetupArtDropAccount
-	if scriptPath == "" {
-		return nil, nil, fmt.Errorf("setup artdrop account script path is empty")
-	}
-
-	script, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read setup artdrop account script: %w", err)
-	}
-
-	job, tx, err := s.transactions.Create(ctx, sync, address, string(script), nil, transactions.ArtDropSetup)
-	if err == nil || strings.Contains(err.Error(), "vault exists") {
-		for _, tokenName := range artDropSetupTokenNames {
-			token, tokenErr := s.templates.GetTokenByName(tokenName)
-			if tokenErr != nil {
-				log.
-					WithFields(log.Fields{"error": tokenErr, "tokenName": tokenName}).
-					Warn("Skipping account token registration during artdrop setup")
-				continue
-			}
-
-			if insertErr := s.store.InsertAccountToken(&AccountToken{
-				AccountAddress: address,
-				TokenAddress:   token.Address,
-				TokenName:      token.Name,
-				TokenType:      token.Type,
-			}); insertErr != nil {
-				log.
-					WithFields(log.Fields{"error": insertErr, "tokenName": tokenName}).
-					Warn("Error while adding account token during artdrop setup")
-			}
 		}
 	}
 

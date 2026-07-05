@@ -2,18 +2,21 @@ package transactions
 
 import "strings"
 
-//go:generate stringer -type=Type
-type Type int
+type Type string
 
 const (
-	Unknown Type = iota
-	General
-	FtSetup
-	FtTransfer
-	NftSetup
-	NftTransfer
-	ArtDropSetup
+	Unknown      Type = "Unknown"
+	General      Type = "General"
+	FtSetup      Type = "FtSetup"
+	FtTransfer   Type = "FtTransfer"
+	NftSetup     Type = "NftSetup"
+	NftTransfer  Type = "NftTransfer"
+	ArtDropSetup Type = "ArtDropSetup"
 )
+
+func (s Type) String() string {
+	return string(s)
+}
 
 func (s Type) MarshalText() ([]byte, error) {
 	return []byte(s.String()), nil

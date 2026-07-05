@@ -18,9 +18,11 @@ import (
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
+	"github.com/flow-hydraulics/flow-wallet-api/example"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
+	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/templates"
 	"github.com/flow-hydraulics/flow-wallet-api/tests/test"
 	"github.com/flow-hydraulics/flow-wallet-api/tokens"
@@ -419,8 +421,15 @@ func TestW02ArtDropAccountSetup(t *testing.T) {
 
 	tokenHandler := handlers.NewTokens(tokenSvc)
 
+	pluginDeps := plugins.PluginDeps{
+		Accounts:     accountSvc,
+		Tokens:       tokenSvc,
+		Transactions: app.GetTransactions(),
+		Config:       cfg,
+	}
+
 	router := mux.NewRouter()
-	router.Handle("/accounts/{address}/setup", tokenHandler.SetupArtDropAccount()).Methods(http.MethodPost)
+	router.Handle("/accounts/{address}/setup", example.NewSetupHandler(pluginDeps)).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/fungible-tokens", tokenHandler.AccountTokens(templates.FT)).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/non-fungible-tokens", tokenHandler.AccountTokens(templates.NFT)).Methods(http.MethodGet)
 
