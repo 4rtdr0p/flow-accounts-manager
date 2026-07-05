@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/tests/test"
 )
 
@@ -103,7 +104,7 @@ func TestW03ArtistActivationHandler(t *testing.T) {
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
 		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-	})
+	}, nil, plugins.PluginDeps{})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.Address+"/artist-activate", nil)
 	rr := httptest.NewRecorder()
@@ -149,7 +150,7 @@ func TestW03CommunityPoolEnableHandler(t *testing.T) {
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
 		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-	})
+	}, nil, plugins.PluginDeps{})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.Address+"/community-pool-enable", nil)
 	rr := httptest.NewRecorder()

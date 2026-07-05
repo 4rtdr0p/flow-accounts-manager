@@ -35,28 +35,6 @@ func (s *Tokens) SetupFunc(rw http.ResponseWriter, r *http.Request) {
 	handleJsonResponse(rw, http.StatusCreated, res)
 }
 
-func (s *Tokens) SetupArtDropAccountFunc(rw http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	address := vars["address"]
-
-	sync := r.FormValue(SyncQueryParameter) != ""
-	job, transaction, err := s.service.SetupArtDropAccount(r.Context(), sync, address)
-
-	if err != nil {
-		handleError(rw, r, err)
-		return
-	}
-
-	var res interface{}
-	if sync {
-		res = transaction.ToJSONResponse()
-	} else {
-		res = job.ToJSONResponse()
-	}
-
-	handleJsonResponse(rw, http.StatusCreated, res)
-}
-
 func (s *Tokens) MakeAccountTokensFunc(tType templates.TokenType) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
