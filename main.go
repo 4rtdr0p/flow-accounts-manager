@@ -18,6 +18,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/example"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
@@ -408,6 +409,7 @@ type routeHandlers struct {
 func registerPlugins(cfg *configs.Config, deps plugins.PluginDeps) []plugins.Plugin {
 	return []plugins.Plugin{
 		example.NewPlugin(deps),
+		artdrop.NewPlugin(deps),
 	}
 }
 
