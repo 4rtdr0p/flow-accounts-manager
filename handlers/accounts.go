@@ -47,3 +47,11 @@ func (s *Accounts) SyncAccountKeyCount() http.Handler {
 func (s *Accounts) Details() http.Handler {
 	return http.HandlerFunc(s.DetailsFunc)
 }
+
+func (s *Accounts) ActivateArtist() http.Handler {
+	return http.HandlerFunc(s.ActivateArtistFunc)
+}
+
+func (s *Accounts) EnableCommunityPool() http.Handler {
+	return http.HandlerFunc(s.EnableCommunityPoolFunc)
+}

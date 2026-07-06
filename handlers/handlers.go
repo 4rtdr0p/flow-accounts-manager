@@ -59,11 +59,16 @@ func UseAuth(h http.Handler, opts AuthOptions) http.Handler {
 
 // handleError is a helper function for unified HTTP error handling.
 func handleError(rw http.ResponseWriter, r *http.Request, err error) {
+	HandleError(rw, r, err)
+}
+
+// HandleError is the exported version of handleError for use by plugins.
+func HandleError(rw http.ResponseWriter, r *http.Request, err error) {
 	log.
 		WithFields(log.Fields{"error": err}).
 		Warn("Error while handling request")
 
-		// Check if the error was an errors.RequestError
+	// Check if the error was an errors.RequestError
 	reqErr, isReqErr := err.(*errors.RequestError)
 	if isReqErr {
 		http.Error(rw, reqErr.Error(), reqErr.StatusCode)
@@ -81,6 +86,11 @@ func handleError(rw http.ResponseWriter, r *http.Request, err error) {
 
 // handleJsonResponse is a helper function for unified JSON response handling.
 func handleJsonResponse(rw http.ResponseWriter, status int, res interface{}) {
+	HandleJsonResponse(rw, status, res)
+}
+
+// HandleJsonResponse is the exported version of handleJsonResponse for use by plugins.
+func HandleJsonResponse(rw http.ResponseWriter, status int, res interface{}) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(status)
 	json.NewEncoder(rw).Encode(res) // nolint

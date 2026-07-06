@@ -7,6 +7,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 )
 
 func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
@@ -48,7 +49,7 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 				DebugSHA:         "debug-sha",
 				DebugBuildTime:   "debug-build-time",
 				WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-			})
+			}, nil, plugins.PluginDeps{})
 
 			rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 			if err != nil {
@@ -113,7 +114,7 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
 		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-	})
+	}, nil, plugins.PluginDeps{})
 
 	rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 	if err != nil {

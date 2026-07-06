@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/datastore"
@@ -34,6 +35,8 @@ type Service interface {
 	DeleteNonCustodialAccount(address string) error
 	SyncAccountKeyCount(ctx context.Context, address flow.Address) (*jobs.Job, error)
 	Details(address string) (Account, error)
+	ActivateArtist(address string) (Account, error)
+	EnableCommunityPool(ctx context.Context, address string) (Account, error)
 	InitAdminAccount(ctx context.Context) error
 }
 
@@ -47,6 +50,7 @@ type ServiceImpl struct {
 	txs           transactions.Service
 	temps         templates.Service
 	txRateLimiter ratelimit.Limiter
+	cpLocks       sync.Map
 }
 
 // NewService initiates a new account service.
@@ -63,7 +67,7 @@ func NewService(
 	var defaultTxRatelimiter = ratelimit.NewUnlimited()
 
 	// TODO(latenssi): safeguard against nil config?
-	svc := &ServiceImpl{cfg, store, km, fc, wp, txs, temps, defaultTxRatelimiter}
+	svc := &ServiceImpl{cfg: cfg, store: store, km: km, fc: fc, wp: wp, txs: txs, temps: temps, txRateLimiter: defaultTxRatelimiter}
 
 	for _, opt := range opts {
 		opt(svc)
@@ -172,6 +176,74 @@ func (s *ServiceImpl) Details(address string) (Account, error) {
 	}
 
 	return account, nil
+}
+
+func (s *ServiceImpl) ActivateArtist(address string) (Account, error) {
+	log.WithFields(log.Fields{"address": address}).Trace("Activate artist")
+
+	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
+	if err != nil {
+		return Account{}, err
+	}
+
+	account, err := s.store.Account(address)
+	if err != nil {
+		return Account{}, err
+	}
+
+	if !account.IsArtist {
+		account.IsArtist = true
+		if err := s.store.SaveAccount(&account); err != nil {
+			return Account{}, err
+		}
+	}
+
+	return s.Details(address)
+}
+
+func (s *ServiceImpl) EnableCommunityPool(ctx context.Context, address string) (Account, error) {
+	log.WithFields(log.Fields{"address": address}).Trace("Enable community pool")
+
+	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
+	if err != nil {
+		return Account{}, err
+	}
+
+	return s.withCommunityPoolLock(address, func() (Account, error) {
+		account, err := s.store.Account(address)
+		if err != nil {
+			return Account{}, err
+		}
+
+		if !account.IsArtist {
+			return Account{}, fmt.Errorf("artist account must be activated before enabling community pool")
+		}
+
+		if account.CommunityPoolAddress != "" {
+			return s.Details(address)
+		}
+
+		poolAccount, _, err := s.createAccount(ctx)
+		if err != nil {
+			return Account{}, err
+		}
+
+		account.CommunityPoolAddress = poolAccount.Address
+		if err := s.store.SaveAccount(&account); err != nil {
+			return Account{}, err
+		}
+
+		return s.Details(address)
+	})
+}
+
+func (s *ServiceImpl) withCommunityPoolLock(address string, fn func() (Account, error)) (Account, error) {
+	locker, _ := s.cpLocks.LoadOrStore(address, &sync.Mutex{})
+	mu := locker.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+
+	return fn()
 }
 
 // SyncKeyCount syncs number of keys for given account

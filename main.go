@@ -18,11 +18,14 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
+	"github.com/flow-hydraulics/flow-wallet-api/example"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
 	"github.com/flow-hydraulics/flow-wallet-api/keys/basic"
 	"github.com/flow-hydraulics/flow-wallet-api/ops"
+	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/system"
 	"github.com/flow-hydraulics/flow-wallet-api/templates"
 	"github.com/flow-hydraulics/flow-wallet-api/tokens"
@@ -198,6 +201,16 @@ func runServer(cfg *configs.Config) {
 		DisableFungibleTokens:    cfg.DisableFungibleTokens,
 		DisableNonFungibleTokens: cfg.DisableNonFungibleTokens,
 	}
+
+	pluginDeps := plugins.PluginDeps{
+		Accounts:     accountService,
+		Tokens:       tokenService,
+		Transactions: transactionService,
+		Config:       cfg,
+		WorkerPool:   wp,
+	}
+	registeredPlugins := registerPlugins(cfg, pluginDeps)
+
 	r := buildRouter(routerOptions, routeHandlers{
 		System:         systemHandler,
 		Templates:      templateHandler,
@@ -212,7 +225,7 @@ func runServer(cfg *configs.Config) {
 		WorkerPoolStatus: func() (interface{}, error) {
 			return wp.Status()
 		},
-	})
+	}, registeredPlugins, pluginDeps)
 
 	openAPISpecBytes, err := loadOpenAPISpec(cfg)
 	if err != nil {
@@ -392,9 +405,22 @@ type routeHandlers struct {
 	WorkerPoolStatus func() (interface{}, error)
 }
 
-func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
+// registerPlugins returns the list of active plugins.
+func registerPlugins(cfg *configs.Config, deps plugins.PluginDeps) []plugins.Plugin {
+	return []plugins.Plugin{
+		example.NewPlugin(deps),
+		artdrop.NewPlugin(deps),
+	}
+}
+
+func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugins.Plugin, deps plugins.PluginDeps) *mux.Router {
 	r := mux.NewRouter()
 	rv := r.PathPrefix("/{apiVersion}").Subrouter()
+
+	for _, p := range registeredPlugins {
+		log.Infof("Registering plugin routes: %s", p.Name())
+		p.RegisterRoutes(rv, deps)
+	}
 
 	rv.Handle("/debug", handlers.Debug(hs.DebugURL, hs.DebugSHA, hs.DebugBuildTime)).Methods(http.MethodGet)
 	rv.HandleFunc("/health/ready", handlers.HandleHealthReady).Methods(http.MethodGet)
@@ -421,7 +447,11 @@ func buildRouter(opts routeOptions, hs routeHandlers) *mux.Router {
 	rv.Handle("/accounts", hs.Accounts.List()).Methods(http.MethodGet)
 	rv.Handle("/accounts", hs.Accounts.Create()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
-	rv.Handle("/accounts/{address}/setup", hs.Tokens.SetupArtDropAccount()).Methods(http.MethodPost)
+	// Legacy wrapper that keeps the old /setup route working while the example
+	// plugin owns the new /setup-example route.
+	rv.Handle("/accounts/{address}/setup", example.NewSetupHandler(deps)).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/artist-activate", hs.Accounts.ActivateArtist()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/community-pool-enable", hs.Accounts.EnableCommunityPool()).Methods(http.MethodPost)
 
 	rv.Handle("/accounts/{address}/transfer", hs.Transactions.Transfer()).Methods(http.MethodPost)
 
