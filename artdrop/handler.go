@@ -47,10 +47,10 @@ func (h *Handler) TransferFunc(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CertificateID == 0 {
+	if req.CertificateID == nil {
 		handlers.HandleError(rw, r, &errors.RequestError{
 			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("field 'certificateId' must be a non-zero positive integer"),
+			Err:        fmt.Errorf("field 'certificateId' is required"),
 		})
 		return
 	}

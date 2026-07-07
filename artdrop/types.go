@@ -15,8 +15,8 @@ const (
 
 // TransferRequest contains the parameters needed to transfer a certificate.
 type TransferRequest struct {
-	CertificateID uint64 `json:"certificateId"`
-	To            string `json:"to"`
+	CertificateID *uint64 `json:"certificateId"`
+	To            string  `json:"to"`
 }
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.

@@ -26,6 +26,10 @@ func NewService(deps plugins.PluginDeps) *Service {
 
 // Transfer executes an ArtDrop protocol transfer of a certificate NFT.
 func (s *Service) Transfer(ctx context.Context, sync bool, address string, req TransferRequest) (*jobs.Job, *transactions.Transaction, error) {
+	if req.CertificateID == nil {
+		return nil, nil, fmt.Errorf("field 'certificateId' is required")
+	}
+
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, nil, err
@@ -47,7 +51,8 @@ func (s *Service) Transfer(ctx context.Context, sync bool, address string, req T
 	}
 
 	args := []transactions.Argument{
-		cadence.NewUInt64(req.CertificateID),
+		cadence.NewUInt64(*req.CertificateID),
+		cadence.NewAddress(flow.HexToAddress(address)),
 		cadence.NewAddress(flow.HexToAddress(to)),
 	}
 

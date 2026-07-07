@@ -1,24 +1,29 @@
-import ArtDropCore from "../contracts/ArtDropCore.cdc"
-import NonFungibleToken from "../contracts/NonFungibleToken.cdc"
+/// protocol_transfer.cdc - ADMIN: protocol-initiated certificate transfer.
+///
+/// Bypasses MarketMode to move a Certificate between accounts. The signer
+/// must hold auth(ProtocolTransfer) &ProtocolTransferAuthority (stored at
+/// ArtDropCore.ProtocolTransferStoragePath in the deployer account).
+///
+/// The sender must have registered an auth(NonFungibleToken.Withdraw)
+/// capability via ArtDropCore.registerProviderCap().
+/// The receiver must have a Collection at ArtDropCore.CertCollectionPublicPath.
+///
+/// Day-1 mono-account: the deployer signs.
+/// Cross-account (future): issue the capability via inbox first.
 
-/// Executes an ArtDrop protocol transfer using the ProtocolTransfer entitlement.
-transaction(certificateId: UInt64, to: Address) {
-    let collection: auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.Collection
+import "ArtDropCore"
 
-    prepare(signer: auth(Storage) &Account) {
-        self.collection = signer.storage
-            .borrow<auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.Collection>(
-                from: ArtDropCore.CollectionStoragePath
-            ) ?? panic("Could not borrow ProtocolTransfer-entitled collection from signer storage")
-    }
+transaction(certificateId: UInt64, from: Address, to: Address) {
+    prepare(signer: auth(BorrowValue) &Account) {
+        let protoTransfer = signer.storage
+            .borrow<auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.ProtocolTransferAuthority>(
+                from: ArtDropCore.ProtocolTransferStoragePath
+            ) ?? panic("protocol_transfer: ProtocolTransferAuthority not found - must be called from the ArtDropCore deployer account")
 
-    execute {
-        let recipient = getAccount(to)
-        let receiverRef = recipient.capabilities
-            .borrow<&{NonFungibleToken.CollectionPublic}>(ArtDropCore.CollectionPublicPath)
-            ?? panic("Could not borrow recipient's ArtDropCore collection")
-
-        let nft <- self.collection.protocolTransfer(withdrawID: certificateId)
-        receiverRef.deposit(token: <-nft)
+        protoTransfer.protocolTransfer(
+            certificateId: certificateId,
+            from: from,
+            to: to
+        )
     }
 }
