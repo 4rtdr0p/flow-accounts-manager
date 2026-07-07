@@ -1,15 +1,7 @@
 import ArtDropCore from "../contracts/ArtDropCore.cdc"
 import NonFungibleToken from "../contracts/NonFungibleToken.cdc"
 
-/// protocol_transfer.cdc
-///
 /// Executes an ArtDrop protocol transfer using the ProtocolTransfer entitlement.
-/// This bypasses MarketMode restrictions and is the only way to transfer
-/// ArtDrop certificates without going through the marketplace.
-///
-/// Arguments:
-///   certificateId — UInt64 ID of the certificate NFT to transfer
-///   to            — Address of the recipient account
 transaction(certificateId: UInt64, to: Address) {
     let collection: auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.Collection
 

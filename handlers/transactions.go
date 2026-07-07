@@ -33,11 +33,6 @@ func (s *Transactions) Details() http.Handler {
 	return http.HandlerFunc(s.DetailsFunc)
 }
 
-func (s *Transactions) Transfer() http.Handler {
-	h := http.HandlerFunc(s.TransferFunc)
-	return UseJson(h)
-}
-
 func (s *Transactions) ExecuteScript() http.Handler {
 	h := http.HandlerFunc(s.ExecuteScriptFunc)
 	return UseJson(h)

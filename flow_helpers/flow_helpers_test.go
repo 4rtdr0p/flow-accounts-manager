@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers/internal"
 	"github.com/onflow/flow-go-sdk"
@@ -45,14 +44,12 @@ func TestWaitForSeal(t *testing.T) {
 	t.Run("backoff", func(t *testing.T) {
 		flowClient := new(internal.MockFlowClient)
 		ctx := context.Background()
-		start := time.Now()
-
 		if _, err := WaitForSeal(ctx, flowClient, flow.EmptyID, 0); err != nil {
 			t.Fatalf("did not expect an error, got: %s", err)
 		}
 
-		if time.Since(start) < 500*time.Millisecond {
-			t.Fatal("expected wait to take longer")
+		if flowClient.GetTransactionResultCallCount() != 3 {
+			t.Fatalf("expected 3 transaction result checks, got %d", flowClient.GetTransactionResultCallCount())
 		}
 	})
 }

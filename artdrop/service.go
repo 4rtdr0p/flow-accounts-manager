@@ -3,10 +3,15 @@ package artdrop
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
+	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+	"github.com/onflow/cadence"
+	"github.com/onflow/flow-go-sdk"
 )
 
 // Service implements the artdrop plugin business logic.
@@ -17,6 +22,36 @@ type Service struct {
 // NewService creates a new artdrop service using the shared plugin dependencies.
 func NewService(deps plugins.PluginDeps) *Service {
 	return &Service{deps: deps}
+}
+
+// Transfer executes an ArtDrop protocol transfer of a certificate NFT.
+func (s *Service) Transfer(ctx context.Context, sync bool, address string, req TransferRequest) (*jobs.Job, *transactions.Transaction, error) {
+	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	to, err := flow_helpers.ValidateAddress(req.To, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	scriptPath := s.deps.Config.ScriptPathProtocolTransfer
+	if scriptPath == "" {
+		return nil, nil, fmt.Errorf("protocol transfer script path is empty")
+	}
+
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read protocol transfer script: %w", err)
+	}
+
+	args := []transactions.Argument{
+		cadence.NewUInt64(req.CertificateID),
+		cadence.NewAddress(flow.HexToAddress(to)),
+	}
+
+	return s.deps.Transactions.Create(ctx, sync, address, string(script), args, TxTypeTransfer)
 }
 
 // Setup prepares an account to use the artdrop contract suite.

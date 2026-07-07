@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/datastore"
@@ -22,7 +21,6 @@ import (
 type Service interface {
 	Create(ctx context.Context, sync bool, proposerAddress string, code string, args []Argument, tType Type) (*jobs.Job, *Transaction, error)
 	Sign(ctx context.Context, proposerAddress string, code string, args []Argument) (*SignedTransaction, error)
-	ProtocolTransfer(ctx context.Context, sync bool, address string, certificateID uint64, to string) (*jobs.Job, *Transaction, error)
 	List(limit, offset int) ([]Transaction, error)
 	ListForAccount(tType Type, address string, limit, offset int) ([]Transaction, error)
 	Details(ctx context.Context, transactionId string) (*Transaction, error)
@@ -110,37 +108,6 @@ func (s *ServiceImpl) Sign(ctx context.Context, proposerAddress string, code str
 	}
 
 	return &SignedTransaction{Transaction: *flowTx}, nil
-}
-
-// ProtocolTransfer executes an ArtDrop protocol transfer of a certificate NFT.
-// It submits the protocol_transfer.cdc Cadence transaction which bypasses MarketMode.
-func (s *ServiceImpl) ProtocolTransfer(ctx context.Context, sync bool, address string, certificateID uint64, to string) (*jobs.Job, *Transaction, error) {
-	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	to, err = flow_helpers.ValidateAddress(to, s.cfg.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	scriptPath := s.cfg.ScriptPathProtocolTransfer
-	if scriptPath == "" {
-		return nil, nil, fmt.Errorf("protocol transfer script path is empty")
-	}
-
-	script, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read protocol transfer script: %w", err)
-	}
-
-	args := []Argument{
-		cadence.NewUInt64(certificateID),
-		cadence.NewAddress(flow.HexToAddress(to)),
-	}
-
-	return s.Create(ctx, sync, address, string(script), args, ArtDropTransfer)
 }
 
 // List returns all transactions in the datastore.

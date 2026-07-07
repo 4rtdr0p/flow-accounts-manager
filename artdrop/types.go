@@ -5,12 +5,19 @@ import "github.com/flow-hydraulics/flow-wallet-api/transactions"
 // Transaction types used by the artdrop plugin.
 const (
 	TxTypeSetup        transactions.Type = "ArtdropSetup"
+	TxTypeTransfer     transactions.Type = "ArtdropTransfer"
 	TxTypeCreateEscrow transactions.Type = "ArtdropCreateEscrow"
 	TxTypeActivateChip transactions.Type = "ArtdropActivateChip"
 	TxTypeRelease      transactions.Type = "ArtdropRelease"
 	TxTypeCancel       transactions.Type = "ArtdropCancel"
 	TxTypeRefund       transactions.Type = "ArtdropRefund"
 )
+
+// TransferRequest contains the parameters needed to transfer a certificate.
+type TransferRequest struct {
+	CertificateID uint64 `json:"certificateId"`
+	To            string `json:"to"`
+}
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.
 type CreateEscrowRequest struct {

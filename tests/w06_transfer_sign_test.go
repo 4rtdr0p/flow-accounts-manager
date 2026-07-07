@@ -54,6 +54,17 @@ func TestW06TransferAuth(t *testing.T) {
 		}
 	})
 
+	t.Run("returns 401 with expired account.transfer token", func(t *testing.T) {
+		tok := w06SignedToken(t, secret, "account.transfer", time.Now().Add(-1*time.Minute))
+		req := httptest.NewRequest(http.MethodPost, transferURL, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected %d, got %d", http.StatusUnauthorized, rr.Code)
+		}
+	})
+
 	t.Run("returns 201 with valid scope (account.transfer)", func(t *testing.T) {
 		tok := w06SignedToken(t, secret, "account.transfer", time.Now().Add(5*time.Minute))
 		req := httptest.NewRequest(http.MethodPost, transferURL, nil)
@@ -104,6 +115,17 @@ func TestW06SignAuth(t *testing.T) {
 		router.ServeHTTP(rr, req)
 		if rr.Code != http.StatusForbidden {
 			t.Fatalf("expected %d, got %d", http.StatusForbidden, rr.Code)
+		}
+	})
+
+	t.Run("returns 401 with expired account.sign token", func(t *testing.T) {
+		tok := w06SignedToken(t, secret, "account.sign", time.Now().Add(-1*time.Minute))
+		req := httptest.NewRequest(http.MethodPost, signURL, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected %d, got %d", http.StatusUnauthorized, rr.Code)
 		}
 	})
 

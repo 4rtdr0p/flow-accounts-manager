@@ -11,12 +11,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// transferRequest is the JSON body for POST /accounts/{address}/transfer.
-type transferRequest struct {
-	CertificateID uint64 `json:"certificateId"`
-	To            string `json:"to"`
-}
-
 func (s *Transactions) ListFunc(rw http.ResponseWriter, r *http.Request) {
 	var (
 		transactionSlice []transactions.Transaction
@@ -205,54 +199,4 @@ func (s *Transactions) ExecuteScriptFunc(rw http.ResponseWriter, r *http.Request
 	}
 
 	handleJsonResponse(rw, http.StatusOK, res)
-}
-
-func (s *Transactions) TransferFunc(rw http.ResponseWriter, r *http.Request) {
-	if err := checkNonEmptyBody(r); err != nil {
-		handleError(rw, r, err)
-		return
-	}
-
-	vars := mux.Vars(r)
-
-	var req transferRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		handleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("invalid body: %w", err),
-		})
-		return
-	}
-
-	if req.To == "" {
-		handleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("field 'to' is required"),
-		})
-		return
-	}
-
-	if req.CertificateID == 0 {
-		handleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("field 'certificateId' must be a non-zero positive integer"),
-		})
-		return
-	}
-
-	sync := r.FormValue(SyncQueryParameter) != ""
-	job, tx, err := s.service.ProtocolTransfer(r.Context(), sync, vars["address"], req.CertificateID, req.To)
-	if err != nil {
-		handleError(rw, r, err)
-		return
-	}
-
-	var res interface{}
-	if sync {
-		res = tx.ToJSONResponse()
-	} else {
-		res = job.ToJSONResponse()
-	}
-
-	handleJsonResponse(rw, http.StatusCreated, res)
 }

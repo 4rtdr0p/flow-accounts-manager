@@ -5,9 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
+	"github.com/gorilla/mux"
 )
 
 func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
@@ -37,6 +39,7 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			deps := plugins.PluginDeps{}
 			router := buildRouter(tc.opts, routeHandlers{
 				System:           handlers.NewSystem(nil),
 				Templates:        handlers.NewTemplates(nil),
@@ -49,7 +52,7 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 				DebugSHA:         "debug-sha",
 				DebugBuildTime:   "debug-build-time",
 				WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-			}, nil, plugins.PluginDeps{})
+			}, registerPlugins(nil, deps), deps)
 
 			rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 			if err != nil {
@@ -102,6 +105,7 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 		t.Fatalf("LoadScopeIndex: %v", err)
 	}
 
+	deps := plugins.PluginDeps{}
 	router := buildRouter(routeOptions{}, routeHandlers{
 		System:           handlers.NewSystem(nil),
 		Templates:        handlers.NewTemplates(nil),
@@ -114,7 +118,7 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
 		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-	}, nil, plugins.PluginDeps{})
+	}, registerPlugins(nil, deps), deps)
 
 	rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 	if err != nil {
@@ -131,6 +135,64 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 	if len(missing) > 0 || len(extra) > 0 {
 		t.Fatalf("openapi/runtime scope mismatch\nmissing in runtime rules: %v\nextra in runtime rules: %v", missing, extra)
 	}
+}
+
+func TestTransferRouteBelongsToArtDropPlugin(t *testing.T) {
+	handlers := routeHandlers{
+		System:           handlers.NewSystem(nil),
+		Templates:        handlers.NewTemplates(nil),
+		Jobs:             handlers.NewJobs(nil),
+		Accounts:         handlers.NewAccounts(nil),
+		Transactions:     handlers.NewTransactions(nil),
+		Tokens:           handlers.NewTokens(nil),
+		Ops:              handlers.NewOps(nil),
+		DebugURL:         "debug-url",
+		DebugSHA:         "debug-sha",
+		DebugBuildTime:   "debug-build-time",
+		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
+	}
+
+	coreRouter := buildRouter(routeOptions{}, handlers, nil, plugins.PluginDeps{})
+	if routeExists(t, coreRouter, http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/transfer") {
+		t.Fatal("expected /transfer to be registered by the artdrop plugin, not the core router")
+	}
+
+	spec, err := os.ReadFile("openapi.yml")
+	if err != nil {
+		t.Fatalf("read openapi.yml: %v", err)
+	}
+	scopeIndex, err := openapi.LoadScopeIndex(spec)
+	if err != nil {
+		t.Fatalf("LoadScopeIndex: %v", err)
+	}
+
+	deps := plugins.PluginDeps{}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdrop.NewPlugin(deps)}, deps)
+	if !routeExists(t, pluginRouter, http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/transfer") {
+		t.Fatal("expected artdrop plugin to register POST /accounts/{address}/transfer")
+	}
+
+	rules, err := openapi.AuthRulesFromRouter(pluginRouter, scopeIndex)
+	if err != nil {
+		t.Fatalf("AuthRulesFromRouter: %v", err)
+	}
+	for _, rule := range rules {
+		if rule.Key() == "POST /{apiVersion}/accounts/{address}/transfer" && rule.RequiredScope == "account.transfer" {
+			return
+		}
+	}
+	t.Fatal("expected artdrop transfer route to require account.transfer")
+}
+
+func routeExists(t *testing.T, router *mux.Router, method string, path string) bool {
+	t.Helper()
+
+	var match mux.RouteMatch
+	req, err := http.NewRequest(method, path, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	return router.Match(req, &match)
 }
 
 func diffScopeMap(left map[string]string, right map[string]string) []string {

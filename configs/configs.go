@@ -90,7 +90,7 @@ type Config struct {
 	EnabledTokens                            []string `env:"ENABLED_TOKENS" envSeparator:","`
 	ScriptPathCreateAccount                  string   `env:"SCRIPT_PATH_CREATE_ACCOUNT" envDefault:""`
 	ScriptPathSetupArtDropAccount            string   `env:"SCRIPT_PATH_SETUP_ARTDROP_ACCOUNT" envDefault:"flow/cadence/transactions/setup_artdrop_account.cdc"`
-	ScriptPathProtocolTransfer               string   `env:"SCRIPT_PATH_PROTOCOL_TRANSFER" envDefault:"flow/cadence/transactions/protocol_transfer.cdc"`
+	ScriptPathProtocolTransfer               string   `env:"SCRIPT_PATH_PROTOCOL_TRANSFER" envDefault:"artdrop/cdc/protocol_transfer.cdc"`
 	InitFungibleTokenVaultsOnAccountCreation bool     `env:"INIT_FUNGIBLE_TOKEN_VAULTS_ON_ACCOUNT_CREATION" envDefault:"false"`
 
 	// -- Workerpool --

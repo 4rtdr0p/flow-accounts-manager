@@ -15,10 +15,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
-	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/example"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
@@ -452,8 +452,6 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 	rv.Handle("/accounts/{address}/setup", example.NewSetupHandler(deps)).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}/artist-activate", hs.Accounts.ActivateArtist()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}/community-pool-enable", hs.Accounts.EnableCommunityPool()).Methods(http.MethodPost)
-
-	rv.Handle("/accounts/{address}/transfer", hs.Transactions.Transfer()).Methods(http.MethodPost)
 
 	if !opts.DisableRawTransactions {
 		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)

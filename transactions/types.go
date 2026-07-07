@@ -5,14 +5,13 @@ import "strings"
 type Type string
 
 const (
-	Unknown         Type = "Unknown"
-	General         Type = "General"
-	FtSetup         Type = "FtSetup"
-	FtTransfer      Type = "FtTransfer"
-	NftSetup        Type = "NftSetup"
-	NftTransfer     Type = "NftTransfer"
-	ArtDropSetup    Type = "ArtDropSetup"
-	ArtDropTransfer Type = "ArtDropTransfer"
+	Unknown      Type = "Unknown"
+	General      Type = "General"
+	FtSetup      Type = "FtSetup"
+	FtTransfer   Type = "FtTransfer"
+	NftSetup     Type = "NftSetup"
+	NftTransfer  Type = "NftTransfer"
+	ArtDropSetup Type = "ArtDropSetup"
 )
 
 func (s Type) String() string {
@@ -44,7 +43,5 @@ func StatusFromText(text string) Type {
 		return NftTransfer
 	case "artdropsetup":
 		return ArtDropSetup
-	case "artdroptransfer":
-		return ArtDropTransfer
 	}
 }
