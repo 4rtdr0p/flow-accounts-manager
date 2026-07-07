@@ -108,19 +108,14 @@ func (s *ServiceImpl) rotateKey(ctx context.Context, address string) (*RotateKey
 	if signingKey == nil {
 		return nil, fmt.Errorf("managed signing key at index %d not found in database", oldKeyIndex)
 	}
-
-	flowAccount, err := s.fc.GetAccount(ctx, flowAddress)
-	if err != nil {
-		entry.WithFields(log.Fields{"err": err}).Error("failed to get Flow account")
-		return nil, err
-	}
-
-	newKeyIndex := len(flowAccount.Keys)
 	weight := s.cfg.DefaultKeyWeight
 	if weight < 0 {
 		weight = flow.AccountKeyWeightThreshold
 	}
 
+	// ponytail: Generate still wants an index, but the real index must come from
+	// post-transaction chain state because concurrent key additions can shift it.
+	newKeyIndex := oldKeyIndex + 1
 	accountKey, newPrivateKey, err := s.km.Generate(ctx, newKeyIndex, weight)
 	if err != nil {
 		return nil, err
@@ -131,9 +126,24 @@ func (s *ServiceImpl) rotateKey(ctx context.Context, address string) (*RotateKey
 	if err != nil {
 		return nil, err
 	}
+	signAlgoArg, err := cadence.NewString(newPrivateKey.SignAlgo.String())
+	if err != nil {
+		return nil, err
+	}
+	hashAlgoArg, err := cadence.NewString(newPrivateKey.HashAlgo.String())
+	if err != nil {
+		return nil, err
+	}
+	weightArg, err := cadence.NewUFix64(fmt.Sprintf("%d.0", weight))
+	if err != nil {
+		return nil, err
+	}
 	args := []transactions.Argument{
 		publicKeyArg,
 		cadence.NewInt(oldKeyIndex),
+		signAlgoArg,
+		hashAlgoArg,
+		weightArg,
 	}
 
 	_, tx, err := s.txs.Create(
@@ -158,11 +168,9 @@ func (s *ServiceImpl) rotateKey(ctx context.Context, address string) (*RotateKey
 		return nil, fmt.Errorf("old key at index %d was not revoked after rotation transaction", oldKeyIndex)
 	}
 
-	if newKeyIndex >= len(flowAccountAfter.Keys) {
-		return nil, fmt.Errorf("new key at index %d not found after rotation transaction", newKeyIndex)
-	}
-	if flowAccountAfter.Keys[newKeyIndex].Revoked {
-		return nil, fmt.Errorf("new key at index %d is revoked after rotation transaction", newKeyIndex)
+	newKeyIndex, err = findAccountKeyIndex(flowAccountAfter, accountKey.PublicKey.String())
+	if err != nil {
+		return nil, err
 	}
 
 	encryptedKey, err := s.km.Save(*newPrivateKey)
@@ -185,6 +193,20 @@ func (s *ServiceImpl) rotateKey(ctx context.Context, address string) (*RotateKey
 		OldKeyRevoked: true,
 		TransactionID: tx.TransactionId,
 	}, nil
+}
+
+func findAccountKeyIndex(account *flow.Account, publicKey string) (int, error) {
+	for i := range account.Keys {
+		if account.Keys[i].PublicKey.String() != publicKey {
+			continue
+		}
+		if account.Keys[i].Revoked {
+			return 0, fmt.Errorf("new key at index %d is revoked after rotation transaction", i)
+		}
+		return i, nil
+	}
+
+	return 0, fmt.Errorf("new key with public key %s not found after rotation transaction", publicKey)
 }
 
 func (s *ServiceImpl) executeRotateKeyJob(ctx context.Context, j *jobs.Job) error {

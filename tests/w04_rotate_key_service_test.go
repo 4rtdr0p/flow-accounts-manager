@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
@@ -67,5 +68,23 @@ func TestW04RotateKeySyncRevokesOldKeyAndSoftDeletesDBRow(t *testing.T) {
 	}
 	if rotatedAccount.Keys[0].Index != result.NewKeyIndex {
 		t.Fatalf("expected active managed key index %d, got %d", result.NewKeyIndex, rotatedAccount.Keys[0].Index)
+	}
+
+	onChainKey := flowAccount.Keys[result.NewKeyIndex]
+	expectedWeight := cfg.DefaultKeyWeight
+	if expectedWeight < 0 {
+		expectedWeight = flow.AccountKeyWeightThreshold
+	}
+	if onChainKey.Weight != expectedWeight {
+		t.Fatalf("expected rotated key weight %d, got %d", expectedWeight, onChainKey.Weight)
+	}
+	if rotatedAccount.Keys[0].SignAlgo != onChainKey.PublicKey.Algorithm().String() {
+		t.Fatalf("expected rotated key sign algo %s, got %s", onChainKey.PublicKey.Algorithm(), rotatedAccount.Keys[0].SignAlgo)
+	}
+	if rotatedAccount.Keys[0].HashAlgo != onChainKey.HashAlgo.String() {
+		t.Fatalf("expected rotated key hash algo %s, got %s", onChainKey.HashAlgo, rotatedAccount.Keys[0].HashAlgo)
+	}
+	if strings.TrimPrefix(rotatedAccount.Keys[0].PublicKey, "0x") != strings.TrimPrefix(onChainKey.PublicKey.String(), "0x") {
+		t.Fatalf("expected rotated key public key %s, got %s", onChainKey.PublicKey, rotatedAccount.Keys[0].PublicKey)
 	}
 }
