@@ -546,7 +546,7 @@ func TestAccountTransactionHandlers(t *testing.T) {
 	svc := app.GetTransactions()
 	templateSvc := app.GetTemplates()
 
-	handler := handlers.NewTransactions(svc)
+	handler := handlers.NewTransactions(svc, nil)
 
 	router := mux.NewRouter()
 	router.Handle("/{address}/sign", handler.Sign()).Methods(http.MethodPost)
@@ -568,7 +568,7 @@ func TestAccountTransactionHandlers(t *testing.T) {
 	}`, tFlowBytes, cfg.AdminAddress)
 
 	validHello := `{
-		"code":"transaction(greeting: String) { prepare(signer: AuthAccount){} execute { log(greeting.concat(\", World!\")) }}",
+		"code":"transaction(greeting: String) { prepare(signer: &Account) {} execute { log(greeting.concat(\", World!\")) }}",
 		"arguments":[{"type":"String","value":"Hello"}]
 	}`
 
@@ -788,7 +788,7 @@ func TestTransactionHandlers(t *testing.T) {
 	svc := app.GetTransactions()
 	templateSvc := app.GetTemplates()
 
-	handler := handlers.NewTransactions(svc)
+	handler := handlers.NewTransactions(svc, nil)
 
 	router := mux.NewRouter()
 	router.Handle("/", handler.List()).Methods(http.MethodGet)
@@ -804,7 +804,7 @@ func TestTransactionHandlers(t *testing.T) {
 		context.Background(),
 		true,
 		cfg.AdminAddress,
-		"transaction() { prepare(signer: AuthAccount){} execute { log(\"Hello World!\") }}",
+		"transaction() { prepare(signer: &Account) {} execute { log(\"Hello World!\") }}",
 		nil,
 		transactions.General,
 	)
@@ -906,7 +906,7 @@ func TestScriptsHandlers(t *testing.T) {
 
 	svc := app.GetTransactions()
 
-	handler := handlers.NewTransactions(svc)
+	handler := handlers.NewTransactions(svc, nil)
 
 	router := mux.NewRouter()
 	router.Handle("/", handler.ExecuteScript()).Methods(http.MethodPost)
@@ -916,7 +916,7 @@ func TestScriptsHandlers(t *testing.T) {
 			name:   "int 1",
 			method: http.MethodPost,
 			body: strings.NewReader(`{
-				"code":"pub fun main(): Int { return 1 }",
+				"code":"access(all) view fun main(): Int { return 1 }",
 				"arguments":[]
 			}`),
 			contentType: "application/json",
@@ -927,7 +927,7 @@ func TestScriptsHandlers(t *testing.T) {
 			name:   "get supply",
 			method: http.MethodPost,
 			body: strings.NewReader(`{
-				"code":"import FlowToken from 0x0ae53cb6e3f42a79\npub fun main(): UFix64 {\nlet supply = FlowToken.totalSupply\nreturn supply\n}",
+				"code":"import FlowToken from 0x0ae53cb6e3f42a79\naccess(all) view fun main(): UFix64 {\nlet supply = FlowToken.totalSupply\nreturn supply\n}",
 				"arguments":[]
 			}`),
 			contentType: "application/json",
@@ -938,7 +938,7 @@ func TestScriptsHandlers(t *testing.T) {
 			name:   "get balance",
 			method: http.MethodPost,
 			body: strings.NewReader(fmt.Sprintf(`{
-				"code":"import FungibleToken from 0xee82856bf20e2aa6\nimport FlowToken from 0x0ae53cb6e3f42a79\npub fun main(account: Address): UFix64 {\nlet vaultRef = getAccount(account)\n.getCapability(/public/flowTokenBalance)\n.borrow<&FlowToken.Vault{FungibleToken.Balance}>()\n?? panic(\"Could not borrow Balance reference to the Vault\")\nreturn vaultRef.balance\n}",
+				"code":"import FungibleToken from 0xee82856bf20e2aa6\nimport FlowToken from 0x0ae53cb6e3f42a79\naccess(all) view fun main(account: Address): UFix64 {\nlet vaultRef = getAccount(account)\n.capabilities\n.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance)\n?? panic(\"Could not borrow Balance reference to the Vault\")\nreturn vaultRef.balance\n}",
 				"arguments":[{"type":"Address","value":"%s"}]
 			}`, cfg.AdminAddress)),
 			contentType: "application/json",

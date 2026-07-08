@@ -168,8 +168,14 @@ func runServer(cfg *configs.Config) {
 		log.Fatal(err)
 	}
 	jobsService := jobs.NewService(jobs.NewGormStore(db))
-	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp, transactions.WithTxRatelimiter(txRatelimiter))
-	accountService := accounts.NewService(cfg, accounts.NewGormStore(db), km, fc, wp, transactionService, templateService, accounts.WithTxRatelimiter(txRatelimiter))
+	accountStore := accounts.NewGormStore(db)
+	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp,
+		transactions.WithTxRatelimiter(txRatelimiter),
+		transactions.WithCustodialSigningGuard(func(address string) error {
+			return accounts.RequireCustodialForSigning(accountStore, address, cfg.ChainID)
+		}),
+	)
+	accountService := accounts.NewService(cfg, accountStore, km, fc, wp, transactionService, templateService, accounts.WithTxRatelimiter(txRatelimiter))
 	tokenService := tokens.NewService(cfg, tokens.NewGormStore(db), km, fc, wp, transactionService, templateService, accountService)
 	opsService := ops.NewService(cfg, ops.NewGormStore(db), templateService, transactionService, tokenService)
 
@@ -192,7 +198,7 @@ func runServer(cfg *configs.Config) {
 	templateHandler := handlers.NewTemplates(templateService)
 	jobsHandler := handlers.NewJobs(jobsService)
 	accountHandler := handlers.NewAccounts(accountService)
-	transactionHandler := handlers.NewTransactions(transactionService)
+	transactionHandler := handlers.NewTransactions(transactionService, accountService)
 	tokenHandler := handlers.NewTokens(tokenService)
 	opsHandler := handlers.NewOps(opsService)
 
@@ -447,8 +453,13 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 	rv.Handle("/accounts", hs.Accounts.List()).Methods(http.MethodGet)
 	rv.Handle("/accounts", hs.Accounts.Create()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}", hs.Accounts.Details()).Methods(http.MethodGet)
-	rv.Handle("/accounts/{address}/setup", hs.Tokens.SetupArtDropAccount()).Methods(http.MethodPost)
-	rv.Handle("/accounts/{address}/rotate-key", hs.Accounts.RotateKey()).Methods(http.MethodPost)
+	// Legacy wrapper that keeps the old /setup route working while the example
+	// plugin owns the new /setup-example route.
+	rv.Handle("/accounts/{address}/setup", example.NewSetupHandler(deps)).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/artist-activate", hs.Accounts.ActivateArtist()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/community-pool-enable", hs.Accounts.EnableCommunityPool()).Methods(http.MethodPost)
+	rv.Handle("/accounts/{address}/graduate-to-self-custody", hs.Accounts.GraduateToSelfCustody()).Methods(http.MethodPost)
+	rv.Handle("/admin/reconcile/{address}", hs.Accounts.ReconcileAccount()).Methods(http.MethodGet)
 
 	if !opts.DisableRawTransactions {
 		rv.Handle("/accounts/{address}/sign", hs.Transactions.Sign()).Methods(http.MethodPost)

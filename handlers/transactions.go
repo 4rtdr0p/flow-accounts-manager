@@ -3,16 +3,18 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 )
 
 type Transactions struct {
-	service transactions.Service
+	service        transactions.Service
+	accountService accounts.Service
 }
 
 // NewTransactions initiates a new transactions server.
-func NewTransactions(service transactions.Service) *Transactions {
-	return &Transactions{service}
+func NewTransactions(service transactions.Service, accountService accounts.Service) *Transactions {
+	return &Transactions{service: service, accountService: accountService}
 }
 
 func (s *Transactions) List() http.Handler {
