@@ -11,6 +11,10 @@ type MockFlowClient struct {
 	getTransactionResultCallCount uint
 }
 
+func (c *MockFlowClient) GetTransactionResultCallCount() uint {
+	return c.getTransactionResultCallCount
+}
+
 func (c *MockFlowClient) ExecuteScriptAtLatestBlock(ctx context.Context, script []byte, arguments []cadence.Value) (cadence.Value, error) {
 	return nil, nil
 }

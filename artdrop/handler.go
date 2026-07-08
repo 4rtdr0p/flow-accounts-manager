@@ -1,7 +1,13 @@
 package artdrop
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+
+	"github.com/flow-hydraulics/flow-wallet-api/errors"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/gorilla/mux"
 )
 
 // Handler exposes HTTP endpoints for the artdrop plugin.
@@ -12,6 +18,58 @@ type Handler struct {
 // NewHandler creates a handler backed by the given artdrop service.
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+func (h *Handler) Transfer() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.TransferFunc))
+}
+
+func (h *Handler) TransferFunc(rw http.ResponseWriter, r *http.Request) {
+	if r.Body == nil || r.Body == http.NoBody {
+		handlers.HandleError(rw, r, handlers.EmptyBodyError)
+		return
+	}
+
+	var req TransferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid body: %w", err),
+		})
+		return
+	}
+
+	if req.To == "" {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("field 'to' is required"),
+		})
+		return
+	}
+
+	if req.CertificateID == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("field 'certificateId' is required"),
+		})
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.Transfer(r.Context(), sync, mux.Vars(r)["address"], req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var res interface{}
+	if sync {
+		res = tx.ToJSONResponse()
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
 }
 
 func (h *Handler) Setup() http.Handler {

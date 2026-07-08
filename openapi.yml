@@ -639,6 +639,136 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/signedTransaction'
+  '/accounts/{address}/transfer':
+    post:
+      summary: Protocol transfer an ArtDrop certificate
+      description: 'Execute an ArtDrop protocol transfer (ArtDropCore.protocolTransfer). Bypasses MarketMode. Requires account.transfer scope.'
+      operationId: protocolTransfer
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/protocolTransferRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — missing or invalid body fields
+        '403':
+          description: Forbidden — wrong scope or graduated account
+  '/accounts/{address}/setup-example':
+    post:
+      summary: Setup example plugin account resources
+      operationId: setupExampleAccount
+      x-required-scopes:
+        - account.setup
+      tags:
+        - Accounts
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/setup':
+    post:
+      summary: Setup ArtDrop account resources
+      operationId: setupArtDropAccount
+      x-required-scopes:
+        - account.setup
+      tags:
+        - Accounts
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows':
+    post:
+      summary: Create an ArtDrop escrow
+      operationId: createArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/activate':
+    post:
+      summary: Activate an ArtDrop escrow chip
+      operationId: activateArtDropEscrowChip
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/release':
+    post:
+      summary: Release an ArtDrop escrow
+      operationId: releaseArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/cancel':
+    post:
+      summary: Cancel an ArtDrop escrow
+      operationId: cancelArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/refund':
+    post:
+      summary: Refund an ArtDrop escrow
+      operationId: refundArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/certificates':
+    get:
+      summary: List ArtDrop certificates for an account
+      operationId: listArtDropCertificates
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+  '/accounts/{address}/artdrop/escrows/{escrowId}':
+    get:
+      summary: Get an ArtDrop escrow summary
+      operationId: getArtDropEscrow
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/transactions':
     parameters:
       - $ref: '#/components/parameters/address'
@@ -1112,6 +1242,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    protocolTransferRequest:
+      type: object
+      required:
+        - certificateId
+        - to
+      properties:
+        certificateId:
+          type: integer
+          format: int64
+          description: The ArtDrop certificate NFT ID to transfer.
+          example: 42
+        to:
+          type: string
+          description: Recipient Flow account address.
+          example: '0xf8d6e0586b0a20c7'
     jobState:
       type: string
       example: ACCEPTED

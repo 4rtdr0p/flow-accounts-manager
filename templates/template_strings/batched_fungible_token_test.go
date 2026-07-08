@@ -36,10 +36,10 @@ func TestAccountCreation(t *testing.T) {
 		"import FungibleToken from 0xFungibleTokenContractAddress",
 		"import TokenA from 0x1",
 		"import TokenB from 0x2",
-		"account.save(<-TokenA.createEmptyVault(), to: TokenA.VaultStoragePath)",
-		"target: TokenA.VaultStoragePath",
-		"account.save(<-TokenB.createEmptyVault(), to: /storage/tokenBVault)",
-		"target: /storage/tokenBVault",
+		"account.storage.save(<-TokenA.createEmptyVault(), to: TokenA.VaultStoragePath)",
+		"TokenA.VaultStoragePath",
+		"account.storage.save(<-TokenB.createEmptyVault(), to: /storage/tokenBVault)",
+		"/storage/tokenBVault",
 	}
 
 	ok, failedCheck := containsAll(result, checkStrings)
@@ -59,12 +59,12 @@ func TestAddFungibleTokens(t *testing.T) {
 		"import FungibleToken from 0xFungibleTokenContractAddress",
 		"import TokenA from 0x1",
 		"import TokenB from 0x2",
-		"account.save(<-TokenA.createEmptyVault(), to: TokenA.VaultStoragePath)",
-		"target: TokenA.VaultStoragePath",
-		"account.save(<-TokenB.createEmptyVault(), to: /storage/tokenBVault)",
-		"target: /storage/tokenBVault",
-		"if account.borrow<&TokenA.Vault>(from: TokenA.VaultStoragePath) == nil {",
-		"if account.borrow<&TokenB.Vault>(from: /storage/tokenBVault) == nil {",
+		"account.storage.save(<-TokenA.createEmptyVault(), to: TokenA.VaultStoragePath)",
+		"TokenA.VaultStoragePath",
+		"account.storage.save(<-TokenB.createEmptyVault(), to: /storage/tokenBVault)",
+		"/storage/tokenBVault",
+		"if account.storage.borrow<&TokenA.Vault>(from: TokenA.VaultStoragePath) == nil {",
+		"if account.storage.borrow<&TokenB.Vault>(from: /storage/tokenBVault) == nil {",
 	}
 
 	ok, failedCheck := containsAll(result, checkStrings)

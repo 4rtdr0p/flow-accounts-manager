@@ -26,6 +26,7 @@ func (p *Plugin) Name() string {
 func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	h := NewHandler(p.svc)
 
+	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows", h.CreateEscrow()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate", h.ActivateChip()).Methods(http.MethodPost)
