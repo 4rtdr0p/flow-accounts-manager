@@ -136,6 +136,36 @@ func (s *Accounts) DeleteNonCustodialAccountFunc(rw http.ResponseWriter, r *http
 	rw.WriteHeader(http.StatusOK)
 }
 
+func (s *Accounts) GraduateToSelfCustodyFunc(rw http.ResponseWriter, r *http.Request) {
+	if err := checkNonEmptyBody(r); err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	var req GraduateAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		err = &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid body"),
+		}
+		handleError(rw, r, err)
+		return
+	}
+
+	vars := mux.Vars(r)
+	account, err := s.service.GraduateToSelfCustody(r.Context(), vars["address"], req.UserPublicKey)
+	if err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	handleJsonResponse(rw, http.StatusOK, GraduateAccountResponse{
+		Address: account.Address,
+		Type:    account.Type,
+		Status:  "graduated",
+	})
+}
+
 func (s *Accounts) SyncAccountKeyCountFunc(rw http.ResponseWriter, r *http.Request) {
 	// Check body is not empty
 	if err := checkNonEmptyBody(r); err != nil {
@@ -158,4 +188,16 @@ func (s *Accounts) SyncAccountKeyCountFunc(rw http.ResponseWriter, r *http.Reque
 	}
 
 	handleJsonResponse(rw, http.StatusOK, job)
+}
+
+func (s *Accounts) ReconcileAccountFunc(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	account, err := s.service.ReconcileAccountWithChain(r.Context(), vars["address"])
+	if err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	handleJsonResponse(rw, http.StatusOK, account)
 }

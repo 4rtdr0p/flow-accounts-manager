@@ -34,11 +34,11 @@ import FungibleToken from "./FungibleToken.cdc"
 import TOKEN_DECLARATION_NAME from TOKEN_ADDRESS
 
 transaction(amount: UFix64, recipient: Address) {
-  let sentVault: @FungibleToken.Vault
+  let sentVault: @{FungibleToken.Vault}
 
   prepare(signer: auth(Storage, FungibleToken.Withdraw) &Account) {
     let vaultRef = signer.storage
-      .borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
+      .borrow<auth(FungibleToken.Withdraw) &TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
       ?? panic("failed to borrow reference to sender vault")
 
     self.sentVault <- vaultRef.withdraw(amount: amount)
@@ -47,7 +47,7 @@ transaction(amount: UFix64, recipient: Address) {
   execute {
     let receiverRef = getAccount(recipient)
       .capabilities
-      .borrow<&TOKEN_DECLARATION_NAME.Vault & FungibleToken.Receiver>(TOKEN_RECEIVER)
+      .borrow<&{FungibleToken.Receiver}>(TOKEN_RECEIVER)
       ?? panic("failed to borrow reference to recipient vault")
 
     receiverRef.deposit(from: <-self.sentVault)
@@ -128,3 +128,25 @@ transaction(publicKeys: [String]) {
   }
 }
 `
+
+const GraduateAccountTransaction = `
+transaction(userPublicKey: String, revokeKeyIndices: [Int]) {
+  prepare(signer: auth(Keys) &Account) {
+    let key = PublicKey(
+      publicKey: userPublicKey.decodeHex(),
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_P256
+    )
+
+    signer.keys.add(
+      publicKey: key,
+      hashAlgorithm: HashAlgorithm.SHA3_256,
+      weight: 1000.0
+    )
+
+    for keyIndex in revokeKeyIndices {
+      signer.keys.revoke(keyIndex: keyIndex) ?? panic("missing custodial key")
+    }
+  }
+}
+`
+

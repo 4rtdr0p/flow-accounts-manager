@@ -590,6 +590,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/account'
+  '/accounts/{address}/graduate-to-self-custody':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Graduate custodial account to self-custody
+      description: Add a user-supplied public key to the account and revoke custodial keys atomically. After graduation, the API no longer signs for the account.
+      operationId: graduateToSelfCustody
+      x-required-scopes:
+        - account.key.graduate
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/graduateAccountRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/graduateAccountResponse'
   '/accounts/{address}/sign':
     post:
       summary: Sign a raw transaction
@@ -1459,6 +1484,26 @@ components:
                 type: string
               value:
                 type: string
+    graduateAccountRequest:
+      type: object
+      required:
+        - userPublicKey
+      properties:
+        userPublicKey:
+          type: string
+          example: '0xc885376ff315cc26e9740e5f5418c1e515cf690e590433a4774c2b9f4c522e7dbbb720b5049bed79820c66c8e6555997900579e6885b131180bb844cd87f4c62'
+    graduateAccountResponse:
+      type: object
+      properties:
+        address:
+          type: string
+          example: '0xf8d6e0586b0a20c7'
+        type:
+          type: string
+          example: non-custodial
+        status:
+          type: string
+          example: graduated
     cadenceValue:
       type: object
       properties:

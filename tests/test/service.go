@@ -114,8 +114,11 @@ func GetServices(t *testing.T, cfg *configs.Config) Services {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp)
-	accountService := accounts.NewService(cfg, accounts.NewGormStore(db), km, fc, wp, transactionService, templateService)
+	accountStore := accounts.NewGormStore(db)
+	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp, transactions.WithCustodialSigningGuard(func(address string) error {
+		return accounts.RequireCustodialForSigning(accountStore, address, cfg.ChainID)
+	}))
+	accountService := accounts.NewService(cfg, accountStore, km, fc, wp, transactionService, templateService)
 	jobService := jobs.NewService(jobs.NewGormStore(db))
 	tokenService := tokens.NewService(cfg, tokens.NewGormStore(db), km, fc, wp, transactionService, templateService, accountService)
 	opsService := ops.NewService(cfg, ops.NewGormStore(db), templateService, transactionService, tokenService)

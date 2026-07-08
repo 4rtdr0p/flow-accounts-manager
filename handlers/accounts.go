@@ -19,6 +19,16 @@ type SyncKeyCountRequest struct {
 	Address flow.Address `json:"address"`
 }
 
+type GraduateAccountRequest struct {
+	UserPublicKey string `json:"userPublicKey"`
+}
+
+type GraduateAccountResponse struct {
+	Address string               `json:"address"`
+	Type    accounts.AccountType `json:"type"`
+	Status  string               `json:"status"`
+}
+
 // NewAccounts initiates a new accounts server.
 func NewAccounts(service accounts.Service) *Accounts {
 	return &Accounts{service}
@@ -54,4 +64,12 @@ func (s *Accounts) ActivateArtist() http.Handler {
 
 func (s *Accounts) EnableCommunityPool() http.Handler {
 	return http.HandlerFunc(s.EnableCommunityPoolFunc)
+}
+
+func (s *Accounts) GraduateToSelfCustody() http.Handler {
+	return http.HandlerFunc(s.GraduateToSelfCustodyFunc)
+}
+
+func (s *Accounts) ReconcileAccount() http.Handler {
+	return http.HandlerFunc(s.ReconcileAccountFunc)
 }

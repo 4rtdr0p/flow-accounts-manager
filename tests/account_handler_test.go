@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
 	"github.com/onflow/flow-go-sdk"
+	"github.com/onflow/flow-go-sdk/crypto"
 )
 
 func TestEmulatorAcceptsSignedTransaction(t *testing.T) {
@@ -26,10 +28,11 @@ func TestEmulatorAcceptsSignedTransaction(t *testing.T) {
 	svcs := test.GetServices(t, cfg)
 
 	accHandler := handlers.NewAccounts(svcs.GetAccounts())
-	txHandler := handlers.NewTransactions(svcs.GetTransactions())
+	txHandler := handlers.NewTransactions(svcs.GetTransactions(), svcs.GetAccounts())
 
 	router := mux.NewRouter()
 	router.Handle("/", accHandler.Create()).Methods(http.MethodPost)
+	router.Handle("/{address}/graduate-to-self-custody", accHandler.GraduateToSelfCustody()).Methods(http.MethodPost)
 	router.Handle("/{address}/sign", txHandler.Sign()).Methods(http.MethodPost)
 
 	// Create signing account.
@@ -39,7 +42,7 @@ func TestEmulatorAcceptsSignedTransaction(t *testing.T) {
 	fromJsonBody(t, res, &account)
 
 	// Transaction:
-	code := "transaction(greeting: String) { prepare(signer: AuthAccount){} execute { log(greeting.concat(\", World!\")) }}"
+	code := "transaction(greeting: String) { prepare(signer: &Account) {} execute { log(greeting.concat(\", World!\")) }}"
 	args := "[{\"type\":\"String\",\"value\":\"Hello\"}]"
 
 	// Sign it.
@@ -87,6 +90,146 @@ func TestEmulatorAcceptsSignedTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestGraduateToSelfCustody(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	svcs := test.GetServices(t, cfg)
+	fc := test.NewFlowClient(t, cfg)
+
+	accHandler := handlers.NewAccounts(svcs.GetAccounts())
+	txHandler := handlers.NewTransactions(svcs.GetTransactions(), svcs.GetAccounts())
+
+	router := mux.NewRouter()
+	router.Handle("/", accHandler.Create()).Methods(http.MethodPost)
+	router.Handle("/{address}/graduate-to-self-custody", accHandler.GraduateToSelfCustody()).Methods(http.MethodPost)
+	router.Handle("/{address}/sign", txHandler.Sign()).Methods(http.MethodPost)
+	router.Handle("/{address}/transactions", txHandler.Create()).Methods(http.MethodPost)
+
+	var account accounts.Account
+	res := send(router, http.MethodPost, "/?sync=true", nil)
+	assertStatusCode(t, res, http.StatusCreated)
+	fromJsonBody(t, res, &account)
+
+	beforeGraduate, err := fc.GetAccount(context.Background(), flow.HexToAddress(account.Address))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	custodialIndices := make([]uint32, 0, len(beforeGraduate.Keys))
+	for _, key := range beforeGraduate.Keys {
+		if !key.Revoked {
+			custodialIndices = append(custodialIndices, key.Index)
+		}
+	}
+	if len(custodialIndices) == 0 {
+		t.Fatal("expected custodial account to have active keys before graduation")
+	}
+
+	userPublicKey := newTestPublicKeyHex(t)
+
+	graduateBody := bytes.NewBufferString(fmt.Sprintf("{\"userPublicKey\":%q}", userPublicKey))
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/graduate-to-self-custody", account.Address), graduateBody)
+	assertStatusCode(t, res, http.StatusOK)
+
+	var graduateResp handlers.GraduateAccountResponse
+	fromJsonBody(t, res, &graduateResp)
+
+	if graduateResp.Status != "graduated" {
+		t.Fatalf("expected status %q, got %q", "graduated", graduateResp.Status)
+	}
+	if graduateResp.Type != accounts.AccountTypeNonCustodial {
+		t.Fatalf("expected type %q, got %q", accounts.AccountTypeNonCustodial, graduateResp.Type)
+	}
+
+	updatedAccount, err := svcs.GetAccounts().Details(account.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedAccount.Type != accounts.AccountTypeNonCustodial {
+		t.Fatalf("expected stored account type %q, got %q", accounts.AccountTypeNonCustodial, updatedAccount.Type)
+	}
+
+	onChainAccount, err := fc.GetAccount(context.Background(), flow.HexToAddress(account.Address))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var foundUserKey bool
+	for _, key := range onChainAccount.Keys {
+		if key.PublicKey.String() == userPublicKey && !key.Revoked {
+			foundUserKey = true
+		}
+	}
+	if !foundUserKey {
+		t.Fatal("expected graduated account to include active user key")
+	}
+
+	onChainByIndex := make(map[uint32]flow.AccountKey, len(onChainAccount.Keys))
+	for _, key := range onChainAccount.Keys {
+		onChainByIndex[key.Index] = *key
+	}
+	for _, idx := range custodialIndices {
+		key, ok := onChainByIndex[idx]
+		if !ok {
+			t.Fatalf("expected custodial key index %d on chain", idx)
+		}
+		if !key.Revoked {
+			t.Fatalf("expected custodial key index %d to be revoked", idx)
+		}
+	}
+
+	rawTxBody := bytes.NewBufferString(`{"code":"transaction() { prepare(signer: &Account) {} execute {} }","arguments":[]}`)
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/sign", account.Address), rawTxBody)
+	assertStatusCode(t, res, http.StatusForbidden)
+
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/transactions", account.Address), bytes.NewBuffer(rawTxBody.Bytes()))
+	assertStatusCode(t, res, http.StatusForbidden)
+}
+
+func TestGraduateToSelfCustodyAlreadyGraduated(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	svcs := test.GetServices(t, cfg)
+
+	accHandler := handlers.NewAccounts(svcs.GetAccounts())
+
+	router := mux.NewRouter()
+	router.Handle("/", accHandler.Create()).Methods(http.MethodPost)
+	router.Handle("/{address}/graduate-to-self-custody", accHandler.GraduateToSelfCustody()).Methods(http.MethodPost)
+
+	var account accounts.Account
+	res := send(router, http.MethodPost, "/?sync=true", nil)
+	assertStatusCode(t, res, http.StatusCreated)
+	fromJsonBody(t, res, &account)
+
+	userPublicKey := newTestPublicKeyHex(t)
+	graduateBody := bytes.NewBufferString(fmt.Sprintf("{\"userPublicKey\":%q}", userPublicKey))
+
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/graduate-to-self-custody", account.Address), graduateBody)
+	assertStatusCode(t, res, http.StatusOK)
+
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/graduate-to-self-custody", account.Address), graduateBody)
+	assertStatusCode(t, res, http.StatusBadRequest)
+}
+
+func TestGraduateToSelfCustodyInvalidPublicKey(t *testing.T) {
+	cfg := test.LoadConfig(t)
+	svcs := test.GetServices(t, cfg)
+
+	accHandler := handlers.NewAccounts(svcs.GetAccounts())
+
+	router := mux.NewRouter()
+	router.Handle("/", accHandler.Create()).Methods(http.MethodPost)
+	router.Handle("/{address}/graduate-to-self-custody", accHandler.GraduateToSelfCustody()).Methods(http.MethodPost)
+
+	var account accounts.Account
+	res := send(router, http.MethodPost, "/?sync=true", nil)
+	assertStatusCode(t, res, http.StatusCreated)
+	fromJsonBody(t, res, &account)
+
+	body := bytes.NewBufferString(`{"userPublicKey":"not-a-valid-key"}`)
+	res = send(router, http.MethodPost, fmt.Sprintf("/%s/graduate-to-self-custody", account.Address), body)
+	assertStatusCode(t, res, http.StatusBadRequest)
 }
 
 func TestWatchlistAccountManagement(t *testing.T) {
@@ -181,4 +324,20 @@ func send(router *mux.Router, method, path string, body io.Reader) *http.Respons
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	return rr.Result()
+}
+
+func newTestPublicKeyHex(t *testing.T) string {
+	t.Helper()
+
+	seed := make([]byte, 64)
+	if _, err := rand.Read(seed); err != nil {
+		t.Fatal(err)
+	}
+
+	privateKey, err := crypto.GeneratePrivateKey(crypto.ECDSA_P256, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return privateKey.PublicKey().String()
 }
