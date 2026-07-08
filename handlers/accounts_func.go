@@ -159,3 +159,23 @@ func (s *Accounts) SyncAccountKeyCountFunc(rw http.ResponseWriter, r *http.Reque
 
 	handleJsonResponse(rw, http.StatusOK, job)
 }
+
+func (s *Accounts) RotateKeyFunc(rw http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	sync := r.FormValue(SyncQueryParameter) != ""
+
+	job, result, err := s.service.RotateKey(r.Context(), sync, vars["address"])
+	if err != nil {
+		handleError(rw, r, err)
+		return
+	}
+
+	var res interface{}
+	if sync {
+		res = result
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handleJsonResponse(rw, http.StatusCreated, res)
+}

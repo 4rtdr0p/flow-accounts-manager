@@ -34,6 +34,7 @@ type Service interface {
 	AddNonCustodialAccount(address string) (*Account, error)
 	DeleteNonCustodialAccount(address string) error
 	SyncAccountKeyCount(ctx context.Context, address flow.Address) (*jobs.Job, error)
+	RotateKey(ctx context.Context, sync bool, address string) (*jobs.Job, *RotateKeyResult, error)
 	Details(address string) (Account, error)
 	ActivateArtist(address string) (Account, error)
 	EnableCommunityPool(ctx context.Context, address string) (Account, error)
@@ -80,6 +81,7 @@ func NewService(
 	// Register asynchronous job executors
 	wp.RegisterExecutor(AccountCreateJobType, svc.executeAccountCreateJob)
 	wp.RegisterExecutor(SyncAccountKeyCountJobType, svc.executeSyncAccountKeyCountJob)
+	wp.RegisterExecutor(RotateKeyJobType, svc.executeRotateKeyJob)
 
 	return svc
 }
