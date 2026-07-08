@@ -79,6 +79,10 @@ func (s *Transactions) CreateFunc(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.ensureCustodialForSigning(rw, r, vars["address"]); err != nil {
+		return
+	}
+
 	// Decide whether to serve sync or async, default async
 	sync := r.FormValue(SyncQueryParameter) != ""
 	job, transaction, err := s.service.Create(r.Context(), sync, vars["address"], txReq.Code, txReq.Arguments, transactions.General)
@@ -106,6 +110,10 @@ func (s *Transactions) SignFunc(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	vars := mux.Vars(r)
+
+	if err := s.ensureCustodialForSigning(rw, r, vars["address"]); err != nil {
+		return
+	}
 
 	var txReq transactions.JSONRequest
 
@@ -199,4 +207,17 @@ func (s *Transactions) ExecuteScriptFunc(rw http.ResponseWriter, r *http.Request
 	}
 
 	handleJsonResponse(rw, http.StatusOK, res)
+}
+
+func (s *Transactions) ensureCustodialForSigning(rw http.ResponseWriter, r *http.Request, address string) error {
+	if s.accountService == nil {
+		return nil
+	}
+
+	if err := s.accountService.RequireCustodialForSigning(address); err != nil {
+		handleError(rw, r, err)
+		return err
+	}
+
+	return nil
 }

@@ -35,7 +35,6 @@ type Services interface {
 	GetKeyManager() keys.Manager
 	GetListener() chain_events.Listener
 	GetFlowClient() flow_helpers.FlowClient
-	GetDB() *upstreamgorm.DB
 }
 
 type svcs struct {
@@ -50,7 +49,6 @@ type svcs struct {
 	keyManager keys.Manager
 	listener   chain_events.Listener
 	flowClient flow_helpers.FlowClient
-	db         *upstreamgorm.DB
 }
 
 func GetDatabase(t *testing.T, cfg *configs.Config) *upstreamgorm.DB {
@@ -116,8 +114,11 @@ func GetServices(t *testing.T, cfg *configs.Config) Services {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp)
-	accountService := accounts.NewService(cfg, accounts.NewGormStore(db), km, fc, wp, transactionService, templateService)
+	accountStore := accounts.NewGormStore(db)
+	transactionService := transactions.NewService(cfg, transactions.NewGormStore(db), km, fc, wp, transactions.WithCustodialSigningGuard(func(address string) error {
+		return accounts.RequireCustodialForSigning(accountStore, address, cfg.ChainID)
+	}))
+	accountService := accounts.NewService(cfg, accountStore, km, fc, wp, transactionService, templateService)
 	jobService := jobs.NewService(jobs.NewGormStore(db))
 	tokenService := tokens.NewService(cfg, tokens.NewGormStore(db), km, fc, wp, transactionService, templateService, accountService)
 	opsService := ops.NewService(cfg, ops.NewGormStore(db), templateService, transactionService, tokenService)
@@ -186,7 +187,6 @@ func GetServices(t *testing.T, cfg *configs.Config) Services {
 		keyManager: km,
 		listener:   listener,
 		flowClient: fc,
-		db:         db,
 	}
 }
 
@@ -228,8 +228,4 @@ func (s *svcs) GetSystem() system.Service {
 
 func (s *svcs) GetFlowClient() flow_helpers.FlowClient {
 	return s.flowClient
-}
-
-func (s *svcs) GetDB() *upstreamgorm.DB {
-	return s.db
 }

@@ -32,12 +32,13 @@ type Service interface {
 
 // ServiceImpl defines the API for transaction HTTP handlers.
 type ServiceImpl struct {
-	store         Store
-	km            keys.Manager
-	fc            flow_helpers.FlowClient
-	wp            jobs.WorkerPool
-	cfg           *configs.Config
-	txRateLimiter ratelimit.Limiter
+	store                 Store
+	custodialSigningGuard CustodialSigningGuard
+	km                    keys.Manager
+	fc                    flow_helpers.FlowClient
+	wp                    jobs.WorkerPool
+	cfg                   *configs.Config
+	txRateLimiter         ratelimit.Limiter
 }
 
 // NewService initiates a new transaction service.
@@ -52,7 +53,14 @@ func NewService(
 	var defaultTxRatelimiter = ratelimit.NewUnlimited()
 
 	// TODO(latenssi): safeguard against nil config?
-	svc := &ServiceImpl{store, km, fc, wp, cfg, defaultTxRatelimiter}
+	svc := &ServiceImpl{
+		store:         store,
+		km:            km,
+		fc:            fc,
+		wp:            wp,
+		cfg:           cfg,
+		txRateLimiter: defaultTxRatelimiter,
+	}
 
 	for _, opt := range opts {
 		opt(svc)
@@ -209,6 +217,12 @@ func (s *ServiceImpl) GetOrCreateTransaction(transactionId string) *Transaction 
 }
 
 func (s *ServiceImpl) buildFlowTransaction(ctx context.Context, proposerAddress, code string, arguments []Argument) (*flow.Transaction, error) {
+	if s.custodialSigningGuard != nil {
+		if err := s.custodialSigningGuard(proposerAddress); err != nil {
+			return nil, err
+		}
+	}
+
 	latestBlockID, err := flow_helpers.LatestBlockId(ctx, s.fc)
 	if err != nil {
 		return nil, err

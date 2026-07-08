@@ -3,14 +3,19 @@ package accounts
 import (
 	"context"
 	"encoding/json"
+	stdErrors "errors"
 	"fmt"
+	"strings"
+	"net"
+	"net/http"
 	"os"
 	"sort"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/datastore"
+	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
@@ -33,8 +38,10 @@ type Service interface {
 	Create(ctx context.Context, sync bool) (*jobs.Job, *Account, error)
 	AddNonCustodialAccount(address string) (*Account, error)
 	DeleteNonCustodialAccount(address string) error
+	GraduateToSelfCustody(ctx context.Context, address, userPublicKey string) (*Account, error)
+	ReconcileAccountWithChain(ctx context.Context, address string) (Account, error)
+	RequireCustodialForSigning(address string) error
 	SyncAccountKeyCount(ctx context.Context, address flow.Address) (*jobs.Job, error)
-	RotateKey(ctx context.Context, sync bool, address string) (*jobs.Job, *RotateKeyResult, error)
 	Details(address string) (Account, error)
 	ActivateArtist(address string) (Account, error)
 	EnableCommunityPool(ctx context.Context, address string) (Account, error)
@@ -81,7 +88,6 @@ func NewService(
 	// Register asynchronous job executors
 	wp.RegisterExecutor(AccountCreateJobType, svc.executeAccountCreateJob)
 	wp.RegisterExecutor(SyncAccountKeyCountJobType, svc.executeSyncAccountKeyCountJob)
-	wp.RegisterExecutor(RotateKeyJobType, svc.executeRotateKeyJob)
 
 	return svc
 }
@@ -155,6 +161,82 @@ func (s *ServiceImpl) DeleteNonCustodialAccount(address string) error {
 	}
 
 	return s.store.HardDeleteAccount(&a)
+}
+
+func (s *ServiceImpl) GraduateToSelfCustody(ctx context.Context, address, userPublicKey string) (*Account, error) {
+	log.WithFields(log.Fields{"address": address}).Trace("Graduate account to self-custody")
+
+	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	account, err := s.store.Account(address)
+	if err != nil {
+		return nil, err
+	}
+
+	if account.Type == AccountTypeNonCustodial {
+		return nil, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("account is already non-custodial"),
+		}
+	}
+
+	if len(account.Keys) == 0 {
+		return nil, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("custodial account has no stored keys"),
+		}
+	}
+
+	normalizedPublicKey, err := normalizeUserPublicKey(userPublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	revokeIndices := make([]cadence.Value, 0, len(account.Keys))
+	seenIndices := make(map[int]struct{}, len(account.Keys))
+
+	sort.SliceStable(account.Keys, func(i, j int) bool {
+		return account.Keys[i].Index < account.Keys[j].Index
+	})
+
+	for _, key := range account.Keys {
+		if _, ok := seenIndices[key.Index]; ok {
+			continue
+		}
+		seenIndices[key.Index] = struct{}{}
+		revokeIndices = append(revokeIndices, cadence.NewInt(key.Index))
+	}
+
+	code := template_strings.GraduateAccountTransaction
+	args := []transactions.Argument{
+		cadence.String(normalizedPublicKey),
+		cadence.NewArray(revokeIndices),
+	}
+
+	_, _, err = s.txs.Create(ctx, true, account.Address, code, args, transactions.General)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify on-chain state before committing to the database.
+	if err := s.verifyGraduatedOnChain(ctx, account.Address, normalizedPublicKey, seenIndices); err != nil {
+		return nil, fmt.Errorf("graduation on-chain verification failed: %w", err)
+	}
+
+	account.Type = AccountTypeNonCustodial
+	if err := s.saveAccountWithRetry(ctx, &account); err != nil {
+		log.WithFields(log.Fields{"address": account.Address, "err": err}).Error("failed to save graduated account after retries")
+		return nil, fmt.Errorf("save graduated account: %w", err)
+	}
+
+	return &account, nil
+}
+
+func (s *ServiceImpl) RequireCustodialForSigning(address string) error {
+	return RequireCustodialForSigning(s.store, address, s.cfg.ChainID)
 }
 
 // Details returns a specific account, does not include private keys
@@ -248,11 +330,169 @@ func (s *ServiceImpl) withCommunityPoolLock(address string, fn func() (Account, 
 	return fn()
 }
 
+func normalizeUserPublicKey(userPublicKey string) (string, error) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(userPublicKey, "0x"))
+	if trimmed == "" {
+		return "", &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("userPublicKey is required"),
+		}
+	}
+
+	_, err := flow_crypto.DecodePublicKeyHex(flow_crypto.ECDSA_P256, trimmed)
+	if err != nil {
+		return "", &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid userPublicKey"),
+		}
+	}
+
+	return trimmed, nil
+}
+
+func (s *ServiceImpl) ReconcileAccountWithChain(ctx context.Context, address string) (Account, error) {
+	log.WithFields(log.Fields{"address": address}).Trace("Reconcile account with chain")
+
+	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
+	if err != nil {
+		return Account{}, err
+	}
+
+	account, err := s.store.Account(address)
+	if err != nil {
+		return Account{}, err
+	}
+
+	// Only reconcile forward: custodial in DB -> non-custodial on chain.
+	// Never downgrade a non-custodial account back to custodial.
+	if account.Type == AccountTypeNonCustodial {
+		return account, nil
+	}
+
+	flowAccount, err := s.fc.GetAccount(ctx, flow.HexToAddress(address))
+	if err != nil {
+		return Account{}, err
+	}
+
+	if s.custodialKeysRevokedOnChain(account, flowAccount) {
+		account.Type = AccountTypeNonCustodial
+		if err := s.store.SaveAccount(&account); err != nil {
+			return Account{}, fmt.Errorf("update reconciled account: %w", err)
+		}
+		log.WithFields(log.Fields{"address": address}).Info("reconciled account to non-custodial from on-chain state")
+	}
+
+	return account, nil
+}
+
+func (s *ServiceImpl) verifyGraduatedOnChain(ctx context.Context, address string, userPublicKey string, revokedIndices map[int]struct{}) error {
+	flowAddress := flow.HexToAddress(address)
+	flowAccount, err := s.fc.GetAccount(ctx, flowAddress)
+	if err != nil {
+		return err
+	}
+
+	userKeyFound := false
+	for _, key := range flowAccount.Keys {
+		if key.Revoked {
+			continue
+		}
+		if strings.TrimPrefix(key.PublicKey.String(), "0x") == userPublicKey {
+			userKeyFound = true
+		}
+	}
+	if !userKeyFound {
+		return fmt.Errorf("graduated user key not found active on chain")
+	}
+
+	onChainByIndex := make(map[uint32]*flow.AccountKey, len(flowAccount.Keys))
+	for _, key := range flowAccount.Keys {
+		onChainByIndex[key.Index] = key
+	}
+
+	for idx := range revokedIndices {
+		key, ok := onChainByIndex[uint32(idx)]
+		if !ok {
+			return fmt.Errorf("expected custodial key index %d not found on chain", idx)
+		}
+		if !key.Revoked {
+			return fmt.Errorf("expected custodial key index %d to be revoked on chain", idx)
+		}
+	}
+
+	return nil
+}
+
+func (s *ServiceImpl) custodialKeysRevokedOnChain(account Account, flowAccount *flow.Account) bool {
+	onChainByIndex := make(map[uint32]*flow.AccountKey, len(flowAccount.Keys))
+	for _, key := range flowAccount.Keys {
+		onChainByIndex[key.Index] = key
+	}
+
+	for _, key := range account.Keys {
+		onChainKey, ok := onChainByIndex[uint32(key.Index)]
+		if !ok || !onChainKey.Revoked {
+			return false
+		}
+	}
+
+	return len(account.Keys) > 0
+}
+
+func (s *ServiceImpl) saveAccountWithRetry(ctx context.Context, account *Account) error {
+	backoffs := []time.Duration{100 * time.Millisecond, 500 * time.Millisecond, 1 * time.Second}
+
+	var err error
+	for attempt := 0; attempt <= len(backoffs); attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoffs[attempt-1]):
+			}
+		}
+
+		err = s.store.SaveAccount(account)
+		if err == nil {
+			return nil
+		}
+
+		if !isTransientError(err) {
+			return err
+		}
+
+		log.WithFields(log.Fields{"address": account.Address, "attempt": attempt + 1, "err": err}).Warn("transient error saving account, retrying")
+	}
+
+	return err
+}
+
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if stdErrors.Is(err, context.DeadlineExceeded) || stdErrors.Is(err, context.Canceled) {
+		return true
+	}
+
+	var netErr net.Error
+	if stdErrors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	return false
+}
+
 // SyncKeyCount syncs number of keys for given account
 func (s *ServiceImpl) SyncAccountKeyCount(ctx context.Context, address flow.Address) (*jobs.Job, error) {
 	// Validate address, they might be legit addresses but for the wrong chain
 	if !address.IsValid(s.cfg.ChainID) {
 		return nil, fmt.Errorf(`not a valid address for %s: "%s"`, s.cfg.ChainID, address)
+	}
+
+	if err := s.RequireCustodialForSigning(address.Hex()); err != nil {
+		return nil, err
 	}
 
 	// Prepare job attributes required for executing the job

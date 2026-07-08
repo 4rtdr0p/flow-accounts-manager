@@ -554,29 +554,67 @@ paths:
                 oneOf:
                   - $ref: '#/components/schemas/job'
                   - $ref: '#/components/schemas/transaction'
-  '/accounts/{address}/rotate-key':
+  '/accounts/{address}/artist-activate':
     parameters:
       - $ref: '#/components/parameters/address'
     post:
-      summary: Rotate custodial account key
-      description: Generate a new key in the HSM and atomically add it and revoke the active signing key in a single Flow transaction.
-      operationId: rotateAccountKey
+      summary: Activate artist role
+      description: Marks an existing custodial account as an artist account. Does not create a community pool address.
+      operationId: activateArtistAccount
       x-required-scopes:
-        - account.rotate
+        - account.artist.activate
       tags:
         - Accounts
-      parameters:
-        - $ref: '#/components/parameters/sync'
-        - $ref: '#/components/parameters/idempotencyKey'
       responses:
-        '201':
-          description: Created
+        '200':
+          description: OK
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/job'
-                  - $ref: '#/components/schemas/rotateKeyResult'
+                $ref: '#/components/schemas/account'
+  '/accounts/{address}/community-pool-enable':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Enable community pool
+      description: Creates and links a second custodial Flow address for the artist community pool. This only happens when called explicitly.
+      operationId: enableArtistCommunityPool
+      x-required-scopes:
+        - account.community_pool.enable
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
+  '/accounts/{address}/graduate-to-self-custody':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    post:
+      summary: Graduate custodial account to self-custody
+      description: Add a user-supplied public key to the account and revoke custodial keys atomically. After graduation, the API no longer signs for the account.
+      operationId: graduateToSelfCustody
+      x-required-scopes:
+        - account.key.graduate
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/graduateAccountRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/graduateAccountResponse'
   '/accounts/{address}/sign':
     post:
       summary: Sign a raw transaction
@@ -1254,29 +1292,6 @@ components:
         signature:
           type: string
           example: e2beedaf426c414925a7757defa61d1169781f1d84bc713788767efae54c1e275dc353481fc386cf7a961415cf9e749c384fdec35f8af0fc93e20d2da8cc29ef
-    rotateKeyResult:
-      type: object
-      required:
-        - newKeyId
-        - newKeyIndex
-        - oldKeyIndex
-        - oldKeyRevoked
-      properties:
-        newKeyId:
-          type: integer
-          example: 42
-        newKeyIndex:
-          type: integer
-          example: 3
-        oldKeyIndex:
-          type: integer
-          example: 0
-        oldKeyRevoked:
-          type: boolean
-          example: true
-        transactionId:
-          type: string
-          example: e245813137217658
     job:
       type: object
       properties:
@@ -1324,6 +1339,26 @@ components:
                 type: string
               value:
                 type: string
+    graduateAccountRequest:
+      type: object
+      required:
+        - userPublicKey
+      properties:
+        userPublicKey:
+          type: string
+          example: '0xc885376ff315cc26e9740e5f5418c1e515cf690e590433a4774c2b9f4c522e7dbbb720b5049bed79820c66c8e6555997900579e6885b131180bb844cd87f4c62'
+    graduateAccountResponse:
+      type: object
+      properties:
+        address:
+          type: string
+          example: '0xf8d6e0586b0a20c7'
+        type:
+          type: string
+          example: non-custodial
+        status:
+          type: string
+          example: graduated
     cadenceValue:
       type: object
       properties:
