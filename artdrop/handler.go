@@ -77,7 +77,21 @@ func (h *Handler) Setup() http.Handler {
 }
 
 func (h *Handler) SetupFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, transaction, err := h.svc.Setup(r.Context(), sync, mux.Vars(r)["address"])
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var res interface{}
+	if sync {
+		res = transaction.ToJSONResponse()
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
 }
 
 func (h *Handler) CreateEscrow() http.Handler {

@@ -11,9 +11,9 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/datastore"
+	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/keys"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
-"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
 	"github.com/onflow/flow-go-sdk/crypto"
@@ -215,6 +215,14 @@ func (s *graduateStore) SaveAccount(a *Account) error {
 	return s.saveErr
 }
 
+func (s *graduateStore) InsertKey(k *keys.Storable) error { panic("not used") }
+
+func (s *graduateStore) ArchiveKey(id int) error { panic("not used") }
+
+func (s *graduateStore) RotateKeyState(oldKeyID int, newKey *keys.Storable) error {
+	panic("not used")
+}
+
 func (s *graduateStore) HardDeleteAccount(a *Account) error { return nil }
 
 type graduateTxService struct {
@@ -331,7 +339,7 @@ type testTransientError struct {
 	msg string
 }
 
-func (e *testTransientError) Error() string { return e.msg }
+func (e *testTransientError) Error() string   { return e.msg }
 func (e *testTransientError) Timeout() bool   { return true }
 func (e *testTransientError) Temporary() bool { return true }
 

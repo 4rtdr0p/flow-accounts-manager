@@ -162,6 +162,24 @@ paths:
               example-1:
                 value:
                   address: '0xf669cb8d41ce0c74'
+  '/admin/reconcile/{address}':
+    parameters:
+      - $ref: '#/components/parameters/address'
+    get:
+      summary: Reconcile account state with chain
+      description: Reconcile local account custody state from on-chain keys after graduation.
+      operationId: reconcile-account-with-chain
+      x-required-scopes:
+        - account.key.graduate
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/account'
   /health/ready:
     get:
       summary: Healthcheck ready

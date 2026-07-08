@@ -143,7 +143,7 @@ func TestTransferRouteBelongsToArtDropPlugin(t *testing.T) {
 		Templates:        handlers.NewTemplates(nil),
 		Jobs:             handlers.NewJobs(nil),
 		Accounts:         handlers.NewAccounts(nil),
-		Transactions:     handlers.NewTransactions(nil),
+		Transactions:     handlers.NewTransactions(nil, nil),
 		Tokens:           handlers.NewTokens(nil),
 		Ops:              handlers.NewOps(nil),
 		DebugURL:         "debug-url",

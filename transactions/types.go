@@ -12,6 +12,7 @@ const (
 	NftSetup     Type = "NftSetup"
 	NftTransfer  Type = "NftTransfer"
 	ArtDropSetup Type = "ArtDropSetup"
+	KeyRotate    Type = "KeyRotate"
 )
 
 func (s Type) String() string {
@@ -43,5 +44,7 @@ func StatusFromText(text string) Type {
 		return NftTransfer
 	case "artdropsetup":
 		return ArtDropSetup
+	case "keyrotate":
+		return KeyRotate
 	}
 }
