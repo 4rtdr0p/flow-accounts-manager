@@ -121,10 +121,139 @@ func TestSetupFuncReturnsCreatedTransaction(t *testing.T) {
 	}
 }
 
+func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	})
+
+	_, _, err := svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
+		LogicOwner:      "0xf8d6e0586b0a20c7",
+		Buyer:           "0xf8d6e0586b0a20c7",
+		Seller:          "0x0ae53cb6e3f42a79",
+		EditionId:       42,
+		ChipId:          "chip-1",
+		ChipPubKey:      []byte{1, 2, 3},
+		UnlockAt:        123.45,
+		Nonce:           7,
+		Amount:          10.5,
+		VaultIdentifier: "flowTokenVault",
+	})
+	if err != nil {
+		t.Fatalf("CreateEscrow returned error: %v", err)
+	}
+
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+	}
+	call := txSvc.calls[0]
+	if call.proposerAddress != "0xf8d6e0586b0a20c7" {
+		t.Fatalf("expected admin proposer, got %q", call.proposerAddress)
+	}
+	if call.txType != TxTypeCreateEscrow {
+		t.Fatalf("expected type %q, got %q", TxTypeCreateEscrow, call.txType)
+	}
+	if !strings.Contains(call.code, "createEscrow") {
+		t.Fatal("expected create escrow CDC")
+	}
+	if len(call.args) != 10 {
+		t.Fatalf("expected 10 args, got %d", len(call.args))
+	}
+	if _, ok := call.args[5].(cadence.Array); !ok {
+		t.Fatalf("expected chip public key cadence array, got %T", call.args[5])
+	}
+}
+
+func TestServiceEscrowActionsUsePathAddressAndPathEscrowID(t *testing.T) {
+	tests := []struct {
+		name   string
+		call   func(*Service) (*jobs.Job, *transactions.Transaction, error)
+		txType transactions.Type
+		code   string
+	}{
+		{
+			name: "activate",
+			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
+				return svc.ActivateChip(context.Background(), true, "0xf8d6e0586b0a20c7", 55, ActivateChipRequest{
+					LogicOwner:       "0xf8d6e0586b0a20c7",
+					EscrowId:         99,
+					Challenge:        "challenge",
+					Signature:        []byte{9, 8, 7},
+					CertificateId:    123,
+					CertificateOwner: "0x0ae53cb6e3f42a79",
+				})
+			},
+			txType: TxTypeActivateChip,
+			code:   "activateChipAndSettle",
+		},
+		{
+			name: "release",
+			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
+				return svc.Release(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
+			},
+			txType: TxTypeRelease,
+			code:   "releaseEscrow",
+		},
+		{
+			name: "cancel",
+			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
+				return svc.Cancel(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
+			},
+			txType: TxTypeCancel,
+			code:   "cancel",
+		},
+		{
+			name: "refund",
+			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
+				return svc.Refund(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
+			},
+			txType: TxTypeRefund,
+			code:   "refund",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			txSvc := &setupTxService{}
+			svc := NewService(plugins.PluginDeps{
+				Transactions: txSvc,
+				Config:       &configs.Config{ChainID: flow.Emulator},
+			})
+
+			_, _, err := tt.call(svc)
+			if err != nil {
+				t.Fatalf("action returned error: %v", err)
+			}
+
+			if len(txSvc.calls) != 1 {
+				t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+			}
+			call := txSvc.calls[0]
+			if call.proposerAddress != "0xf8d6e0586b0a20c7" {
+				t.Fatalf("expected path proposer, got %q", call.proposerAddress)
+			}
+			if call.txType != tt.txType {
+				t.Fatalf("expected type %q, got %q", tt.txType, call.txType)
+			}
+			if !strings.Contains(call.code, tt.code) {
+				t.Fatalf("expected CDC containing %q", tt.code)
+			}
+			if got := call.args[1]; got != cadence.UInt64(55) {
+				t.Fatalf("expected path escrow id arg 55, got %#v", got)
+			}
+		})
+	}
+}
+
 type setupTxCall struct {
 	sync            bool
 	proposerAddress string
 	code            string
+	args            []transactions.Argument
 	txType          transactions.Type
 }
 
@@ -138,6 +267,7 @@ func (s *setupTxService) Create(ctx context.Context, sync bool, proposerAddress 
 		sync:            sync,
 		proposerAddress: proposerAddress,
 		code:            code,
+		args:            args,
 		txType:          tType,
 	})
 	if s.err != nil {
