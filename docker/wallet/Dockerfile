@@ -33,6 +33,7 @@ FROM scratch as dist
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /dist/main /
+COPY --from=builder /build/openapi.yml /openapi.yml
 COPY --from=builder /build/flow/cadence /flow/cadence
 COPY --from=builder /build/artdrop/cdc /artdrop/cdc
 
