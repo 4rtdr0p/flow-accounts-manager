@@ -3,7 +3,6 @@ package example
 import (
 	"context"
 	_ "embed"
-	"strings"
 
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
@@ -39,7 +38,7 @@ func (s *Service) SetupExampleAccount(ctx context.Context, sync bool, address st
 	}
 
 	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, setupExampleCDC, nil, TransactionType)
-	if err == nil || strings.Contains(err.Error(), "vault exists") {
+	if err == nil || flow_helpers.IsVaultExistsError(err) {
 		for _, tokenName := range setupTokenNames {
 			if addErr := s.deps.Tokens.AddAccountToken(tokenName, address); addErr != nil {
 				log.

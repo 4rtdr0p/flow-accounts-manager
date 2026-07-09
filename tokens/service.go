@@ -104,7 +104,7 @@ func (s *ServiceImpl) Setup(ctx context.Context, sync bool, tokenName, address s
 
 	job, tx, err := s.transactions.Create(ctx, sync, address, token.Setup, nil, txType)
 
-	if err == nil || strings.Contains(err.Error(), "vault exists") {
+	if err == nil || flow_helpers.IsVaultExistsError(err) {
 		// Handle adding token to account in database
 		if err := s.store.InsertAccountToken(&AccountToken{
 			AccountAddress: address,

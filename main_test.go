@@ -1056,10 +1056,8 @@ func TestTokenServices(t *testing.T) {
 
 		// Setup the admin account to be able to handle FUSD
 		_, _, err = svc.Setup(ctx, true, tokenName, cfg.AdminAddress)
-		if err != nil {
-			if !strings.Contains(err.Error(), "vault exists") {
-				t.Fatal(err)
-			}
+		if err != nil && !flow_helpers.IsVaultExistsError(err) {
+			t.Fatal(err)
 		}
 
 		// Create an account
