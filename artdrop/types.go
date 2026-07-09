@@ -29,6 +29,7 @@ type CreateEscrowRequest struct {
 	ChipPubKey      []byte  `json:"chip_pub_key"`
 	UnlockAt        float64 `json:"unlock_at"`
 	Nonce           uint64  `json:"nonce"`
+	Amount          float64 `json:"amount"`
 	VaultIdentifier string  `json:"vault_identifier"`
 }
 

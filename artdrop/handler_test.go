@@ -81,6 +81,67 @@ func TestTransferRequiresCertificateID(t *testing.T) {
 	}
 }
 
+func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
+	txSvc := &captureTransactionService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	}))
+
+	body := `{
+		"logic_owner":"0xf8d6e0586b0a20c7",
+		"buyer":"0xf8d6e0586b0a20c7",
+		"seller":"0x0ae53cb6e3f42a79",
+		"edition_id":42,
+		"chip_id":"chip-1",
+		"chip_pub_key":"AQID",
+		"unlock_at":123.45,
+		"nonce":7,
+		"amount":10.5,
+		"vault_identifier":"flowTokenVault"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.CreateEscrow().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if len(txSvc.args) != 10 {
+		t.Fatalf("expected 10 Cadence args, got %d", len(txSvc.args))
+	}
+}
+
+func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Config: &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/not-a-number/release",
+		strings.NewReader(`{"logic_owner":"0xf8d6e0586b0a20c7"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{
+		"address":  "0xf8d6e0586b0a20c7",
+		"escrowId": "not-a-number",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.Release().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
 type captureTransactionService struct {
 	args []transactions.Argument
 }
