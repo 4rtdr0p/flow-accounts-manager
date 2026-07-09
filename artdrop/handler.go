@@ -139,7 +139,15 @@ func (h *Handler) ListCertificates() http.Handler {
 }
 
 func (h *Handler) ListCertificatesFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	address := mux.Vars(r)["address"]
+
+	certs, err := h.svc.ListCertificates(r.Context(), address)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, certs)
 }
 
 func (h *Handler) GetEscrow() http.Handler {
@@ -147,5 +155,23 @@ func (h *Handler) GetEscrow() http.Handler {
 }
 
 func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	escrowIdStr := vars["escrowId"]
+
+	var escrowId uint64
+	if _, err := fmt.Sscanf(escrowIdStr, "%d", &escrowId); err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid escrowId: %s", escrowIdStr),
+		})
+		return
+	}
+
+	summary, err := h.svc.GetEscrow(r.Context(), escrowId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
 }

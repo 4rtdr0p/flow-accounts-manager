@@ -21,6 +21,12 @@ var setupCollectionCDC string
 //go:embed cdc/register_provider.cdc
 var registerProviderCDC string
 
+//go:embed cdc/get_certificate_ids.cdc
+var getCertificateIDsCDC string
+
+//go:embed cdc/get_escrow_summary.cdc
+var getEscrowSummaryCDC string
+
 // Service implements the artdrop plugin business logic.
 type Service struct {
 	deps plugins.PluginDeps
@@ -112,10 +118,51 @@ func (s *Service) Refund(ctx context.Context, sync bool, address string, escrowI
 
 // ListCertificates returns the certificates owned by the given address.
 func (s *Service) ListCertificates(ctx context.Context, address string) ([]CertificateInfo, error) {
-	return nil, errors.New("artdrop: not implemented")
+	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIDsCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_ids script: %w", err)
+	}
+
+	ids, ok := val.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
+	}
+
+	certs := make([]CertificateInfo, len(ids.Values))
+	for i, v := range ids.Values {
+		id, ok := v.(cadence.UInt64)
+		if !ok {
+			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.UInt64", v, i)
+		}
+		certs[i] = CertificateInfo{Id: uint64(id)}
+	}
+
+	return certs, nil
 }
 
 // GetEscrow returns a summary of the requested escrow.
 func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
-	return nil, errors.New("artdrop: not implemented")
+	args := []transactions.Argument{cadence.NewUInt64(escrowId)}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEscrowSummaryCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrow_summary script: %w", err)
+	}
+
+	status, ok := val.(cadence.UInt8)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.UInt8", val)
+	}
+
+	return &EscrowSummary{
+		Id:     escrowId,
+		Status: uint8(status),
+	}, nil
 }
