@@ -10,7 +10,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
@@ -29,6 +28,7 @@ import (
 	flow_templates "github.com/onflow/flow-go-sdk/templates"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
+	"golang.org/x/sync/singleflight"
 )
 
 const maxGasLimit = 9999
@@ -59,7 +59,7 @@ type ServiceImpl struct {
 	txs           transactions.Service
 	temps         templates.Service
 	txRateLimiter ratelimit.Limiter
-	cpLocks       sync.Map
+	cpSF          singleflight.Group
 }
 
 // NewService initiates a new account service.
@@ -324,12 +324,18 @@ func (s *ServiceImpl) EnableCommunityPool(ctx context.Context, address string) (
 }
 
 func (s *ServiceImpl) withCommunityPoolLock(address string, fn func() (Account, error)) (Account, error) {
-	locker, _ := s.cpLocks.LoadOrStore(address, &sync.Mutex{})
-	mu := locker.(*sync.Mutex)
-	mu.Lock()
-	defer mu.Unlock()
-
-	return fn()
+	v, err, _ := s.cpSF.Do(address, func() (interface{}, error) {
+		acc, e := fn()
+		if e != nil {
+			return Account{}, e
+		}
+		return acc, nil
+	})
+	if err != nil {
+		return Account{}, err
+	}
+	acc, _ := v.(Account)
+	return acc, nil
 }
 
 func normalizeUserPublicKey(userPublicKey string) (string, error) {
