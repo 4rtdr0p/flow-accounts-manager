@@ -51,7 +51,7 @@ func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42?logic_owner=0xf8d6e0586b0a20c7", nil)
 	req = mux.SetURLVars(req, map[string]string{
 		"address":  "0xf8d6e0586b0a20c7",
 		"escrowId": "42",
@@ -85,5 +85,22 @@ func TestGetEscrowHandlerRejectsInvalidEscrowId(t *testing.T) {
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid escrowId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetEscrowHandlerRequiresLogicOwner(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address":  "0xf8d6e0586b0a20c7",
+		"escrowId": "42",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetEscrow().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for missing logic_owner, got %d: %s", rw.Code, rw.Body.String())
 	}
 }

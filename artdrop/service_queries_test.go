@@ -94,7 +94,7 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	summary, err := svc.GetEscrow(context.Background(), 7)
+	summary, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
 	if err != nil {
 		t.Fatalf("GetEscrow returned error: %v", err)
 	}
@@ -103,6 +103,15 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 	}
 	if summary.Status != 3 {
 		t.Fatalf("expected status 3, got %d", summary.Status)
+	}
+	if len(txSvc.args) != 2 {
+		t.Fatalf("expected 2 script args, got %d", len(txSvc.args))
+	}
+	if txSvc.args[0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+		t.Fatalf("expected logic owner as first arg, got %#v", txSvc.args[0])
+	}
+	if txSvc.args[1] != cadence.NewUInt64(7) {
+		t.Fatalf("expected escrow id as second arg, got %#v", txSvc.args[1])
 	}
 }
 
@@ -113,7 +122,7 @@ func TestGetEscrowPropagatesScriptError(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	_, err := svc.GetEscrow(context.Background(), 7)
+	_, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -128,7 +137,7 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	_, err := svc.GetEscrow(context.Background(), 7)
+	_, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
 	if err == nil {
 		t.Fatal("expected error for unexpected script result type, got nil")
 	}
@@ -138,6 +147,7 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 
 type queryTxService struct {
 	scriptResult cadence.Value
+	args         []transactions.Argument
 	err          error
 }
 
@@ -169,6 +179,7 @@ func (s *queryTxService) ExecuteScript(ctx context.Context, code string, args []
 	if s.err != nil {
 		return nil, s.err
 	}
+	s.args = args
 	return s.scriptResult, nil
 }
 

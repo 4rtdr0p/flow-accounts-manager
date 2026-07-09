@@ -192,8 +192,16 @@ func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	logicOwner := r.URL.Query().Get("logic_owner")
+	if logicOwner == "" {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("field 'logic_owner' is required"),
+		})
+		return
+	}
 
-	summary, err := h.svc.GetEscrow(r.Context(), escrowId)
+	summary, err := h.svc.GetEscrow(r.Context(), logicOwner, escrowId)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return

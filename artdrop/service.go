@@ -238,8 +238,16 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 }
 
 // GetEscrow returns a summary of the requested escrow.
-func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
-	args := []transactions.Argument{cadence.NewUInt64(escrowId)}
+func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uint64) (*EscrowSummary, error) {
+	logicOwner, err := flow_helpers.ValidateAddress(logicOwner, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(logicOwner)),
+		cadence.NewUInt64(escrowId),
+	}
 
 	val, err := s.deps.Transactions.ExecuteScript(ctx, getEscrowSummaryCDC, args)
 	if err != nil {
