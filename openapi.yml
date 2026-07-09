@@ -732,6 +732,28 @@ paths:
       responses:
         '201':
           description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/activate-chip':
+    post:
+      summary: Activate an ArtDrop escrow chip
+      operationId: activateArtDropEscrowChipAlias
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/activate-and-settle':
+    post:
+      summary: Activate an ArtDrop escrow chip and settle
+      operationId: activateAndSettleArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
   '/accounts/{address}/artdrop/escrows/{escrowId}/release':
     post:
       summary: Release an ArtDrop escrow

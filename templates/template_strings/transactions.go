@@ -10,7 +10,7 @@ transaction(name: String, code: String) {
 
 const CreateAccount = `
 transaction(publicKeys: [String]) {
-	prepare(signer: auth(CreateAccount) &Account) {
+	prepare(signer: auth(BorrowValue) &Account) {
 		let acct = Account(payer: signer)
 
 		for key in publicKeys {
