@@ -2,6 +2,7 @@ package artdrop
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +14,12 @@ import (
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
 )
+
+//go:embed cdc/setup_collection.cdc
+var setupCollectionCDC string
+
+//go:embed cdc/register_provider.cdc
+var registerProviderCDC string
 
 // Service implements the artdrop plugin business logic.
 type Service struct {
@@ -61,7 +68,21 @@ func (s *Service) Transfer(ctx context.Context, sync bool, address string, req T
 
 // Setup prepares an account to use the artdrop contract suite.
 func (s *Service) Setup(ctx context.Context, sync bool, address string) (*jobs.Job, *transactions.Transaction, error) {
-	return nil, nil, errors.New("artdrop: not implemented")
+	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if _, _, err := s.deps.Transactions.Create(ctx, true, address, setupCollectionCDC, nil, TxTypeSetup); err != nil {
+		return nil, nil, fmt.Errorf("setup artdrop collection: %w", err)
+	}
+
+	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, registerProviderCDC, nil, TxTypeSetup)
+	if err != nil {
+		return nil, nil, fmt.Errorf("register artdrop provider: %w", err)
+	}
+
+	return job, tx, nil
 }
 
 // CreateEscrow starts a new escrow between a buyer and a seller.
