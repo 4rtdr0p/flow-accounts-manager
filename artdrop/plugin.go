@@ -30,6 +30,8 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows", h.CreateEscrow()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate", h.ActivateChip()).Methods(http.MethodPost)
+	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate-chip", h.ActivateChip()).Methods(http.MethodPost)
+	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate-and-settle", h.ActivateChip()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/release", h.Release()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/cancel", h.Cancel()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/refund", h.Refund()).Methods(http.MethodPost)

@@ -1,12 +1,16 @@
 package artdrop
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/jobs"
+	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
 )
 
@@ -95,43 +99,72 @@ func (h *Handler) SetupFunc(rw http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateEscrow() http.Handler {
-	return http.HandlerFunc(h.CreateEscrowFunc)
+	return handlers.UseJson(http.HandlerFunc(h.CreateEscrowFunc))
 }
 
 func (h *Handler) CreateEscrowFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	var req CreateEscrowRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.CreateEscrow(r.Context(), sync, mux.Vars(r)["address"], req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
 func (h *Handler) ActivateChip() http.Handler {
-	return http.HandlerFunc(h.ActivateChipFunc)
+	return handlers.UseJson(http.HandlerFunc(h.ActivateChipFunc))
 }
 
 func (h *Handler) ActivateChipFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	var req ActivateChipRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	escrowId, ok := h.parseEscrowID(rw, r)
+	if !ok {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.ActivateChip(r.Context(), sync, mux.Vars(r)["address"], escrowId, req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
 func (h *Handler) Release() http.Handler {
-	return http.HandlerFunc(h.ReleaseFunc)
+	return handlers.UseJson(http.HandlerFunc(h.ReleaseFunc))
 }
 
 func (h *Handler) ReleaseFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	h.handleEscrowAction(rw, r, h.svc.Release)
 }
 
 func (h *Handler) Cancel() http.Handler {
-	return http.HandlerFunc(h.CancelFunc)
+	return handlers.UseJson(http.HandlerFunc(h.CancelFunc))
 }
 
 func (h *Handler) CancelFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	h.handleEscrowAction(rw, r, h.svc.Cancel)
 }
 
 func (h *Handler) Refund() http.Handler {
-	return http.HandlerFunc(h.RefundFunc)
+	return handlers.UseJson(http.HandlerFunc(h.RefundFunc))
 }
 
 func (h *Handler) RefundFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	h.handleEscrowAction(rw, r, h.svc.Refund)
 }
 
 func (h *Handler) ListCertificates() http.Handler {
@@ -148,4 +181,67 @@ func (h *Handler) GetEscrow() http.Handler {
 
 func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+}
+
+func (h *Handler) decodeBody(rw http.ResponseWriter, r *http.Request, dst interface{}) bool {
+	if r.Body == nil || r.Body == http.NoBody {
+		handlers.HandleError(rw, r, handlers.EmptyBodyError)
+		return false
+	}
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid body: %w", err),
+		})
+		return false
+	}
+	return true
+}
+
+func (h *Handler) parseEscrowID(rw http.ResponseWriter, r *http.Request) (uint64, bool) {
+	escrowId, err := strconv.ParseUint(mux.Vars(r)["escrowId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid escrowId: %w", err),
+		})
+		return 0, false
+	}
+	return escrowId, true
+}
+
+func (h *Handler) handleEscrowAction(
+	rw http.ResponseWriter,
+	r *http.Request,
+	action func(context.Context, bool, string, uint64, EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error),
+) {
+	var req EscrowActionRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	escrowId, ok := h.parseEscrowID(rw, r)
+	if !ok {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := action(r.Context(), sync, mux.Vars(r)["address"], escrowId, req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
+func (h *Handler) handleTransactionResponse(rw http.ResponseWriter, sync bool, job *jobs.Job, tx *transactions.Transaction) {
+	var res interface{}
+	if sync {
+		res = tx.ToJSONResponse()
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
 }

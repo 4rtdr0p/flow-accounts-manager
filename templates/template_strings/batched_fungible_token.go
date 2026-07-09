@@ -34,7 +34,7 @@ import {{ .ContractName }} from {{ .Address }}
 {{ end }}
 
 transaction(publicKeys: [Crypto.KeyListEntry]) {
-	prepare(signer: auth(CreateAccount, Storage, Capabilities) &Account) {
+	prepare(signer: auth(BorrowValue) &Account) {
 		let account = Account(payer: signer)
 
 		// add all the keys to the account
