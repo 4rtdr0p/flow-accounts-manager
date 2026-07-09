@@ -6,7 +6,7 @@ const ID = "20260619"
 
 type Account struct {
 	Address              string `gorm:"primaryKey"`
-	IsArtist             bool
+	IsArtist             bool `gorm:"default:false"`
 	CommunityPoolAddress string
 }
 
