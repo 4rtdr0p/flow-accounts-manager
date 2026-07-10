@@ -104,14 +104,11 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 	if summary.Status != 3 {
 		t.Fatalf("expected status 3, got %d", summary.Status)
 	}
-	if len(txSvc.args) != 2 {
-		t.Fatalf("expected 2 script args, got %d", len(txSvc.args))
+	if len(txSvc.args) != 1 {
+		t.Fatalf("expected 1 script arg, got %d", len(txSvc.args))
 	}
-	if txSvc.args[0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
-		t.Fatalf("expected logic owner as first arg, got %#v", txSvc.args[0])
-	}
-	if txSvc.args[1] != cadence.NewUInt64(7) {
-		t.Fatalf("expected escrow id as second arg, got %#v", txSvc.args[1])
+	if txSvc.args[0] != cadence.NewUInt64(7) {
+		t.Fatalf("expected escrow id as arg, got %#v", txSvc.args[0])
 	}
 }
 

@@ -245,7 +245,6 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 	}
 
 	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(logicOwner)),
 		cadence.NewUInt64(escrowId),
 	}
 
