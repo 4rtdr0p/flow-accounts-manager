@@ -554,7 +554,7 @@ paths:
       - $ref: '#/components/parameters/address'
     post:
       summary: Setup ArtDrop account
-      description: Initialize ArtDrop NFT collection and FLOW/USDC vault placeholders (FlowToken, FUSD, ExampleNFT) in a single transaction.
+      description: Initialize ArtDrop NFT collection and FLOW/FUSD vault placeholders (FlowToken, FUSD, ExampleNFT) in a single transaction.
       operationId: setupArtDropAccount
       x-required-scopes:
         - account.setup
