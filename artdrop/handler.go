@@ -172,7 +172,15 @@ func (h *Handler) ListCertificates() http.Handler {
 }
 
 func (h *Handler) ListCertificatesFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	address := mux.Vars(r)["address"]
+
+	certs, err := h.svc.ListCertificates(r.Context(), address)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, certs)
 }
 
 func (h *Handler) GetEscrow() http.Handler {
@@ -180,7 +188,26 @@ func (h *Handler) GetEscrow() http.Handler {
 }
 
 func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
-	http.Error(rw, "artdrop: not implemented", http.StatusNotImplemented)
+	escrowId, ok := h.parseEscrowID(rw, r)
+	if !ok {
+		return
+	}
+	logicOwner := r.URL.Query().Get("logic_owner")
+	if logicOwner == "" {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("field 'logic_owner' is required"),
+		})
+		return
+	}
+
+	summary, err := h.svc.GetEscrow(r.Context(), logicOwner, escrowId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
 }
 
 func (h *Handler) decodeBody(rw http.ResponseWriter, r *http.Request, dst interface{}) bool {
