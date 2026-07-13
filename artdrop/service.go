@@ -11,7 +11,6 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
-	"github.com/flow-hydraulics/flow-wallet-api/templates"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
@@ -81,13 +80,6 @@ func NewService(deps plugins.PluginDeps) *Service {
 	return &Service{deps: deps}
 }
 
-func (s *Service) resolveImports(code string) string {
-	if s.deps.Config == nil {
-		return code
-	}
-	return templates.ResolveContractImports(s.deps.Config.ChainID, code)
-}
-
 // Transfer executes an ArtDrop protocol transfer of a certificate NFT.
 func (s *Service) Transfer(ctx context.Context, sync bool, address string, req TransferRequest) (*jobs.Job, *transactions.Transaction, error) {
 	if req.CertificateID == nil {
@@ -120,7 +112,7 @@ func (s *Service) Transfer(ctx context.Context, sync bool, address string, req T
 		cadence.NewAddress(flow.HexToAddress(to)),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, address, s.resolveImports(string(script)), args, TxTypeTransfer)
+	return s.deps.Transactions.Create(ctx, sync, address, string(script), args, TxTypeTransfer)
 }
 
 // Setup prepares an account to use the artdrop contract suite.
@@ -130,11 +122,11 @@ func (s *Service) Setup(ctx context.Context, sync bool, address string) (*jobs.J
 		return nil, nil, err
 	}
 
-	if _, _, err := s.deps.Transactions.Create(ctx, true, address, s.resolveImports(setupCollectionCDC), nil, TxTypeSetup); err != nil {
+	if _, _, err := s.deps.Transactions.Create(ctx, true, address, setupCollectionCDC, nil, TxTypeSetup); err != nil {
 		return nil, nil, fmt.Errorf("setup artdrop collection: %w", err)
 	}
 
-	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, s.resolveImports(registerProviderCDC), nil, TxTypeSetup)
+	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, registerProviderCDC, nil, TxTypeSetup)
 	if err != nil {
 		return nil, nil, fmt.Errorf("register artdrop provider: %w", err)
 	}
@@ -193,7 +185,7 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 		cadence.String(req.VaultIdentifier),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.resolveImports(createEscrowCDC), args, TxTypeCreateEscrow)
+	return s.deps.Transactions.Create(ctx, sync, proposerAddress, createEscrowCDC, args, TxTypeCreateEscrow)
 }
 
 // ActivateChip validates a chip signature and settles the escrow.
@@ -223,7 +215,7 @@ func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, e
 		cadence.NewAddress(flow.HexToAddress(certificateOwner)),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, address, s.resolveImports(activateChipAndSettleCDC), args, TxTypeActivateChip)
+	return s.deps.Transactions.Create(ctx, sync, address, activateChipAndSettleCDC, args, TxTypeActivateChip)
 }
 
 // Release releases the escrowed funds to the seller.
@@ -250,7 +242,7 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateIDsCDC), args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIDsCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_ids script: %w", err)
 	}
@@ -283,7 +275,7 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 		cadence.NewUInt64(escrowId),
 	}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getEscrowSummaryCDC), args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEscrowSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_escrow_summary script: %w", err)
 	}
@@ -312,7 +304,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 	}
 	detail := &CertificateDetail{Id: certificateId}
 
-	baseTier, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateBaseTierCDC), args)
+	baseTier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateBaseTierCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_base_tier script: %w", err)
 	}
@@ -320,7 +312,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		return nil, fmt.Errorf("decode certificate base tier: %w", err)
 	}
 
-	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateChipPubKeyCDC), args)
+	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateChipPubKeyCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_chip_pubkey script: %w", err)
 	}
@@ -329,7 +321,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		return nil, fmt.Errorf("decode certificate chip public key: %w", err)
 	}
 
-	isRevealed, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateIsRevealedCDC), args)
+	isRevealed, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIsRevealedCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_is_revealed script: %w", err)
 	}
@@ -339,7 +331,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 	}
 	detail.IsRevealed = bool(revealed)
 
-	finalMultiplier, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateFinalMultiplierCDC), args)
+	finalMultiplier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateFinalMultiplierCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_final_multiplier script: %w", err)
 	}
@@ -347,7 +339,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		return nil, fmt.Errorf("decode certificate final multiplier: %w", err)
 	}
 
-	displayName, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getCertificateDisplayNameCDC), args)
+	displayName, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateDisplayNameCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_display_name script: %w", err)
 	}
@@ -365,7 +357,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getOriginalSummaryCDC), args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
 	}
@@ -411,7 +403,7 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(editionId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getEditionSummaryCDC), args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
 	}
@@ -480,7 +472,7 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 
 // GetPlatformFee returns the current platform fee.
 func (s *Service) GetPlatformFee(ctx context.Context) (*PlatformFeeResponse, error) {
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getPlatformFeeCDC), nil)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getPlatformFeeCDC, nil)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_platform_fee script: %w", err)
 	}
@@ -495,7 +487,7 @@ func (s *Service) GetPlatformFee(ctx context.Context) (*PlatformFeeResponse, err
 
 // GetMarketMode returns the current market mode name.
 func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error) {
-	val, err := s.deps.Transactions.ExecuteScript(ctx, s.resolveImports(getMarketModeNameCDC), nil)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getMarketModeNameCDC, nil)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_market_mode_name script: %w", err)
 	}
@@ -523,7 +515,7 @@ func (s *Service) escrowAction(ctx context.Context, sync bool, address string, e
 		cadence.NewUInt64(escrowId),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, address, s.resolveImports(code), args, txType)
+	return s.deps.Transactions.Create(ctx, sync, address, code, args, txType)
 }
 
 func newUInt8Array(bytes []byte) cadence.Array {

@@ -114,9 +114,7 @@ func TokenCode(chainId flow.ChainID, token *Token, tmplStr string) (string, erro
 // ResolveContractImports rewrites relative Cadence imports to on-chain addresses.
 func ResolveContractImports(chainId flow.ChainID, source string) string {
 	matchCadenceFiles := regexp.MustCompile(`"(.*?)(\w+\.cdc)"`)
-	matchNamedImports := regexp.MustCompile(`import\s+"(\w+)"`)
 	code := matchCadenceFiles.ReplaceAllString(source, "$2")
-	code = matchNamedImports.ReplaceAllString(code, "import $1 from $1.cdc")
 	return knownAddressesReplacers[chainId].Replace(code)
 }
 
