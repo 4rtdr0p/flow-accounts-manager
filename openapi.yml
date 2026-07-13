@@ -816,6 +816,72 @@ paths:
       responses:
         '200':
           description: OK
+  '/artdrop/originals/{origId}':
+    get:
+      summary: Get an ArtDrop original summary
+      operationId: getArtDropOriginalSummary
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: origId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request — invalid original ID
+        '404':
+          description: Not Found
+  '/artdrop/editions/{edId}':
+    get:
+      summary: Get an ArtDrop edition summary
+      operationId: getArtDropEditionSummary
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: edId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: Bad Request — invalid edition ID
+        '404':
+          description: Not Found
+  '/artdrop/config/platform-fee':
+    get:
+      summary: Get ArtDrop platform fee configuration
+      operationId: getArtDropPlatformFee
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+  '/artdrop/config/market-mode':
+    get:
+      summary: Get ArtDrop market mode configuration
+      operationId: getArtDropMarketMode
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/transactions':
     parameters:
       - $ref: '#/components/parameters/address'
