@@ -62,3 +62,46 @@ type EscrowSummary struct {
 	Id     uint64 `json:"id"`
 	Status uint8  `json:"status"`
 }
+
+// OriginalSummary contains the metadata of an ArtDrop Original.
+type OriginalSummary struct {
+	Id          uint64  `json:"id"`
+	Name        string  `json:"name"`
+	ArtistName  string  `json:"artistName"`
+	EditionIds  []uint64 `json:"editionIds,omitempty"`
+}
+
+// EditionSummary contains the metadata of an ArtDrop Edition.
+type EditionSummary struct {
+	Id          uint64  `json:"id"`
+	State       uint8   `json:"state"`
+	TotalMinted uint64  `json:"totalMinted"`
+	MaxSupply   uint64  `json:"maxSupply"`
+	PrimaryPrice   string  `json:"primaryPrice,omitempty"`
+	SecondaryPrice string `json:"secondaryPrice,omitempty"`
+}
+
+// CertificateDetail holds consolidated read-only data for a single certificate.
+type CertificateDetail struct {
+	Id              uint64  `json:"id"`
+	BaseTier        *string `json:"baseTier,omitempty"`
+	ChipPubKey      []byte  `json:"chipPubKey,omitempty"`
+	IsRevealed      bool    `json:"isRevealed"`
+	FinalMultiplier *string `json:"finalMultiplier,omitempty"`
+	DisplayName     *string `json:"displayName,omitempty"`
+}
+
+// PlatformFeeResponse is the current platform fee in basis points.
+type PlatformFeeResponse struct {
+	Fee string `json:"fee"`
+}
+
+// MarketModeResponse is the current market mode name.
+type MarketModeResponse struct {
+	Mode string `json:"mode"`
+}
+
+// CollectionLengthResponse is the number of certificates in a collection.
+type CollectionLengthResponse struct {
+	Length int `json:"length"`
+}

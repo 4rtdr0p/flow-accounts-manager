@@ -43,6 +43,18 @@ var cancelEscrowCDC string
 //go:embed cdc/refund_escrow.cdc
 var refundEscrowCDC string
 
+//go:embed cdc/get_original_summary.cdc
+var getOriginalSummaryCDC string
+
+//go:embed cdc/get_edition_summary.cdc
+var getEditionSummaryCDC string
+
+//go:embed cdc/get_platform_fee.cdc
+var getPlatformFeeCDC string
+
+//go:embed cdc/get_market_mode_name.cdc
+var getMarketModeNameCDC string
+
 // Service implements the artdrop plugin business logic.
 type Service struct {
 	deps plugins.PluginDeps
@@ -262,6 +274,120 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 		Id:     escrowId,
 		Status: uint8(status),
 	}, nil
+}
+
+// GetOriginalSummary returns a summary of an Original.
+func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
+	args := []transactions.Argument{cadence.NewUInt64(originalId)}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
+	}
+
+	opt, ok := val.(cadence.Optional)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", val)
+	}
+	if opt.Value == nil {
+		return nil, nil
+	}
+
+	str, ok := opt.Value.(cadence.Struct)
+	if !ok {
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+	}
+
+	fields := str.FieldsMappedByName()
+	var summary OriginalSummary
+	if id, ok := fields["id"].(cadence.UInt64); ok {
+		summary.Id = uint64(id)
+	}
+	if name, ok := fields["name"].(cadence.String); ok {
+		summary.Name = string(name)
+	}
+	if artist, ok := fields["artistName"].(cadence.String); ok {
+		summary.ArtistName = string(artist)
+	}
+	if editionIDs, ok := fields["editionIDs"].(cadence.Array); ok {
+		for _, v := range editionIDs.Values {
+			if id, ok := v.(cadence.UInt64); ok {
+				summary.EditionIds = append(summary.EditionIds, uint64(id))
+			}
+		}
+	}
+
+	return &summary, nil
+}
+
+// GetEditionSummary returns a summary of an Edition.
+func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
+	args := []transactions.Argument{cadence.NewUInt64(editionId)}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
+	}
+
+	opt, ok := val.(cadence.Optional)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", val)
+	}
+	if opt.Value == nil {
+		return nil, nil
+	}
+
+	str, ok := opt.Value.(cadence.Struct)
+	if !ok {
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+	}
+
+	fields := str.FieldsMappedByName()
+	var summary EditionSummary
+	if id, ok := fields["id"].(cadence.UInt64); ok {
+		summary.Id = uint64(id)
+	}
+	if state, ok := fields["state"].(cadence.UInt8); ok {
+		summary.State = uint8(state)
+	}
+	if tm, ok := fields["totalMinted"].(cadence.UInt64); ok {
+		summary.TotalMinted = uint64(tm)
+	}
+	if ms, ok := fields["maxSupply"].(cadence.UInt64); ok {
+		summary.MaxSupply = uint64(ms)
+	}
+
+	return &summary, nil
+}
+
+// GetPlatformFee returns the current platform fee.
+func (s *Service) GetPlatformFee(ctx context.Context) (*PlatformFeeResponse, error) {
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getPlatformFeeCDC, nil)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_platform_fee script: %w", err)
+	}
+
+	fee, ok := val.(cadence.UFix64)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.UFix64", val)
+	}
+
+	return &PlatformFeeResponse{Fee: fee.String()}, nil
+}
+
+// GetMarketMode returns the current market mode name.
+func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error) {
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getMarketModeNameCDC, nil)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_market_mode_name script: %w", err)
+	}
+
+	mode, ok := val.(cadence.String)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.String", val)
+	}
+
+	return &MarketModeResponse{Mode: string(mode)}, nil
 }
 
 func (s *Service) escrowAction(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest, code string, txType transactions.Type) (*jobs.Job, *transactions.Transaction, error) {
