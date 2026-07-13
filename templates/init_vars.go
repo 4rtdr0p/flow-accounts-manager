@@ -23,6 +23,11 @@ var KnownAddresses = templateVariables{
 		flow.Testnet:  "0x9a0766d93b6608b7",
 		flow.Mainnet:  "0xf233dcee88fe0abe",
 	},
+	"ArtDropCore.cdc": knownAddresses{
+		flow.Emulator: "0xf8d6e0586b0a20c7",
+		flow.Testnet:  "0x050dd2bfe6cd6421",
+		flow.Mainnet:  "",
+	},
 }
 
 func init() {
