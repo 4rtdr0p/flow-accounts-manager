@@ -798,6 +798,24 @@ paths:
       responses:
         '200':
           description: OK
+  '/accounts/{address}/artdrop/certificates/{certId}':
+    get:
+      summary: Get ArtDrop certificate details
+      operationId: getArtDropCertificateDetail
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: certId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/artdrop/escrows/{escrowId}':
     get:
       summary: Get an ArtDrop escrow summary
@@ -813,6 +831,62 @@ paths:
           schema:
             type: string
           description: Address that exposes the EscrowModule logic capability.
+      responses:
+        '200':
+          description: OK
+  '/artdrop/originals/{origId}':
+    get:
+      summary: Get an ArtDrop original summary
+      operationId: getArtDropOriginalSummary
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: origId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  '/artdrop/editions/{edId}':
+    get:
+      summary: Get an ArtDrop edition summary
+      operationId: getArtDropEditionSummary
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: edId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  '/artdrop/config/platform-fee':
+    get:
+      summary: Get ArtDrop platform fee
+      operationId: getArtDropPlatformFee
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+  '/artdrop/config/market-mode':
+    get:
+      summary: Get ArtDrop market mode
+      operationId: getArtDropMarketMode
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
       responses:
         '200':
           description: OK

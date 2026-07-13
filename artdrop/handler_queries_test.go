@@ -42,6 +42,58 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 	}
 }
 
+func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewOptional(nil),
+			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)}),
+			cadence.NewBool(false),
+			cadence.NewOptional(nil),
+			cadence.String("Certificate #7"),
+		},
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"id":7`) {
+		t.Fatalf("expected response to contain certificate id 7, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"displayName":"Certificate #7"`) {
+		t.Fatalf("expected response to contain display name, got %s", rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerRejectsInvalidCertId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/not-a-number", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "not-a-number",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid certId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
 func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt8(2),

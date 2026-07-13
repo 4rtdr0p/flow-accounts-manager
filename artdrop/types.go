@@ -65,20 +65,30 @@ type EscrowSummary struct {
 
 // OriginalSummary contains the metadata of an ArtDrop Original.
 type OriginalSummary struct {
-	Id          uint64  `json:"id"`
-	Name        string  `json:"name"`
-	ArtistName  string  `json:"artistName"`
-	EditionIds  []uint64 `json:"editionIds,omitempty"`
+	Id             uint64            `json:"id"`
+	Artist         string            `json:"artist"`
+	Name           string            `json:"name"`
+	Prices         map[string]string `json:"prices,omitempty"`
+	CreatedAtBlock uint64            `json:"createdAtBlock"`
+	SchemaVersion  uint8             `json:"schemaVersion"`
 }
 
 // EditionSummary contains the metadata of an ArtDrop Edition.
 type EditionSummary struct {
-	Id          uint64  `json:"id"`
-	State       uint8   `json:"state"`
-	TotalMinted uint64  `json:"totalMinted"`
-	MaxSupply   uint64  `json:"maxSupply"`
-	PrimaryPrice   string  `json:"primaryPrice,omitempty"`
-	SecondaryPrice string `json:"secondaryPrice,omitempty"`
+	Id                uint64            `json:"id"`
+	OriginalId        uint64            `json:"originalId"`
+	Artist            string            `json:"artist"`
+	ShuffleSeedBlock  uint64            `json:"shuffleSeedBlock"`
+	ReprintLimit      uint64            `json:"reprintLimit"`
+	Prices            map[string]string `json:"prices,omitempty"`
+	ProfitSplit       map[string]string `json:"profitSplit,omitempty"`
+	RarityCurve       []uint64          `json:"rarityCurve,omitempty"`
+	MultiplierWeights map[string]string `json:"multiplierWeights,omitempty"`
+	CreatedAtBlock    uint64            `json:"createdAtBlock"`
+	SchemaVersion     uint8             `json:"schemaVersion"`
+	State             string            `json:"state"`
+	TotalMinted       uint64            `json:"totalMinted"`
+	RarityProfile     uint8             `json:"rarityProfile"`
 }
 
 // CertificateDetail holds consolidated read-only data for a single certificate.

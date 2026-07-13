@@ -183,6 +183,29 @@ func (h *Handler) ListCertificatesFunc(rw http.ResponseWriter, r *http.Request) 
 	handlers.HandleJsonResponse(rw, http.StatusOK, certs)
 }
 
+func (h *Handler) GetCertificateDetail() http.Handler {
+	return http.HandlerFunc(h.GetCertificateDetailFunc)
+}
+
+func (h *Handler) GetCertificateDetailFunc(rw http.ResponseWriter, r *http.Request) {
+	certId, err := strconv.ParseUint(mux.Vars(r)["certId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid certId: %w", err),
+		})
+		return
+	}
+
+	detail, err := h.svc.GetCertificateDetail(r.Context(), mux.Vars(r)["address"], certId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, detail)
+}
+
 func (h *Handler) GetOriginalSummary() http.Handler {
 	return http.HandlerFunc(h.GetOriginalSummaryFunc)
 }

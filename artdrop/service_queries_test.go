@@ -140,12 +140,173 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 	}
 }
 
+func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
+	baseTier, err := cadence.NewUFix64("1.25000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalMultiplier, err := cadence.NewUFix64("2.50000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewOptional(baseTier),
+			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)}),
+			cadence.NewBool(true),
+			cadence.NewOptional(finalMultiplier),
+			cadence.String("Certificate #7"),
+		},
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	detail, err := svc.GetCertificateDetail(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	if err != nil {
+		t.Fatalf("GetCertificateDetail returned error: %v", err)
+	}
+	if detail.Id != 7 {
+		t.Fatalf("expected id 7, got %d", detail.Id)
+	}
+	if detail.BaseTier == nil || *detail.BaseTier != "1.25000000" {
+		t.Fatalf("unexpected base tier: %+v", detail.BaseTier)
+	}
+	if string(detail.ChipPubKey) != string([]byte{1, 2, 3}) {
+		t.Fatalf("unexpected chip pub key: %v", detail.ChipPubKey)
+	}
+	if !detail.IsRevealed {
+		t.Fatal("expected certificate to be revealed")
+	}
+	if detail.FinalMultiplier == nil || *detail.FinalMultiplier != "2.50000000" {
+		t.Fatalf("unexpected final multiplier: %+v", detail.FinalMultiplier)
+	}
+	if detail.DisplayName == nil || *detail.DisplayName != "Certificate #7" {
+		t.Fatalf("unexpected display name: %+v", detail.DisplayName)
+	}
+	if len(txSvc.calls) != 5 {
+		t.Fatalf("expected 5 script calls, got %d", len(txSvc.calls))
+	}
+	for _, args := range txSvc.calls {
+		if len(args) != 2 {
+			t.Fatalf("expected 2 args per script call, got %d", len(args))
+		}
+		if args[0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+			t.Fatalf("expected address as first arg, got %#v", args[0])
+		}
+		if args[1] != cadence.NewUInt64(7) {
+			t.Fatalf("expected certificate id as second arg, got %#v", args[1])
+		}
+	}
+}
+
+func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewOptional(nil),
+			cadence.NewUInt64(42),
+		},
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.GetCertificateDetail(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	if err == nil {
+		t.Fatal("expected error for unexpected chip pub key result type, got nil")
+	}
+}
+
+func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
+	primary, err := cadence.NewUFix64("10.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewStruct([]cadence.Value{
+			cadence.NewUInt64(3),
+			cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")),
+			cadence.String("Original"),
+			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}}),
+			cadence.NewUInt64(100),
+			cadence.NewUInt8(2),
+		}).WithType(summaryStructType("OriginalSummary", "id", "artist", "name", "prices", "createdAtBlock", "schemaVersion"))),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetOriginalSummary(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetOriginalSummary returned error: %v", err)
+	}
+	if summary.Artist != "0xf8d6e0586b0a20c7" || summary.Prices["primary"] != "10.00000000" || summary.CreatedAtBlock != 100 || summary.SchemaVersion != 2 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+}
+
+func TestGetEditionSummaryMapsContractFields(t *testing.T) {
+	primary, err := cadence.NewUFix64("12.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	artistShare, err := cadence.NewUFix64("0.85000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rareWeight, err := cadence.NewUFix64("0.25000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewStruct([]cadence.Value{
+			cadence.NewUInt64(4),
+			cadence.NewUInt64(3),
+			cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")),
+			cadence.NewUInt64(99),
+			cadence.NewUInt64(500),
+			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}}),
+			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("artist"), Value: artistShare}}),
+			cadence.NewArray([]cadence.Value{cadence.NewUInt64(1), cadence.NewUInt64(2)}),
+			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("rare"), Value: rareWeight}}),
+			cadence.NewUInt64(101),
+			cadence.NewUInt8(2),
+			cadence.String("Active"),
+			cadence.NewUInt64(9),
+			cadence.NewUInt8(1),
+		}).WithType(summaryStructType("EditionSummary", "id", "originalId", "artist", "shuffleSeedBlock", "reprintLimit", "prices", "profitSplit", "rarityCurve", "multiplierWeights", "createdAtBlock", "schemaVersion", "state", "totalMinted", "rarityProfile"))),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetEditionSummary(context.Background(), 4)
+	if err != nil {
+		t.Fatalf("GetEditionSummary returned error: %v", err)
+	}
+	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.State != "Active" || summary.TotalMinted != 9 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if summary.Prices["primary"] != "12.00000000" || summary.ProfitSplit["artist"] != "0.85000000" || summary.MultiplierWeights["rare"] != "0.25000000" {
+		t.Fatalf("unexpected maps: %+v", summary)
+	}
+	if len(summary.RarityCurve) != 2 || summary.RarityCurve[0] != 1 || summary.RarityCurve[1] != 2 {
+		t.Fatalf("unexpected rarity curve: %+v", summary.RarityCurve)
+	}
+}
+
 // ---- mock transaction service for read-only queries ----
 
 type queryTxService struct {
-	scriptResult cadence.Value
-	args         []transactions.Argument
-	err          error
+	scriptResult  cadence.Value
+	scriptResults []cadence.Value
+	args          []transactions.Argument
+	calls         [][]transactions.Argument
+	err           error
 }
 
 func (s *queryTxService) Create(ctx context.Context, sync bool, proposerAddress string, code string, args []transactions.Argument, tType transactions.Type) (*jobs.Job, *transactions.Transaction, error) {
@@ -177,6 +338,13 @@ func (s *queryTxService) ExecuteScript(ctx context.Context, code string, args []
 		return nil, s.err
 	}
 	s.args = args
+	copiedArgs := append([]transactions.Argument(nil), args...)
+	s.calls = append(s.calls, copiedArgs)
+	if len(s.scriptResults) > 0 {
+		result := s.scriptResults[0]
+		s.scriptResults = s.scriptResults[1:]
+		return result, nil
+	}
 	return s.scriptResult, nil
 }
 
@@ -186,4 +354,12 @@ func (s *queryTxService) UpdateTransaction(t *transactions.Transaction) error {
 
 func (s *queryTxService) GetOrCreateTransaction(transactionId string) *transactions.Transaction {
 	panic("not used by queries")
+}
+
+func summaryStructType(name string, fieldNames ...string) *cadence.StructType {
+	fields := make([]cadence.Field, 0, len(fieldNames))
+	for _, fieldName := range fieldNames {
+		fields = append(fields, cadence.NewField(fieldName, nil))
+	}
+	return cadence.NewStructType(nil, name, fields, nil)
 }

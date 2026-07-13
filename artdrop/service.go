@@ -25,6 +25,21 @@ var registerProviderCDC string
 //go:embed cdc/get_certificate_ids.cdc
 var getCertificateIDsCDC string
 
+//go:embed cdc/get_certificate_base_tier.cdc
+var getCertificateBaseTierCDC string
+
+//go:embed cdc/get_certificate_chip_pubkey.cdc
+var getCertificateChipPubKeyCDC string
+
+//go:embed cdc/get_certificate_is_revealed.cdc
+var getCertificateIsRevealedCDC string
+
+//go:embed cdc/get_certificate_final_multiplier.cdc
+var getCertificateFinalMultiplierCDC string
+
+//go:embed cdc/get_certificate_display_name.cdc
+var getCertificateDisplayNameCDC string
+
 //go:embed cdc/get_escrow_summary.cdc
 var getEscrowSummaryCDC string
 
@@ -276,6 +291,68 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 	}, nil
 }
 
+// GetCertificateDetail returns consolidated metadata for a single certificate.
+func (s *Service) GetCertificateDetail(ctx context.Context, address string, certificateId uint64) (*CertificateDetail, error) {
+	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(address)),
+		cadence.NewUInt64(certificateId),
+	}
+	detail := &CertificateDetail{Id: certificateId}
+
+	baseTier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateBaseTierCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_base_tier script: %w", err)
+	}
+	if detail.BaseTier, err = optionalUFix64String(baseTier); err != nil {
+		return nil, fmt.Errorf("decode certificate base tier: %w", err)
+	}
+
+	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateChipPubKeyCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_chip_pubkey script: %w", err)
+	}
+	detail.ChipPubKey, err = uint8ArrayBytes(chipPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("decode certificate chip public key: %w", err)
+	}
+
+	isRevealed, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIsRevealedCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_is_revealed script: %w", err)
+	}
+	revealed, ok := isRevealed.(cadence.Bool)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Bool", isRevealed)
+	}
+	detail.IsRevealed = bool(revealed)
+
+	finalMultiplier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateFinalMultiplierCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_final_multiplier script: %w", err)
+	}
+	if detail.FinalMultiplier, err = optionalUFix64String(finalMultiplier); err != nil {
+		return nil, fmt.Errorf("decode certificate final multiplier: %w", err)
+	}
+
+	displayName, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateDisplayNameCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_display_name script: %w", err)
+	}
+	name, ok := displayName.(cadence.String)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.String", displayName)
+	}
+	value := string(name)
+	detail.DisplayName = &value
+
+	return detail, nil
+}
+
 // GetOriginalSummary returns a summary of an Original.
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
@@ -306,15 +383,17 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 	if name, ok := fields["name"].(cadence.String); ok {
 		summary.Name = string(name)
 	}
-	if artist, ok := fields["artistName"].(cadence.String); ok {
-		summary.ArtistName = string(artist)
+	if artist, ok := fields["artist"].(cadence.Address); ok {
+		summary.Artist = flow_helpers.FormatAddress(flow.BytesToAddress(artist.Bytes()))
 	}
-	if editionIDs, ok := fields["editionIDs"].(cadence.Array); ok {
-		for _, v := range editionIDs.Values {
-			if id, ok := v.(cadence.UInt64); ok {
-				summary.EditionIds = append(summary.EditionIds, uint64(id))
-			}
-		}
+	if prices, ok := fields["prices"].(cadence.Dictionary); ok {
+		summary.Prices = ufix64Dictionary(prices)
+	}
+	if createdAt, ok := fields["createdAtBlock"].(cadence.UInt64); ok {
+		summary.CreatedAtBlock = uint64(createdAt)
+	}
+	if schemaVersion, ok := fields["schemaVersion"].(cadence.UInt8); ok {
+		summary.SchemaVersion = uint8(schemaVersion)
 	}
 
 	return &summary, nil
@@ -347,14 +426,44 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
 	}
-	if state, ok := fields["state"].(cadence.UInt8); ok {
-		summary.State = uint8(state)
+	if originalId, ok := fields["originalId"].(cadence.UInt64); ok {
+		summary.OriginalId = uint64(originalId)
+	}
+	if artist, ok := fields["artist"].(cadence.Address); ok {
+		summary.Artist = flow_helpers.FormatAddress(flow.BytesToAddress(artist.Bytes()))
+	}
+	if seedBlock, ok := fields["shuffleSeedBlock"].(cadence.UInt64); ok {
+		summary.ShuffleSeedBlock = uint64(seedBlock)
+	}
+	if reprintLimit, ok := fields["reprintLimit"].(cadence.UInt64); ok {
+		summary.ReprintLimit = uint64(reprintLimit)
+	}
+	if prices, ok := fields["prices"].(cadence.Dictionary); ok {
+		summary.Prices = ufix64Dictionary(prices)
+	}
+	if profitSplit, ok := fields["profitSplit"].(cadence.Dictionary); ok {
+		summary.ProfitSplit = ufix64Dictionary(profitSplit)
+	}
+	if rarityCurve, ok := fields["rarityCurve"].(cadence.Array); ok {
+		summary.RarityCurve = uint64Array(rarityCurve)
+	}
+	if multiplierWeights, ok := fields["multiplierWeights"].(cadence.Dictionary); ok {
+		summary.MultiplierWeights = ufix64Dictionary(multiplierWeights)
+	}
+	if createdAt, ok := fields["createdAtBlock"].(cadence.UInt64); ok {
+		summary.CreatedAtBlock = uint64(createdAt)
+	}
+	if schemaVersion, ok := fields["schemaVersion"].(cadence.UInt8); ok {
+		summary.SchemaVersion = uint8(schemaVersion)
+	}
+	if state := fields["state"]; state != nil {
+		summary.State = cadenceString(state)
 	}
 	if tm, ok := fields["totalMinted"].(cadence.UInt64); ok {
 		summary.TotalMinted = uint64(tm)
 	}
-	if ms, ok := fields["maxSupply"].(cadence.UInt64); ok {
-		summary.MaxSupply = uint64(ms)
+	if rarityProfile, ok := fields["rarityProfile"].(cadence.UInt8); ok {
+		summary.RarityProfile = uint8(rarityProfile)
 	}
 
 	return &summary, nil
@@ -426,4 +535,75 @@ func newUFix64(value float64) (cadence.UFix64, error) {
 		formatted += "0"
 	}
 	return cadence.NewUFix64(formatted)
+}
+
+func optionalUFix64String(value cadence.Value) (*string, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return nil, nil
+	}
+	ufix, ok := opt.Value.(cadence.UFix64)
+	if !ok {
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.UFix64", opt.Value)
+	}
+	result := ufix.String()
+	return &result, nil
+}
+
+func uint8ArrayBytes(value cadence.Value) ([]byte, error) {
+	array, ok := value.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", value)
+	}
+	bytes := make([]byte, 0, len(array.Values))
+	for i, v := range array.Values {
+		b, ok := v.(cadence.UInt8)
+		if !ok {
+			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.UInt8", v, i)
+		}
+		bytes = append(bytes, byte(b))
+	}
+	return bytes, nil
+}
+
+func ufix64Dictionary(dict cadence.Dictionary) map[string]string {
+	if len(dict.Pairs) == 0 {
+		return nil
+	}
+	values := make(map[string]string, len(dict.Pairs))
+	for _, pair := range dict.Pairs {
+		key, ok := pair.Key.(cadence.String)
+		if !ok {
+			continue
+		}
+		value, ok := pair.Value.(cadence.UFix64)
+		if !ok {
+			continue
+		}
+		values[string(key)] = value.String()
+	}
+	return values
+}
+
+func uint64Array(array cadence.Array) []uint64 {
+	if len(array.Values) == 0 {
+		return nil
+	}
+	values := make([]uint64, 0, len(array.Values))
+	for _, v := range array.Values {
+		if value, ok := v.(cadence.UInt64); ok {
+			values = append(values, uint64(value))
+		}
+	}
+	return values
+}
+
+func cadenceString(value cadence.Value) string {
+	if str, ok := value.(cadence.String); ok {
+		return string(str)
+	}
+	return value.String()
 }
