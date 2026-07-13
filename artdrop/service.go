@@ -97,7 +97,7 @@ func (s *Service) Transfer(ctx context.Context, sync bool, address string, req T
 		cadence.NewAddress(flow.HexToAddress(to)),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, address, string(script), args, TxTypeTransfer)
+	return s.deps.Transactions.Create(ctx, sync, s.deps.Config.AdminAddress, string(script), args, TxTypeTransfer)
 }
 
 // Setup prepares an account to use the artdrop contract suite.
