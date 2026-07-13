@@ -80,6 +80,7 @@ type EditionSummary struct {
 	Artist            string            `json:"artist"`
 	ShuffleSeedBlock  uint64            `json:"shuffleSeedBlock"`
 	ReprintLimit      uint64            `json:"reprintLimit"`
+	MaxSupply         uint64            `json:"maxSupply"`
 	Prices            map[string]string `json:"prices,omitempty"`
 	ProfitSplit       map[string]string `json:"profitSplit,omitempty"`
 	RarityCurve       []uint64          `json:"rarityCurve,omitempty"`

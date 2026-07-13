@@ -288,7 +288,7 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEditionSummary returned error: %v", err)
 	}
-	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.State != "Active" || summary.TotalMinted != 9 {
+	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.MaxSupply != 500 || summary.State != "Active" || summary.TotalMinted != 9 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 	if summary.Prices["primary"] != "12.00000000" || summary.ProfitSplit["artist"] != "0.85000000" || summary.MultiplierWeights["rare"] != "0.25000000" {

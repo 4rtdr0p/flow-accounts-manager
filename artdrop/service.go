@@ -437,6 +437,7 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 	}
 	if reprintLimit, ok := fields["reprintLimit"].(cadence.UInt64); ok {
 		summary.ReprintLimit = uint64(reprintLimit)
+		summary.MaxSupply = summary.ReprintLimit
 	}
 	if prices, ok := fields["prices"].(cadence.Dictionary); ok {
 		summary.Prices = ufix64Dictionary(prices)
