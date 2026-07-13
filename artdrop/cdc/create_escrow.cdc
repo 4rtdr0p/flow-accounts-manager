@@ -4,8 +4,8 @@
 /// lo convierte a FLOW, y firma esta transacción para crear el escrow.
 /// El seller recibe el Certificate cuando el buyer active el chip (D6).
 
-import "FungibleToken"
-import "ArtDropCore"
+import FungibleToken from 0x9a0766d93b6608b7
+import ArtDropCore from 0x050dd2bfe6cd6421
 import "EscrowModule"
 
 transaction(

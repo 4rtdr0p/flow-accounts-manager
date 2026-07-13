@@ -4,7 +4,7 @@
 /// vault queda lockeado. El buyer llama esto para distribuir el vault de vuelta
 /// al protocolo y marcar el escrow como Released.
 
-import "FungibleToken"
+import FungibleToken from 0x9a0766d93b6608b7
 import "EscrowModule"
 import "PaymentModule"
 

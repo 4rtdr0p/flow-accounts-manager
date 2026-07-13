@@ -7,8 +7,8 @@
 /// Required before ProtocolAdmin can move a Certificate out of this account.
 /// One-time setup per account.
 
-import "ArtDropCore"
-import "NonFungibleToken"
+import ArtDropCore from 0x050dd2bfe6cd6421
+import NonFungibleToken from 0x631e88ae7f1d7c20
 
 transaction {
     prepare(signer: auth(IssueStorageCapabilityController) &Account) {

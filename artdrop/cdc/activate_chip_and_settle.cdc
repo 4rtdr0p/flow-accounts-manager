@@ -8,7 +8,7 @@
 /// Atomic: signature verify + protocol transfer of the NFT to the buyer +
 /// markEscrowSettled happen together or the whole transaction reverts.
 
-import "ArtDropCore"
+import ArtDropCore from 0x050dd2bfe6cd6421
 import "EscrowModule"
 
 transaction(
