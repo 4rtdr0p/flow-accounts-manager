@@ -890,6 +890,64 @@ paths:
       responses:
         '200':
           description: OK
+  '/artdrop/originals/{origId}':
+    get:
+      summary: Get Original summary
+      operationId: getArtDropOriginal
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: origId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Original ID
+      responses:
+        '200':
+          description: OK
+  '/artdrop/editions/{edId}':
+    get:
+      summary: Get Edition summary
+      operationId: getArtDropEdition
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: edId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Edition ID
+      responses:
+        '200':
+          description: OK
+  '/artdrop/config/platform-fee':
+    get:
+      summary: Get current platform fee
+      operationId: getArtDropPlatformFee
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+  '/artdrop/config/market-mode':
+    get:
+      summary: Get current market mode
+      operationId: getArtDropMarketMode
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/transactions':
     parameters:
       - $ref: '#/components/parameters/address'
