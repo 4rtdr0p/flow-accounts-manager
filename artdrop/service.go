@@ -249,6 +249,16 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 	return certs, nil
 }
 
+// GetCollectionLength returns the number of certificates owned by the given address.
+func (s *Service) GetCollectionLength(ctx context.Context, address string) (*CollectionLengthResponse, error) {
+	certs, err := s.ListCertificates(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CollectionLengthResponse{Length: len(certs)}, nil
+}
+
 // GetEscrow returns a summary of the requested escrow.
 func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uint64) (*EscrowSummary, error) {
 	logicOwner, err := flow_helpers.ValidateAddress(logicOwner, s.deps.Config.ChainID)
