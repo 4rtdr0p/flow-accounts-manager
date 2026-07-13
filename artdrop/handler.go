@@ -183,6 +183,92 @@ func (h *Handler) ListCertificatesFunc(rw http.ResponseWriter, r *http.Request) 
 	handlers.HandleJsonResponse(rw, http.StatusOK, certs)
 }
 
+func (h *Handler) GetOriginalSummary() http.Handler {
+	return http.HandlerFunc(h.GetOriginalSummaryFunc)
+}
+
+func (h *Handler) GetOriginalSummaryFunc(rw http.ResponseWriter, r *http.Request) {
+	origId, err := strconv.ParseUint(mux.Vars(r)["origId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid origId: %w", err),
+		})
+		return
+	}
+
+	summary, err := h.svc.GetOriginalSummary(r.Context(), origId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	if summary == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusNotFound,
+			Err:        fmt.Errorf("original not found"),
+		})
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
+}
+
+func (h *Handler) GetEditionSummary() http.Handler {
+	return http.HandlerFunc(h.GetEditionSummaryFunc)
+}
+
+func (h *Handler) GetEditionSummaryFunc(rw http.ResponseWriter, r *http.Request) {
+	edId, err := strconv.ParseUint(mux.Vars(r)["edId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid edId: %w", err),
+		})
+		return
+	}
+
+	summary, err := h.svc.GetEditionSummary(r.Context(), edId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	if summary == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusNotFound,
+			Err:        fmt.Errorf("edition not found"),
+		})
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
+}
+
+func (h *Handler) GetPlatformFee() http.Handler {
+	return http.HandlerFunc(h.GetPlatformFeeFunc)
+}
+
+func (h *Handler) GetPlatformFeeFunc(rw http.ResponseWriter, r *http.Request) {
+	fee, err := h.svc.GetPlatformFee(r.Context())
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	handlers.HandleJsonResponse(rw, http.StatusOK, fee)
+}
+
+func (h *Handler) GetMarketMode() http.Handler {
+	return http.HandlerFunc(h.GetMarketModeFunc)
+}
+
+func (h *Handler) GetMarketModeFunc(rw http.ResponseWriter, r *http.Request) {
+	mode, err := h.svc.GetMarketMode(r.Context())
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	handlers.HandleJsonResponse(rw, http.StatusOK, mode)
+}
+
 func (h *Handler) GetEscrow() http.Handler {
 	return http.HandlerFunc(h.GetEscrowFunc)
 }
