@@ -456,8 +456,6 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 	// Legacy wrapper that keeps the old /setup route working while the example
 	// plugin owns the new /setup-example route.
 	rv.Handle("/accounts/{address}/setup", example.NewSetupHandler(deps)).Methods(http.MethodPost)
-	rv.Handle("/accounts/{address}/artist-activate", hs.Accounts.ActivateArtist()).Methods(http.MethodPost)
-	rv.Handle("/accounts/{address}/community-pool-enable", hs.Accounts.EnableCommunityPool()).Methods(http.MethodPost)
 	rv.Handle("/accounts/{address}/graduate-to-self-custody", hs.Accounts.GraduateToSelfCustody()).Methods(http.MethodPost)
 	rv.Handle("/admin/reconcile/{address}", hs.Accounts.ReconcileAccount()).Methods(http.MethodGet)
 
