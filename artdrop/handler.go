@@ -183,6 +183,22 @@ func (h *Handler) ListCertificatesFunc(rw http.ResponseWriter, r *http.Request) 
 	handlers.HandleJsonResponse(rw, http.StatusOK, certs)
 }
 
+func (h *Handler) GetCollectionLength() http.Handler {
+	return http.HandlerFunc(h.GetCollectionLengthFunc)
+}
+
+func (h *Handler) GetCollectionLengthFunc(rw http.ResponseWriter, r *http.Request) {
+	address := mux.Vars(r)["address"]
+
+	length, err := h.svc.GetCollectionLength(r.Context(), address)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, length)
+}
+
 func (h *Handler) GetOriginalSummary() http.Handler {
 	return http.HandlerFunc(h.GetOriginalSummaryFunc)
 }
