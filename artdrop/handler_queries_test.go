@@ -1,6 +1,7 @@
 package artdrop
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,6 +92,115 @@ func TestGetCertificateDetailHandlerRejectsInvalidCertId(t *testing.T) {
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid certId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/not-an-address/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "not-an-address",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid address, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerPropagatesScriptError(t *testing.T) {
+	txSvc := &queryTxService{err: errors.New("boom")}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for script error, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetCollectionLengthHandlerReturnsOK(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(7),
+			cadence.NewUInt64(13),
+		}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/collection-length", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.GetCollectionLength().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"length":2`) {
+		t.Fatalf("expected response to contain length 2, got %s", rw.Body.String())
+	}
+}
+
+func TestGetCollectionLengthHandlerReturnsZero(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/collection-length", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.GetCollectionLength().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"length":0`) {
+		t.Fatalf("expected response to contain length 0, got %s", rw.Body.String())
+	}
+}
+
+func TestGetCollectionLengthHandlerRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/not-an-address/artdrop/collection-length", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "not-an-address"})
+	rw := httptest.NewRecorder()
+
+	handler.GetCollectionLength().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
 

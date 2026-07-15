@@ -1,4 +1,4 @@
-import "ArtDropCore"
+import ArtDropCore from 0x050dd2bfe6cd6421
 import "MetadataViews"
 
 access(all)

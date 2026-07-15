@@ -70,6 +70,9 @@ var getPlatformFeeCDC string
 //go:embed cdc/get_market_mode_name.cdc
 var getMarketModeNameCDC string
 
+//go:embed cdc/has_collection.cdc
+var hasCollectionCDC string
+
 // Service implements the artdrop plugin business logic.
 type Service struct {
 	deps plugins.PluginDeps
@@ -262,6 +265,16 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 	}
 
 	return certs, nil
+}
+
+// GetCollectionLength returns the number of certificates owned by the given address.
+func (s *Service) GetCollectionLength(ctx context.Context, address string) (*CollectionLengthResponse, error) {
+	certs, err := s.ListCertificates(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CollectionLengthResponse{Length: len(certs)}, nil
 }
 
 // GetEscrow returns a summary of the requested escrow.
@@ -498,6 +511,28 @@ func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error
 	}
 
 	return &MarketModeResponse{Mode: string(mode)}, nil
+}
+
+// HasCollection checks if an address has a published ArtDropCore.Collection capability.
+func (s *Service) HasCollection(ctx context.Context, address string) (bool, error) {
+	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
+	if err != nil {
+		return false, err
+	}
+
+	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, hasCollectionCDC, args)
+	if err != nil {
+		return false, fmt.Errorf("execute has_collection script: %w", err)
+	}
+
+	result, ok := val.(cadence.Bool)
+	if !ok {
+		return false, fmt.Errorf("unexpected script result type %T, expected cadence.Bool", val)
+	}
+
+	return bool(result), nil
 }
 
 func (s *Service) escrowAction(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest, code string, txType transactions.Type) (*jobs.Job, *transactions.Transaction, error) {

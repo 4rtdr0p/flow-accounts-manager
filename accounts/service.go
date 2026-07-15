@@ -44,8 +44,6 @@ type Service interface {
 	SyncAccountKeyCount(ctx context.Context, address flow.Address) (*jobs.Job, error)
 	RotateKey(ctx context.Context, sync bool, address string) (*jobs.Job, *RotateKeyResult, error)
 	Details(address string) (Account, error)
-	ActivateArtist(address string) (Account, error)
-	EnableCommunityPool(ctx context.Context, address string) (Account, error)
 	InitAdminAccount(ctx context.Context) error
 }
 
@@ -262,80 +260,6 @@ func (s *ServiceImpl) Details(address string) (Account, error) {
 	}
 
 	return account, nil
-}
-
-func (s *ServiceImpl) ActivateArtist(address string) (Account, error) {
-	log.WithFields(log.Fields{"address": address}).Trace("Activate artist")
-
-	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
-	if err != nil {
-		return Account{}, err
-	}
-
-	account, err := s.store.Account(address)
-	if err != nil {
-		return Account{}, err
-	}
-
-	if !account.IsArtist {
-		account.IsArtist = true
-		if err := s.store.SaveAccount(&account); err != nil {
-			return Account{}, err
-		}
-	}
-
-	return s.Details(address)
-}
-
-func (s *ServiceImpl) EnableCommunityPool(ctx context.Context, address string) (Account, error) {
-	log.WithFields(log.Fields{"address": address}).Trace("Enable community pool")
-
-	address, err := flow_helpers.ValidateAddress(address, s.cfg.ChainID)
-	if err != nil {
-		return Account{}, err
-	}
-
-	return s.withCommunityPoolLock(address, func() (Account, error) {
-		account, err := s.store.Account(address)
-		if err != nil {
-			return Account{}, err
-		}
-
-		if !account.IsArtist {
-			return Account{}, fmt.Errorf("artist account must be activated before enabling community pool")
-		}
-
-		if account.CommunityPoolAddress != "" {
-			return s.Details(address)
-		}
-
-		poolAccount, _, err := s.createAccount(ctx)
-		if err != nil {
-			return Account{}, err
-		}
-
-		account.CommunityPoolAddress = poolAccount.Address
-		if err := s.store.SaveAccount(&account); err != nil {
-			return Account{}, err
-		}
-
-		return s.Details(address)
-	})
-}
-
-func (s *ServiceImpl) withCommunityPoolLock(address string, fn func() (Account, error)) (Account, error) {
-	v, err, _ := s.cpSF.Do(address, func() (interface{}, error) {
-		acc, e := fn()
-		if e != nil {
-			return Account{}, e
-		}
-		return acc, nil
-	})
-	if err != nil {
-		return Account{}, err
-	}
-	acc, _ := v.(Account)
-	return acc, nil
 }
 
 func normalizeUserPublicKey(userPublicKey string) (string, error) {
