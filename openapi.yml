@@ -762,6 +762,17 @@ paths:
       responses:
         '200':
           description: OK
+  '/accounts/{address}/artdrop/collection-length':
+    get:
+      summary: Get ArtDrop collection length for an account
+      operationId: getArtDropCollectionLength
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/artdrop/escrows/{escrowId}':
     get:
       summary: Get an ArtDrop escrow summary
