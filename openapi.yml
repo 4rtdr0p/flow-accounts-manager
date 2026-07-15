@@ -838,6 +838,24 @@ paths:
       responses:
         '200':
           description: OK
+  '/accounts/{address}/artdrop/is-artist':
+    get:
+      summary: Check if address has an ArtDrop collection (is artist)
+      operationId: hasArtDropCollection
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isArtist:
+                    type: boolean
   '/accounts/{address}/transactions':
     parameters:
       - $ref: '#/components/parameters/address'
