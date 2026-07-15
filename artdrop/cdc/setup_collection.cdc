@@ -1,7 +1,7 @@
 /// setup_collection.cdc — Initialize a CertificateNFT Collection for the signer.
 /// Creates the collection in storage and publishes the public capability if not already present.
 
-import "ArtDropCore"
+import ArtDropCore from 0x050dd2bfe6cd6421
 
 transaction {
     prepare(signer: auth(SaveValue, IssueStorageCapabilityController, PublishCapability, BorrowValue) &Account) {
