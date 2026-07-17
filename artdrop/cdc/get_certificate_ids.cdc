@@ -1,4 +1,4 @@
-import ArtDropCore from 0x050dd2bfe6cd6421
+import ArtDropCore from 0xe2f96cbbdfde8c9f
 import NonFungibleToken from 0x631e88ae7f1d7c20
 
 access(all) fun main(addr: Address): [UInt64] {

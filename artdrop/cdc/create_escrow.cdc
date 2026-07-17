@@ -5,7 +5,7 @@
 /// El seller recibe el Certificate cuando el buyer active el chip (D6).
 
 import FungibleToken from 0x9a0766d93b6608b7
-import ArtDropCore from 0x050dd2bfe6cd6421
+import ArtDropCore from 0xe2f96cbbdfde8c9f
 import "EscrowModule"
 
 transaction(
