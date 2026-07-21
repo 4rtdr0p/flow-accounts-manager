@@ -14,11 +14,33 @@ import (
 )
 
 func TestListCertificatesReturnsIds(t *testing.T) {
+	mustStr := func(s string) cadence.String {
+		v, err := cadence.NewString(s)
+		if err != nil {
+			panic(err)
+		}
+		return v
+	}
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{
-			cadence.NewUInt64(1),
-			cadence.NewUInt64(42),
-			cadence.NewUInt64(99),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(42)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(2)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(false)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(99)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(3)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
 		}),
 	}
 	svc := NewService(plugins.PluginDeps{
@@ -35,6 +57,15 @@ func TestListCertificatesReturnsIds(t *testing.T) {
 	}
 	if certs[0].Id != 1 || certs[1].Id != 42 || certs[2].Id != 99 {
 		t.Fatalf("unexpected certificate ids: %+v", certs)
+	}
+	if certs[0].EditionId != 7 || certs[1].EditionId != 7 || certs[2].EditionId != 7 {
+		t.Fatalf("expected editionId 7 on all, got %+v", certs)
+	}
+	if certs[0].Serial != 1 || certs[1].Serial != 2 || certs[2].Serial != 3 {
+		t.Fatalf("expected serials 1/2/3, got %+v", certs)
+	}
+	if !certs[0].IsRevealed || certs[1].IsRevealed || !certs[2].IsRevealed {
+		t.Fatalf("expected revealed=true/false/true, got %+v", certs)
 	}
 }
 
@@ -219,20 +250,107 @@ func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
 	}
 }
 
+func TestIsArtistReturnsTrue(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(true),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	is, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err != nil {
+		t.Fatalf("IsArtist returned error: %v", err)
+	}
+	if !is {
+		t.Fatalf("expected isArtist true, got false")
+	}
+	if len(txSvc.args) != 1 {
+		t.Fatalf("expected 1 script arg, got %d", len(txSvc.args))
+	}
+	addr, ok := txSvc.args[0].(cadence.Address)
+	if !ok {
+		t.Fatalf("expected script arg to be cadence.Address, got %T", txSvc.args[0])
+	}
+	if addr.Hex() != flow.HexToAddress("0xf8d6e0586b0a20c7").Hex() {
+		t.Fatalf("expected script arg address 0xf8d6e0586b0a20c7, got %s", addr.Hex())
+	}
+}
+
+func TestIsArtistReturnsFalse(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(false),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	is, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err != nil {
+		t.Fatalf("IsArtist returned error: %v", err)
+	}
+	if is {
+		t.Fatalf("expected isArtist false, got true")
+	}
+}
+
+func TestIsArtistPropagatesScriptError(t *testing.T) {
+	txSvc := &queryTxService{err: errors.New("script execution failed")}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestIsArtistRejectsUnexpectedType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewUInt64(1),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err == nil {
+		t.Fatal("expected error for unexpected script result type, got nil")
+	}
+}
+
+func TestIsArtistRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "not-an-address")
+	if err == nil {
+		t.Fatal("expected error for invalid address, got nil")
+	}
+}
+
 func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
 	primary, err := cadence.NewUFix64("10.00000000")
 	if err != nil {
 		t.Fatal(err)
 	}
 	txSvc := &queryTxService{
-		scriptResult: cadence.NewOptional(cadence.NewStruct([]cadence.Value{
-			cadence.NewUInt64(3),
-			cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")),
-			cadence.String("Original"),
-			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}}),
-			cadence.NewUInt64(100),
-			cadence.NewUInt8(2),
-		}).WithType(summaryStructType("OriginalSummary", "id", "artist", "name", "prices", "createdAtBlock", "schemaVersion"))),
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
+			{Key: cadence.String("name"), Value: cadence.String("Original")},
+			{Key: cadence.String("prices"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}})},
+			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(100)},
+			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -262,22 +380,22 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	txSvc := &queryTxService{
-		scriptResult: cadence.NewOptional(cadence.NewStruct([]cadence.Value{
-			cadence.NewUInt64(4),
-			cadence.NewUInt64(3),
-			cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")),
-			cadence.NewUInt64(99),
-			cadence.NewUInt64(500),
-			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}}),
-			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("artist"), Value: artistShare}}),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt64(1), cadence.NewUInt64(2)}),
-			cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("rare"), Value: rareWeight}}),
-			cadence.NewUInt64(101),
-			cadence.NewUInt8(2),
-			cadence.String("Active"),
-			cadence.NewUInt64(9),
-			cadence.NewUInt8(1),
-		}).WithType(summaryStructType("EditionSummary", "id", "originalId", "artist", "shuffleSeedBlock", "reprintLimit", "prices", "profitSplit", "rarityCurve", "multiplierWeights", "createdAtBlock", "schemaVersion", "state", "totalMinted", "rarityProfile"))),
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(4)},
+			{Key: cadence.String("originalId"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
+			{Key: cadence.String("shuffleSeedBlock"), Value: cadence.NewUInt64(99)},
+			{Key: cadence.String("reprintLimit"), Value: cadence.NewUInt64(500)},
+			{Key: cadence.String("prices"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}})},
+			{Key: cadence.String("profitSplit"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("artist"), Value: artistShare}})},
+			{Key: cadence.String("rarityCurve"), Value: cadence.NewArray([]cadence.Value{cadence.NewUInt64(1), cadence.NewUInt64(2)})},
+			{Key: cadence.String("multiplierWeights"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("rare"), Value: rareWeight}})},
+			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(101)},
+			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
+			{Key: cadence.String("state"), Value: cadence.String("Active")},
+			{Key: cadence.String("totalMinted"), Value: cadence.NewUInt64(9)},
+			{Key: cadence.String("rarityProfile"), Value: cadence.NewUInt8(1)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -288,7 +406,7 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEditionSummary returned error: %v", err)
 	}
-	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.MaxSupply != 500 || summary.State != "Active" || summary.TotalMinted != 9 {
+	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.MaxSupply != 500 || summary.State != "Active" || summary.TotalMinted != 9 || summary.RarityProfile != 1 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 	if summary.Prices["primary"] != "12.00000000" || summary.ProfitSplit["artist"] != "0.85000000" || summary.MultiplierWeights["rare"] != "0.25000000" {

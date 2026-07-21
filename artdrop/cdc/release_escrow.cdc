@@ -5,8 +5,8 @@
 /// al protocolo y marcar el escrow como Released.
 
 import FungibleToken from 0x9a0766d93b6608b7
-import "EscrowModule"
-import "PaymentModule"
+import EscrowModule from 0x1bfedfa0ec66c23e
+import PaymentModule from 0x1bfedfa0ec66c23e
 
 transaction(
     logicOwner: Address,

@@ -867,8 +867,9 @@ paths:
           description: OK
   '/accounts/{address}/artdrop/is-artist':
     get:
-      summary: Check if address has an ArtDrop collection (is artist)
-      operationId: hasArtDropCollection
+      summary: Check if address is an ArtDrop artist
+      description: Returns whether the address has created at least one Original (via ArtDropRegistry.ArtistIndex).
+      operationId: isArtDropArtist
       x-required-scopes:
         - account.read
       tags:

@@ -15,10 +15,27 @@ import (
 )
 
 func TestListCertificatesHandlerReturnsOK(t *testing.T) {
+	mustStr := func(s string) cadence.String {
+		v, err := cadence.NewString(s)
+		if err != nil {
+			panic(err)
+		}
+		return v
+	}
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{
-			cadence.NewUInt64(7),
-			cadence.NewUInt64(13),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(13)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(2)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(false)},
+			}),
 		}),
 	}
 	handler := NewHandler(NewService(plugins.PluginDeps{
@@ -40,6 +57,9 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 	}
 	if !strings.Contains(rw.Body.String(), `"id":13`) {
 		t.Fatalf("expected response to contain certificate id 13, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"is_revealed":true`) {
+		t.Fatalf("expected response to contain is_revealed:true, got %s", rw.Body.String())
 	}
 }
 
@@ -138,10 +158,27 @@ func TestGetCertificateDetailHandlerPropagatesScriptError(t *testing.T) {
 }
 
 func TestGetCollectionLengthHandlerReturnsOK(t *testing.T) {
+	mustStr := func(s string) cadence.String {
+		v, err := cadence.NewString(s)
+		if err != nil {
+			panic(err)
+		}
+		return v
+	}
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{
-			cadence.NewUInt64(7),
-			cadence.NewUInt64(13),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(13)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(2)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(false)},
+			}),
 		}),
 	}
 	handler := NewHandler(NewService(plugins.PluginDeps{
@@ -198,6 +235,70 @@ func TestGetCollectionLengthHandlerRejectsInvalidAddress(t *testing.T) {
 	rw := httptest.NewRecorder()
 
 	handler.GetCollectionLength().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestIsArtistHandlerReturnsTrue(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(true),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"isArtist":true`) {
+		t.Fatalf("expected response to contain isArtist:true, got %s", rw.Body.String())
+	}
+}
+
+func TestIsArtistHandlerReturnsFalse(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(false),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"isArtist":false`) {
+		t.Fatalf("expected response to contain isArtist:false, got %s", rw.Body.String())
+	}
+}
+
+func TestIsArtistHandlerRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/not-an-address/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "not-an-address"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())

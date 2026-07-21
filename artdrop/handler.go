@@ -308,20 +308,20 @@ func (h *Handler) GetMarketModeFunc(rw http.ResponseWriter, r *http.Request) {
 	handlers.HandleJsonResponse(rw, http.StatusOK, mode)
 }
 
-func (h *Handler) HasCollection() http.Handler {
-	return http.HandlerFunc(h.HasCollectionFunc)
+func (h *Handler) IsArtist() http.Handler {
+	return http.HandlerFunc(h.IsArtistFunc)
 }
 
-func (h *Handler) HasCollectionFunc(rw http.ResponseWriter, r *http.Request) {
+func (h *Handler) IsArtistFunc(rw http.ResponseWriter, r *http.Request) {
 	address := mux.Vars(r)["address"]
 
-	has, err := h.svc.HasCollection(r.Context(), address)
+	is, err := h.svc.IsArtist(r.Context(), address)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return
 	}
 
-	handlers.HandleJsonResponse(rw, http.StatusOK, map[string]bool{"isArtist": has})
+	handlers.HandleJsonResponse(rw, http.StatusOK, map[string]bool{"isArtist": is})
 }
 
 func (h *Handler) GetEscrow() http.Handler {

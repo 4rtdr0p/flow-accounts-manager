@@ -43,5 +43,5 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/artdrop/editions/{edId}", h.GetEditionSummary()).Methods(http.MethodGet)
 	router.Handle("/artdrop/config/platform-fee", h.GetPlatformFee()).Methods(http.MethodGet)
 	router.Handle("/artdrop/config/market-mode", h.GetMarketMode()).Methods(http.MethodGet)
-	router.Handle("/accounts/{address}/artdrop/is-artist", h.HasCollection()).Methods(http.MethodGet)
+	router.Handle("/accounts/{address}/artdrop/is-artist", h.IsArtist()).Methods(http.MethodGet)
 }

@@ -4,7 +4,7 @@
 /// Solo funciona si unlockAt ya paso y el escrow sigue en Pending.
 
 import FungibleToken from 0x9a0766d93b6608b7
-import "EscrowModule"
+import EscrowModule from 0x1bfedfa0ec66c23e
 
 transaction(
     logicOwner: Address,

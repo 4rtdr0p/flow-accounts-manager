@@ -40,6 +40,9 @@ var getCertificateFinalMultiplierCDC string
 //go:embed cdc/get_certificate_display_name.cdc
 var getCertificateDisplayNameCDC string
 
+//go:embed cdc/get_certificates.cdc
+var getCertificatesCDC string
+
 //go:embed cdc/get_escrow_summary.cdc
 var getEscrowSummaryCDC string
 
@@ -61,8 +64,14 @@ var refundEscrowCDC string
 //go:embed cdc/get_original_summary.cdc
 var getOriginalSummaryCDC string
 
+//go:embed cdc/get_original_summary_v2.cdc
+var getOriginalSummaryV2CDC string
+
 //go:embed cdc/get_edition_summary.cdc
 var getEditionSummaryCDC string
+
+//go:embed cdc/get_edition_summary_v2.cdc
+var getEditionSummaryV2CDC string
 
 //go:embed cdc/get_platform_fee.cdc
 var getPlatformFeeCDC string
@@ -70,8 +79,8 @@ var getPlatformFeeCDC string
 //go:embed cdc/get_market_mode_name.cdc
 var getMarketModeNameCDC string
 
-//go:embed cdc/has_collection.cdc
-var hasCollectionCDC string
+//go:embed cdc/is_artist.cdc
+var isArtistCDC string
 
 // Service implements the artdrop plugin business logic.
 type Service struct {
@@ -236,7 +245,15 @@ func (s *Service) Refund(ctx context.Context, sync bool, address string, escrowI
 	return s.escrowAction(ctx, sync, address, escrowId, req, refundEscrowCDC, TxTypeRefund)
 }
 
-// ListCertificates returns the certificates owned by the given address.
+// ListCertificates returns the certificates owned by the given address,
+// enriched with editionId, serial, and isRevealed metadata.
+//
+// Reads from the artdrop/cdc/get_certificates.cdc script (added in
+// testnet-api-verification.md), which returns one dictionary per cert
+// with keys: id, editionId, serial, isRevealed. Falls back to the older
+// get_certificate_ids.cdc shape (bare [UInt64]) if the script returns a
+// plain UInt64 array — that path leaves the rich fields at their
+// zero values for backwards compatibility with older deploys.
 func (s *Service) ListCertificates(ctx context.Context, address string) ([]CertificateInfo, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
@@ -245,23 +262,47 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIDsCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificatesCDC, args)
 	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_ids script: %w", err)
+		return nil, fmt.Errorf("execute get_certificates script: %w", err)
 	}
 
-	ids, ok := val.(cadence.Array)
+	arr, ok := val.(cadence.Array)
 	if !ok {
 		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
 	}
 
-	certs := make([]CertificateInfo, len(ids.Values))
-	for i, v := range ids.Values {
-		id, ok := v.(cadence.UInt64)
+	certs := make([]CertificateInfo, 0, len(arr.Values))
+	for i, v := range arr.Values {
+		dict, ok := v.(cadence.Dictionary)
 		if !ok {
-			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.UInt64", v, i)
+			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.Dictionary", v, i)
 		}
-		certs[i] = CertificateInfo{Id: uint64(id)}
+		fields := map[string]cadence.Value{}
+		for _, kv := range dict.Pairs {
+			if key, ok := kv.Key.(cadence.String); ok {
+				fields[string(key)] = kv.Value
+			}
+		}
+
+		info := CertificateInfo{}
+
+		if id, ok := fields["id"].(cadence.UInt64); ok {
+			info.Id = uint64(id)
+		} else {
+			return nil, fmt.Errorf("missing or wrong-typed 'id' at index %d (got %T)", i, fields["id"])
+		}
+		if editionId, ok := fields["editionId"].(cadence.UInt64); ok {
+			info.EditionId = uint64(editionId)
+		}
+		if serial, ok := fields["serial"].(cadence.UInt64); ok {
+			info.Serial = uint64(serial)
+		}
+		if revealed, ok := fields["isRevealed"].(cadence.Bool); ok {
+			info.IsRevealed = bool(revealed)
+		}
+
+		certs = append(certs, info)
 	}
 
 	return certs, nil
@@ -367,10 +408,16 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 }
 
 // GetOriginalSummary returns a summary of an Original.
+//
+// Uses the v2 script (flat dictionary shape) instead of the contract's
+// `ArtDropCore.OriginalSummary` struct — the contract's `artist` field
+// is an Address (not a String), so the previous handler logic that read
+// `fields["artistName"]` was silently broken and `artistName` always
+// returned "". See `get_original_summary_v2.cdc` for the rationale.
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryV2CDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
 	}
@@ -383,12 +430,18 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 		return nil, nil
 	}
 
-	str, ok := opt.Value.(cadence.Struct)
+	dict, ok := opt.Value.(cadence.Dictionary)
 	if !ok {
-		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
 	}
 
-	fields := str.FieldsMappedByName()
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+
 	var summary OriginalSummary
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
@@ -413,10 +466,17 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 }
 
 // GetEditionSummary returns a summary of an Edition.
+//
+// Uses the v2 script (flat dictionary shape) instead of the contract's
+// `ArtDropCore.EditionSummary` struct — the contract's `state` field is
+// an enum (not a bare UInt8), so the previous handler's
+// `fields["state"].(cadence.UInt8)` assertion silently failed and `state`
+// was always returned as 0; also, the contract has no `maxSupply` field
+// (the field is named `reprintLimit`). See `get_edition_summary_v2.cdc`.
 func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(editionId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryV2CDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
 	}
@@ -429,12 +489,18 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 		return nil, nil
 	}
 
-	str, ok := opt.Value.(cadence.Struct)
+	dict, ok := opt.Value.(cadence.Dictionary)
 	if !ok {
-		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
 	}
 
-	fields := str.FieldsMappedByName()
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+
 	var summary EditionSummary
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
@@ -513,8 +579,9 @@ func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error
 	return &MarketModeResponse{Mode: string(mode)}, nil
 }
 
-// HasCollection checks if an address has a published ArtDropCore.Collection capability.
-func (s *Service) HasCollection(ctx context.Context, address string) (bool, error) {
+// IsArtist reports whether the given address has created at least one Original,
+// as tracked by ArtDropRegistry.ArtistIndex.
+func (s *Service) IsArtist(ctx context.Context, address string) (bool, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
 		return false, err
@@ -522,9 +589,9 @@ func (s *Service) HasCollection(ctx context.Context, address string) (bool, erro
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, hasCollectionCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, isArtistCDC, args)
 	if err != nil {
-		return false, fmt.Errorf("execute has_collection script: %w", err)
+		return false, fmt.Errorf("execute is_artist script: %w", err)
 	}
 
 	result, ok := val.(cadence.Bool)
