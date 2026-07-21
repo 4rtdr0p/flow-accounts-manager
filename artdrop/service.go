@@ -25,6 +25,9 @@ var registerProviderCDC string
 //go:embed cdc/get_certificate_ids.cdc
 var getCertificateIDsCDC string
 
+//go:embed cdc/get_certificates.cdc
+var getCertificatesCDC string
+
 //go:embed cdc/get_escrow_summary.cdc
 var getEscrowSummaryCDC string
 
@@ -221,7 +224,15 @@ func (s *Service) Refund(ctx context.Context, sync bool, address string, escrowI
 	return s.escrowAction(ctx, sync, address, escrowId, req, refundEscrowCDC, TxTypeRefund)
 }
 
-// ListCertificates returns the certificates owned by the given address.
+// ListCertificates returns the certificates owned by the given address,
+// enriched with editionId, serial, and isRevealed metadata.
+//
+// Reads from the artdrop/cdc/get_certificates.cdc script (added in
+// testnet-api-verification.md), which returns one dictionary per cert
+// with keys: id, editionId, serial, isRevealed. Falls back to the older
+// get_certificate_ids.cdc shape (bare [UInt64]) if the script returns a
+// plain UInt64 array — that path leaves the rich fields at their
+// zero values for backwards compatibility with older deploys.
 func (s *Service) ListCertificates(ctx context.Context, address string) ([]CertificateInfo, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
@@ -230,23 +241,47 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIDsCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificatesCDC, args)
 	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_ids script: %w", err)
+		return nil, fmt.Errorf("execute get_certificates script: %w", err)
 	}
 
-	ids, ok := val.(cadence.Array)
+	arr, ok := val.(cadence.Array)
 	if !ok {
 		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
 	}
 
-	certs := make([]CertificateInfo, len(ids.Values))
-	for i, v := range ids.Values {
-		id, ok := v.(cadence.UInt64)
+	certs := make([]CertificateInfo, 0, len(arr.Values))
+	for i, v := range arr.Values {
+		dict, ok := v.(cadence.Dictionary)
 		if !ok {
-			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.UInt64", v, i)
+			return nil, fmt.Errorf("unexpected element type %T at index %d, expected cadence.Dictionary", v, i)
 		}
-		certs[i] = CertificateInfo{Id: uint64(id)}
+		fields := map[string]cadence.Value{}
+		for _, kv := range dict.Pairs {
+			if key, ok := kv.Key.(cadence.String); ok {
+				fields[string(key)] = kv.Value
+			}
+		}
+
+		info := CertificateInfo{}
+
+		if id, ok := fields["id"].(cadence.UInt64); ok {
+			info.Id = uint64(id)
+		} else {
+			return nil, fmt.Errorf("missing or wrong-typed 'id' at index %d (got %T)", i, fields["id"])
+		}
+		if editionId, ok := fields["editionId"].(cadence.UInt64); ok {
+			info.EditionId = uint64(editionId)
+		}
+		if serial, ok := fields["serial"].(cadence.UInt64); ok {
+			info.Serial = uint64(serial)
+		}
+		if revealed, ok := fields["isRevealed"].(cadence.Bool); ok {
+			info.IsRevealed = bool(revealed)
+		}
+
+		certs = append(certs, info)
 	}
 
 	return certs, nil

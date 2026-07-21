@@ -14,11 +14,33 @@ import (
 )
 
 func TestListCertificatesReturnsIds(t *testing.T) {
+	mustStr := func(s string) cadence.String {
+		v, err := cadence.NewString(s)
+		if err != nil {
+			panic(err)
+		}
+		return v
+	}
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{
-			cadence.NewUInt64(1),
-			cadence.NewUInt64(42),
-			cadence.NewUInt64(99),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(1)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(42)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(2)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(false)},
+			}),
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: mustStr("id"), Value: cadence.NewUInt64(99)},
+				{Key: mustStr("editionId"), Value: cadence.NewUInt64(7)},
+				{Key: mustStr("serial"), Value: cadence.NewUInt64(3)},
+				{Key: mustStr("isRevealed"), Value: cadence.NewBool(true)},
+			}),
 		}),
 	}
 	svc := NewService(plugins.PluginDeps{
@@ -35,6 +57,15 @@ func TestListCertificatesReturnsIds(t *testing.T) {
 	}
 	if certs[0].Id != 1 || certs[1].Id != 42 || certs[2].Id != 99 {
 		t.Fatalf("unexpected certificate ids: %+v", certs)
+	}
+	if certs[0].EditionId != 7 || certs[1].EditionId != 7 || certs[2].EditionId != 7 {
+		t.Fatalf("expected editionId 7 on all, got %+v", certs)
+	}
+	if certs[0].Serial != 1 || certs[1].Serial != 2 || certs[2].Serial != 3 {
+		t.Fatalf("expected serials 1/2/3, got %+v", certs)
+	}
+	if !certs[0].IsRevealed || certs[1].IsRevealed || !certs[2].IsRevealed {
+		t.Fatalf("expected revealed=true/false/true, got %+v", certs)
 	}
 }
 
