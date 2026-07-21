@@ -545,11 +545,3 @@ func (s *queryTxService) UpdateTransaction(t *transactions.Transaction) error {
 func (s *queryTxService) GetOrCreateTransaction(transactionId string) *transactions.Transaction {
 	panic("not used by queries")
 }
-
-func summaryStructType(name string, fieldNames ...string) *cadence.StructType {
-	fields := make([]cadence.Field, 0, len(fieldNames))
-	for _, fieldName := range fieldNames {
-		fields = append(fields, cadence.NewField(fieldName, nil))
-	}
-	return cadence.NewStructType(nil, name, fields, nil)
-}

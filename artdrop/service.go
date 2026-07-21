@@ -22,9 +22,6 @@ var setupCollectionCDC string
 //go:embed cdc/register_provider.cdc
 var registerProviderCDC string
 
-//go:embed cdc/get_certificate_ids.cdc
-var getCertificateIDsCDC string
-
 //go:embed cdc/get_certificate_base_tier.cdc
 var getCertificateBaseTierCDC string
 
@@ -61,17 +58,11 @@ var cancelEscrowCDC string
 //go:embed cdc/refund_escrow.cdc
 var refundEscrowCDC string
 
-//go:embed cdc/get_original_summary.cdc
-var getOriginalSummaryCDC string
-
 //go:embed cdc/get_original_summary_v2.cdc
 var getOriginalSummaryV2CDC string
 
 //go:embed cdc/get_original_extended_summary_v2.cdc
 var getOriginalExtendedSummaryV2CDC string
-
-//go:embed cdc/get_edition_summary.cdc
-var getEditionSummaryCDC string
 
 //go:embed cdc/get_edition_summary_v2.cdc
 var getEditionSummaryV2CDC string
@@ -323,7 +314,7 @@ func (s *Service) GetCollectionLength(ctx context.Context, address string) (*Col
 
 // GetEscrow returns a summary of the requested escrow.
 func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uint64) (*EscrowSummary, error) {
-	logicOwner, err := flow_helpers.ValidateAddress(logicOwner, s.deps.Config.ChainID)
+	_, err := flow_helpers.ValidateAddress(logicOwner, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, err
 	}
