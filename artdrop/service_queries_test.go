@@ -140,6 +140,93 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 	}
 }
 
+func TestIsArtistReturnsTrue(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(true),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	is, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err != nil {
+		t.Fatalf("IsArtist returned error: %v", err)
+	}
+	if !is {
+		t.Fatalf("expected isArtist true, got false")
+	}
+	if len(txSvc.args) != 1 {
+		t.Fatalf("expected 1 script arg, got %d", len(txSvc.args))
+	}
+	addr, ok := txSvc.args[0].(cadence.Address)
+	if !ok {
+		t.Fatalf("expected script arg to be cadence.Address, got %T", txSvc.args[0])
+	}
+	if addr.Hex() != flow.HexToAddress("0xf8d6e0586b0a20c7").Hex() {
+		t.Fatalf("expected script arg address 0xf8d6e0586b0a20c7, got %s", addr.Hex())
+	}
+}
+
+func TestIsArtistReturnsFalse(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(false),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	is, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err != nil {
+		t.Fatalf("IsArtist returned error: %v", err)
+	}
+	if is {
+		t.Fatalf("expected isArtist false, got true")
+	}
+}
+
+func TestIsArtistPropagatesScriptError(t *testing.T) {
+	txSvc := &queryTxService{err: errors.New("script execution failed")}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestIsArtistRejectsUnexpectedType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewUInt64(1),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
+	if err == nil {
+		t.Fatal("expected error for unexpected script result type, got nil")
+	}
+}
+
+func TestIsArtistRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.IsArtist(context.Background(), "not-an-address")
+	if err == nil {
+		t.Fatal("expected error for invalid address, got nil")
+	}
+}
+
 // ---- mock transaction service for read-only queries ----
 
 type queryTxService struct {

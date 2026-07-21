@@ -109,6 +109,70 @@ func TestGetCollectionLengthHandlerRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
+func TestIsArtistHandlerReturnsTrue(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(true),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"isArtist":true`) {
+		t.Fatalf("expected response to contain isArtist:true, got %s", rw.Body.String())
+	}
+}
+
+func TestIsArtistHandlerReturnsFalse(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewBool(false),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"isArtist":false`) {
+		t.Fatalf("expected response to contain isArtist:false, got %s", rw.Body.String())
+	}
+}
+
+func TestIsArtistHandlerRejectsInvalidAddress(t *testing.T) {
+	txSvc := &queryTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/not-an-address/artdrop/is-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "not-an-address"})
+	rw := httptest.NewRecorder()
+
+	handler.IsArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
 func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt8(2),

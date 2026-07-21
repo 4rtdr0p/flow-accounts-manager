@@ -55,8 +55,8 @@ var getPlatformFeeCDC string
 //go:embed cdc/get_market_mode_name.cdc
 var getMarketModeNameCDC string
 
-//go:embed cdc/has_collection.cdc
-var hasCollectionCDC string
+//go:embed cdc/is_artist.cdc
+var isArtistCDC string
 
 // Service implements the artdrop plugin business logic.
 type Service struct {
@@ -403,8 +403,9 @@ func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error
 	return &MarketModeResponse{Mode: string(mode)}, nil
 }
 
-// HasCollection checks if an address has a published ArtDropCore.Collection capability.
-func (s *Service) HasCollection(ctx context.Context, address string) (bool, error) {
+// IsArtist reports whether the given address has created at least one Original,
+// as tracked by ArtDropRegistry.ArtistIndex.
+func (s *Service) IsArtist(ctx context.Context, address string) (bool, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
 		return false, err
@@ -412,9 +413,9 @@ func (s *Service) HasCollection(ctx context.Context, address string) (bool, erro
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, hasCollectionCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, isArtistCDC, args)
 	if err != nil {
-		return false, fmt.Errorf("execute has_collection script: %w", err)
+		return false, fmt.Errorf("execute is_artist script: %w", err)
 	}
 
 	result, ok := val.(cadence.Bool)
