@@ -1,4 +1,4 @@
-import ArtDropCore from 0xe2f96cbbdfde8c9f
+import ArtDropCore from 0xec581a0282d99a1a
 
 access(all) fun main(escrowId: UInt64): UInt8 {
     let summary = ArtDropCore.getEscrowSummary(id: escrowId)

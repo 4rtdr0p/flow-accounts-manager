@@ -11,7 +11,7 @@
 /// Day-1 mono-account: the deployer signs.
 /// Cross-account (future): issue the capability via inbox first.
 
-import ArtDropCore from 0xe2f96cbbdfde8c9f
+import ArtDropCore from 0xec581a0282d99a1a
 
 transaction(certificateId: UInt64, from: Address, to: Address) {
     prepare(signer: auth(BorrowValue) &Account) {

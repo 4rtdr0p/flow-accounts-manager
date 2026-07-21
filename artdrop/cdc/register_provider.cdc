@@ -7,7 +7,7 @@
 /// Required before ProtocolAdmin can move a Certificate out of this account.
 /// One-time setup per account.
 
-import ArtDropCore from 0xe2f96cbbdfde8c9f
+import ArtDropCore from 0xec581a0282d99a1a
 import NonFungibleToken from 0x631e88ae7f1d7c20
 
 transaction {

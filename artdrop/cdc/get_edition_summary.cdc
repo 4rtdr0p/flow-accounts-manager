@@ -1,4 +1,4 @@
-import ArtDropCore from 0xe2f96cbbdfde8c9f
+import ArtDropCore from 0xec581a0282d99a1a
 
 access(all)
 fun main(id: UInt64): ArtDropCore.EditionSummary? {
