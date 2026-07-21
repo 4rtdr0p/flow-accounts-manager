@@ -17,12 +17,14 @@
 import ArtDropCore from 0xec581a0282d99a1a
 
 transaction(certificateId: UInt64, from: Address, to: Address) {
-    prepare(signer: auth(BorrowValue) &Account) {
+    prepare(signer: auth(CopyValue) &Account) {
         let protoTransferPath = StoragePath(identifier: "WalletAPIProtocolTransfer")!
-        let protoTransfer = signer.storage
-            .borrow<auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.ProtocolTransferAuthority>(
+        let cap = signer.storage
+            .copy<Capability<auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.ProtocolTransferAuthority>>(
                 from: protoTransferPath
-            ) ?? panic("protocol_transfer: ProtocolTransferAuthority not found at 'WalletAPIProtocolTransfer' - run claim_protocol_transfer_cap.cdc first")
+            ) ?? panic("protocol_transfer: no ProtocolTransfer capability stored at 'WalletAPIProtocolTransfer' - run claim_protocol_transfer_cap.cdc first")
+        let protoTransfer = cap.borrow()
+            ?? panic("protocol_transfer: stored capability does not resolve - check it was issued/claimed correctly")
 
         protoTransfer.protocolTransfer(
             certificateId: certificateId,
