@@ -6,7 +6,7 @@
 
 import FungibleToken from 0x9a0766d93b6608b7
 import ArtDropCore from 0xec581a0282d99a1a
-import "EscrowModule"
+import EscrowModule from 0x1bfedfa0ec66c23e
 
 transaction(
     logicOwner: Address,

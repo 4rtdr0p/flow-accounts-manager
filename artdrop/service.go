@@ -49,8 +49,14 @@ var refundEscrowCDC string
 //go:embed cdc/get_original_summary.cdc
 var getOriginalSummaryCDC string
 
+//go:embed cdc/get_original_summary_v2.cdc
+var getOriginalSummaryV2CDC string
+
 //go:embed cdc/get_edition_summary.cdc
 var getEditionSummaryCDC string
+
+//go:embed cdc/get_edition_summary_v2.cdc
+var getEditionSummaryV2CDC string
 
 //go:embed cdc/get_platform_fee.cdc
 var getPlatformFeeCDC string
@@ -325,10 +331,16 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 }
 
 // GetOriginalSummary returns a summary of an Original.
+//
+// Uses the v2 script (flat dictionary shape) instead of the contract's
+// `ArtDropCore.OriginalSummary` struct — the contract's `artist` field
+// is an Address (not a String), so the previous handler logic that read
+// `fields["artistName"]` was silently broken and `artistName` always
+// returned "". See `get_original_summary_v2.cdc` for the rationale.
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryV2CDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
 	}
@@ -341,12 +353,18 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 		return nil, nil
 	}
 
-	str, ok := opt.Value.(cadence.Struct)
+	dict, ok := opt.Value.(cadence.Dictionary)
 	if !ok {
-		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
 	}
 
-	fields := str.FieldsMappedByName()
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+
 	var summary OriginalSummary
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
@@ -354,25 +372,25 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 	if name, ok := fields["name"].(cadence.String); ok {
 		summary.Name = string(name)
 	}
-	if artist, ok := fields["artistName"].(cadence.String); ok {
-		summary.ArtistName = string(artist)
-	}
-	if editionIDs, ok := fields["editionIDs"].(cadence.Array); ok {
-		for _, v := range editionIDs.Values {
-			if id, ok := v.(cadence.UInt64); ok {
-				summary.EditionIds = append(summary.EditionIds, uint64(id))
-			}
-		}
+	if artist, ok := fields["artist"].(cadence.Address); ok {
+		summary.ArtistName = artist.Hex()
 	}
 
 	return &summary, nil
 }
 
 // GetEditionSummary returns a summary of an Edition.
+//
+// Uses the v2 script (flat dictionary shape) instead of the contract's
+// `ArtDropCore.EditionSummary` struct — the contract's `state` field is
+// an enum (not a bare UInt8), so the previous handler's
+// `fields["state"].(cadence.UInt8)` assertion silently failed and `state`
+// was always returned as 0; also, the contract has no `maxSupply` field
+// (the field is named `reprintLimit`). See `get_edition_summary_v2.cdc`.
 func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(editionId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryV2CDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
 	}
@@ -385,12 +403,18 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 		return nil, nil
 	}
 
-	str, ok := opt.Value.(cadence.Struct)
+	dict, ok := opt.Value.(cadence.Dictionary)
 	if !ok {
-		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Struct", opt.Value)
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
 	}
 
-	fields := str.FieldsMappedByName()
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+
 	var summary EditionSummary
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
@@ -401,7 +425,7 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 	if tm, ok := fields["totalMinted"].(cadence.UInt64); ok {
 		summary.TotalMinted = uint64(tm)
 	}
-	if ms, ok := fields["maxSupply"].(cadence.UInt64); ok {
+	if ms, ok := fields["reprintLimit"].(cadence.UInt64); ok {
 		summary.MaxSupply = uint64(ms)
 	}
 
