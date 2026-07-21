@@ -1334,11 +1334,29 @@ have been fixed in this session**.
 
 ---
 
-## §J. Proposed GitHub issues (for the orchestrator to file against `4rtdr0p/Payload-Galaxy`)
+## §K. `/transfer` (ProtocolTransfer) — root-caused and fixed after this session
 
-> These are proposed issue texts for the frontend team — the
-> orchestrator should review and file via `gh issue create` (I
-> don't have write access to the Payload-Galaxy repo).
+The orchestrator investigated the `#7` gap flagged above after this session ended. Root cause: `artdrop/cdc/protocol_transfer.cdc` borrowed `ArtDropCore.ProtocolTransferStoragePath` directly, but the wallet-api's capability is stored at the custom path `WalletAPIProtocolTransfer` (see `transactions/setup/claim_protocol_transfer_cap.cdc` in `artdrop-protocol` — `ProtocolTransferStoragePath` is occupied by the deployer's own native resource). Two fix attempts:
+
+1. First attempt (commit `9c1c0dd`, deployed as v52) tried `signer.storage.borrow<auth(...) &ProtocolTransferAuthority>(from: protoTransferPath)` — failed live with `stored value type mismatch: expected type ArtDropCore.ProtocolTransferAuthority, got Capability<...>`, because that path stores a **Capability value**, not the resource itself.
+2. Fixed version: `signer.storage.copy<Capability<auth(ArtDropCore.ProtocolTransfer) &ArtDropCore.ProtocolTransferAuthority>>(from: protoTransferPath)` then `cap.borrow()` — matches the pattern already used in `ArtDropCore.cdc:2766`. **Verified working directly via `flow transactions send` against testnet** before bundling into the API: certificate 2 transferred from `testnet-artist` (`0x0daaba937562c85f`) to a buyer (`0x0a478c507cc8ea88`), signed by `testnet-wallet-api`, `viaProtocolTransfer: true` confirmed in the emitted event — tx `55f50b32df83a9be116f4c547245906eef531021ce1b117d85e923c86599f305`.
+
+Deployed to Quave as v53 (commit `b9a2db0`). The `POST /v1/accounts/{addr}/transfer` endpoint should now work correctly — re-verify against the live API before closing this out for good.
+
+Note: the sender account also needs a registered provider capability first (`transactions/user/register_provider.cdc`, one-time per account) — this was missing for `testnet-artist` and had to be run before the transfer would succeed. Frontend integration (issue #3 below, escrow flow) doesn't need this since sellers there use the escrow path, not direct `/transfer` — but any UI that surfaces `/transfer` directly should account for this prerequisite.
+
+## §J. Proposed GitHub issues — CREATED in `4rtdr0p/Payload-Galaxy`
+
+> Filed by the orchestrator after this session. Real links:
+
+- #280 — [Integrate custodial account creation + ArtDrop setup flow into Payload Galaxy onboarding](https://github.com/4rtdr0p/Payload-Galaxy/issues/280)
+- #281 — [Integrate Original/Edition creation (admin-only) into Payload Galaxy admin tools](https://github.com/4rtdr0p/Payload-Galaxy/issues/281)
+- #282 — [Integrate escrow purchase flow (buyer-side) into Payload Galaxy](https://github.com/4rtdr0p/Payload-Galaxy/issues/282)
+- #283 — [Integrate certificate listing + read-only Original/Edition views into Payload Galaxy](https://github.com/4rtdr0p/Payload-Galaxy/issues/283)
+- #284 — [Auth gating on the wallet-api before mainnet launch](https://github.com/4rtdr0p/Payload-Galaxy/issues/284)
+- #285 — [Mobile wallet: pre-encode chip pubkey for offline ECDSA-P256 signature](https://github.com/4rtdr0p/Payload-Galaxy/issues/285)
+
+Original proposed texts (as drafted in-session, kept for reference — actual issue bodies on GitHub are equivalent):
 
 ### Issue 1 — "Integrate custodial account creation + ArtDrop setup flow into Payload Galaxy onboarding"
 
