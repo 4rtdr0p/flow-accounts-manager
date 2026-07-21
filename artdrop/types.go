@@ -73,6 +73,25 @@ type OriginalSummary struct {
 	SchemaVersion  uint8             `json:"schemaVersion"`
 }
 
+// OriginalExtendedSummary contains the W12-extended metadata of an ArtDrop
+// Original: EditionCount + TotalMintedAcrossEditions are aggregated from all
+// Editions under this Original (via ArtDropRegistry.EditionsPerOriginalIndex);
+// DisplayName is the artist's registry-set name and stays nil until the
+// self-service/admin-curated writer policy is decided. Backed by
+// get_original_extended_summary_v2.cdc / ArtDropCore.getOriginalExtendedSummary
+// (artdrop-protocol commit f80473f). See
+// artdrop-protocol docs/W12-summary-fields-design.md for the full design.
+type OriginalExtendedSummary struct {
+	Id                        uint64  `json:"id"`
+	Name                      string  `json:"name"`
+	ArtistName                string  `json:"artistName"`
+	CreatedAtBlock            uint64  `json:"createdAtBlock"`
+	SchemaVersion             uint8   `json:"schemaVersion"`
+	EditionCount              uint64  `json:"editionCount"`
+	TotalMintedAcrossEditions uint64  `json:"totalMintedAcrossEditions"`
+	DisplayName               *string `json:"displayName,omitempty"`
+}
+
 // EditionSummary contains the metadata of an ArtDrop Edition.
 type EditionSummary struct {
 	Id                uint64            `json:"id"`
