@@ -1,4 +1,4 @@
-import ArtDropCore from 0x050dd2bfe6cd6421
+import ArtDropCore from 0xec581a0282d99a1a
 
 access(all)
 fun main(address: Address, id: UInt64): UFix64? {
