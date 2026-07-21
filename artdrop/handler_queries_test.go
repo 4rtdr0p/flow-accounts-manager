@@ -367,3 +367,77 @@ func TestGetEscrowHandlerRequiresLogicOwner(t *testing.T) {
 		t.Fatalf("expected status 400 for missing logic_owner, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
+
+func TestGetOriginalExtendedSummaryHandlerReturnsOK(t *testing.T) {
+	displayName, err := cadence.NewString("Ariel Artist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
+			{Key: cadence.String("name"), Value: cadence.String("Original")},
+			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(100)},
+			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
+			{Key: cadence.String("editionCount"), Value: cadence.NewUInt64(5)},
+			{Key: cadence.String("totalMintedAcrossEditions"), Value: cadence.NewUInt64(42)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/extended", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"editionCount":5`) {
+		t.Fatalf("expected response to contain editionCount 5, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"totalMintedAcrossEditions":42`) {
+		t.Fatalf("expected response to contain total minted 42, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"displayName":"Ariel Artist"`) {
+		t.Fatalf("expected response to contain displayName, got %s", rw.Body.String())
+	}
+}
+
+func TestGetOriginalExtendedSummaryHandlerRejectsInvalidOriginalId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/not-a-number/extended", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "not-a-number"})
+	rw := httptest.NewRecorder()
+
+	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid origId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetOriginalExtendedSummaryHandlerReturnsNotFound(t *testing.T) {
+	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/extended", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())
+	}
+}

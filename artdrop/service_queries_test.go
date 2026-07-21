@@ -366,6 +366,78 @@ func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
 	}
 }
 
+func TestGetOriginalExtendedSummaryMapsContractFields(t *testing.T) {
+	displayName, err := cadence.NewString("Ariel Artist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
+			{Key: cadence.String("name"), Value: cadence.String("Original")},
+			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(100)},
+			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
+			{Key: cadence.String("editionCount"), Value: cadence.NewUInt64(5)},
+			{Key: cadence.String("totalMintedAcrossEditions"), Value: cadence.NewUInt64(42)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetOriginalExtendedSummary(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetOriginalExtendedSummary returned error: %v", err)
+	}
+	if summary.Artist != "0xf8d6e0586b0a20c7" || summary.EditionCount != 5 || summary.TotalMintedAcrossEditions != 42 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if summary.DisplayName == nil || *summary.DisplayName != "Ariel Artist" {
+		t.Fatalf("unexpected display name: %+v", summary.DisplayName)
+	}
+}
+
+func TestGetOriginalExtendedSummaryAllowsMissingDisplayName(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(nil)},
+		})),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetOriginalExtendedSummary(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetOriginalExtendedSummary returned error: %v", err)
+	}
+	if summary.DisplayName != nil {
+		t.Fatalf("expected nil display name, got %+v", summary.DisplayName)
+	}
+}
+
+func TestGetOriginalExtendedSummaryRejectsUnexpectedDisplayNameType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(cadence.NewUInt64(42))},
+		})),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.GetOriginalExtendedSummary(context.Background(), 3)
+	if err == nil {
+		t.Fatal("expected error for unexpected displayName type, got nil")
+	}
+}
+
 func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	primary, err := cadence.NewUFix64("12.00000000")
 	if err != nil {

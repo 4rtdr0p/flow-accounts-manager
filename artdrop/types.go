@@ -84,7 +84,7 @@ type OriginalSummary struct {
 type OriginalExtendedSummary struct {
 	Id                        uint64  `json:"id"`
 	Name                      string  `json:"name"`
-	ArtistName                string  `json:"artistName"`
+	Artist                    string  `json:"artist"`
 	CreatedAtBlock            uint64  `json:"createdAtBlock"`
 	SchemaVersion             uint8   `json:"schemaVersion"`
 	EditionCount              uint64  `json:"editionCount"`

@@ -67,6 +67,9 @@ var getOriginalSummaryCDC string
 //go:embed cdc/get_original_summary_v2.cdc
 var getOriginalSummaryV2CDC string
 
+//go:embed cdc/get_original_extended_summary_v2.cdc
+var getOriginalExtendedSummaryV2CDC string
+
 //go:embed cdc/get_edition_summary.cdc
 var getEditionSummaryCDC string
 
@@ -465,6 +468,57 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 	return &summary, nil
 }
 
+// GetOriginalExtendedSummary returns W12 extended metadata for an Original.
+func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uint64) (*OriginalExtendedSummary, error) {
+	args := []transactions.Argument{cadence.NewUInt64(originalId)}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalExtendedSummaryV2CDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_original_extended_summary script: %w", err)
+	}
+
+	fields, ok, err := optionalDictionaryFields(val)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+
+	var summary OriginalExtendedSummary
+	if id, ok := fields["id"].(cadence.UInt64); ok {
+		summary.Id = uint64(id)
+	}
+	if name, ok := fields["name"].(cadence.String); ok {
+		summary.Name = string(name)
+	}
+	if artist, ok := fields["artist"].(cadence.Address); ok {
+		summary.Artist = flow_helpers.FormatAddress(flow.BytesToAddress(artist.Bytes()))
+	}
+	if createdAt, ok := fields["createdAtBlock"].(cadence.UInt64); ok {
+		summary.CreatedAtBlock = uint64(createdAt)
+	}
+	if schemaVersion, ok := fields["schemaVersion"].(cadence.UInt8); ok {
+		summary.SchemaVersion = uint8(schemaVersion)
+	}
+	if editionCount, ok := fields["editionCount"].(cadence.UInt64); ok {
+		summary.EditionCount = uint64(editionCount)
+	}
+	if totalMinted, ok := fields["totalMintedAcrossEditions"].(cadence.UInt64); ok {
+		summary.TotalMintedAcrossEditions = uint64(totalMinted)
+	}
+	if displayName, ok := fields["displayName"].(cadence.Optional); ok && displayName.Value != nil {
+		name, ok := displayName.Value.(cadence.String)
+		if !ok {
+			return nil, fmt.Errorf("unexpected displayName optional inner type %T, expected cadence.String", displayName.Value)
+		}
+		value := string(name)
+		summary.DisplayName = &value
+	}
+
+	return &summary, nil
+}
+
 // GetEditionSummary returns a summary of an Edition.
 //
 // Uses the v2 script (flat dictionary shape) instead of the contract's
@@ -670,6 +724,29 @@ func uint8ArrayBytes(value cadence.Value) ([]byte, error) {
 		bytes = append(bytes, byte(b))
 	}
 	return bytes, nil
+}
+
+func optionalDictionaryFields(value cadence.Value) (map[string]cadence.Value, bool, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return nil, false, nil
+	}
+
+	dict, ok := opt.Value.(cadence.Dictionary)
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
+	}
+
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+	return fields, true, nil
 }
 
 func ufix64Dictionary(dict cadence.Dictionary) map[string]string {
