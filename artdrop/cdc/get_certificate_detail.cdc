@@ -27,7 +27,7 @@
 ///   - displayName: String?          (Optional; from MetadataViews.Display.name)
 
 import ArtDropCore from 0xec581a0282d99a1a
-import "MetadataViews"
+import MetadataViews from 0x631e88ae7f1d7c20
 
 access(all) fun main(address: Address, id: UInt64): {String: AnyStruct}? {
     let collection = getAccount(address).capabilities
