@@ -5,10 +5,14 @@ fun main(address: Address, id: UInt64): UFix64? {
     let collection = getAccount(address)
         .capabilities
         .borrow<&ArtDropCore.Collection>(ArtDropCore.CertCollectionPublicPath)
-        ?? panic("missing certificate collection capability")
+    if collection == nil {
+        return nil
+    }
 
-    let cert = collection.borrowNFT(id) as? &ArtDropCore.Certificate
-        ?? panic("missing certificate")
+    let cert = collection!.borrowNFT(id) as? &ArtDropCore.Certificate
+    if cert == nil {
+        return nil
+    }
 
-    return cert.baseTier
+    return cert!.baseTier
 }

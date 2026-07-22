@@ -183,11 +183,11 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	}
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
+			cadence.NewOptional(cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)})),
 			cadence.NewOptional(baseTier),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)}),
-			cadence.NewBool(true),
+			cadence.NewOptional(cadence.NewBool(true)),
 			cadence.NewOptional(finalMultiplier),
-			cadence.String("Certificate #7"),
+			cadence.NewOptional(cadence.String("Certificate #7")),
 		},
 	}
 	svc := NewService(plugins.PluginDeps{
@@ -233,11 +233,33 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	}
 }
 
-func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
+func TestGetCertificateDetailReturnsNilWhenCertificateMissing(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
 			cadence.NewOptional(nil),
-			cadence.NewUInt64(42),
+		},
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	detail, err := svc.GetCertificateDetail(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	if err != nil {
+		t.Fatalf("GetCertificateDetail returned error: %v", err)
+	}
+	if detail != nil {
+		t.Fatalf("expected nil detail for missing certificate, got %+v", detail)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 script call for missing certificate, got %d", len(txSvc.calls))
+	}
+}
+
+func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewOptional(cadence.NewUInt64(42)),
 		},
 	}
 	svc := NewService(plugins.PluginDeps{
