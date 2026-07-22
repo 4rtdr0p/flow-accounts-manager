@@ -1252,8 +1252,8 @@ func TestTokenHandlers(t *testing.T) {
 			method:      http.MethodPost,
 			contentType: "application/json",
 			url:         fmt.Sprintf("/%s/fungible-tokens/%s", testAccounts[1].Address, flowToken.Name),
-			expected:    `vault exists`,
-			status:      http.StatusBadRequest,
+			expected:    `(?m)^{"transactionId":".+".*}$`,
+			status:      http.StatusCreated,
 		},
 		{
 			name:        "Setup FUSD valid async",
@@ -1320,7 +1320,7 @@ func TestTokenHandlers(t *testing.T) {
 		tokens.WithdrawalRequest{
 			TokenName: exampleNft.Name,
 			Recipient: testAccounts[1].Address,
-			NftID:     reflect.ValueOf(nftIDs[0].String()).Uint(),
+			NftID:     uint64(nftIDs[0].(cadence.UInt64)),
 		},
 	)
 	fatal(t, err)

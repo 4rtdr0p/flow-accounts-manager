@@ -16,9 +16,10 @@ import (
 
 func Test_TokensSetup(t *testing.T) {
 	cfg := test.LoadConfig(t)
-	svc := test.GetServices(t, cfg).GetTokens()
+	svcs := test.GetServices(t, cfg)
+	svc := svcs.GetTokens()
 
-	_, testAccount, err := test.GetServices(t, cfg).GetAccounts().Create(context.Background(), true)
+	_, testAccount, err := svcs.GetAccounts().Create(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}

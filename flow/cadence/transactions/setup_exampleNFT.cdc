@@ -9,13 +9,15 @@ transaction {
         }
 
         // create a new empty collection
-        let collection <- ExampleNFT.createEmptyCollection()
+        let collection <- ExampleNFT.createEmptyCollection(
+            nftType: Type<@ExampleNFT.NFT>()
+        )
 
         // save it to the account
         signer.storage.save(<-collection, to: ExampleNFT.CollectionStoragePath)
 
         // create a public capability for the collection
-        let cap = signer.capabilities.storage.issue<&NonFungibleToken.Collection>(
+        let cap = signer.capabilities.storage.issue<&{NonFungibleToken.Collection}>(
             ExampleNFT.CollectionStoragePath
         )
         signer.capabilities.publish(cap, at: ExampleNFT.CollectionPublicPath)

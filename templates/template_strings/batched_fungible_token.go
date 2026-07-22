@@ -44,14 +44,14 @@ transaction(publicKeys: [Crypto.KeyListEntry]) {
 
 		{{ range .Tokens }}
 		// initializing vault for {{ .ContractName }}
-		account.storage.save(<-{{ .ContractName }}.createEmptyVault(), to: {{ .VaultStoragePath }})
+		account.storage.save(<-{{ .ContractName }}.createEmptyVault(vaultType: Type<@{{ .ContractName }}.Vault>()), to: {{ .VaultStoragePath }})
 		
-		let receiverCap = account.capabilities.storage.issue<&{{ .ContractName }}.Vault{FungibleToken.Receiver}>(
+		let receiverCap = account.capabilities.storage.issue<&{FungibleToken.Receiver}>(
 			{{ .VaultStoragePath }}
 		)
 		account.capabilities.publish(receiverCap, at: {{ .ReceiverPublicPath }})
 		
-		let balanceCap = account.capabilities.storage.issue<&{{ .ContractName }}.Vault{FungibleToken.Balance}>(
+		let balanceCap = account.capabilities.storage.issue<&{FungibleToken.Balance}>(
 			{{ .VaultStoragePath }}
 		)
 		account.capabilities.publish(balanceCap, at: {{ .BalancePublicPath }})
@@ -71,14 +71,14 @@ transaction() {
 		{{ range .Tokens }}
 		// initializing vault for {{ .ContractName }}
 		if account.storage.borrow<&{{ .ContractName }}.Vault>(from: {{ .VaultStoragePath }}) == nil {
-			account.storage.save(<-{{ .ContractName }}.createEmptyVault(), to: {{ .VaultStoragePath }})
+			account.storage.save(<-{{ .ContractName }}.createEmptyVault(vaultType: Type<@{{ .ContractName }}.Vault>()), to: {{ .VaultStoragePath }})
 			
-			let receiverCap = account.capabilities.storage.issue<&{{ .ContractName }}.Vault{FungibleToken.Receiver}>(
+			let receiverCap = account.capabilities.storage.issue<&{FungibleToken.Receiver}>(
 				{{ .VaultStoragePath }}
 			)
 			account.capabilities.publish(receiverCap, at: {{ .ReceiverPublicPath }})
 			
-			let balanceCap = account.capabilities.storage.issue<&{{ .ContractName }}.Vault{FungibleToken.Balance}>(
+			let balanceCap = account.capabilities.storage.issue<&{FungibleToken.Balance}>(
 				{{ .VaultStoragePath }}
 			)
 			account.capabilities.publish(balanceCap, at: {{ .BalancePublicPath }})

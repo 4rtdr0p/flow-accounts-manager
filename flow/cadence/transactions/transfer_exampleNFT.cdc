@@ -6,7 +6,7 @@ transaction(recipient: Address, withdrawID: UInt64) {
         let recipient = getAccount(recipient)
         
         let collectionRef = signer.storage
-            .borrow<&ExampleNFT.Collection>(from: ExampleNFT.CollectionStoragePath)
+            .borrow<auth(NonFungibleToken.Withdraw) &ExampleNFT.Collection>(from: ExampleNFT.CollectionStoragePath)
             ?? panic("Could not borrow a reference to the owner's collection")
 
         let depositRef = recipient.capabilities

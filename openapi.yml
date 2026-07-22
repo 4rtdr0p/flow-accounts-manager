@@ -762,6 +762,24 @@ paths:
       responses:
         '200':
           description: OK
+  '/accounts/{address}/artdrop/certificates/{certId}':
+    get:
+      summary: Get ArtDrop certificate details
+      operationId: getArtDropCertificateDetail
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: certId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/artdrop/collection-length':
     get:
       summary: Get ArtDrop collection length for an account
@@ -793,8 +811,8 @@ paths:
           description: OK
   '/artdrop/originals/{origId}':
     get:
-      summary: Get Original summary
-      operationId: getArtDropOriginal
+      summary: Get an ArtDrop original summary
+      operationId: getArtDropOriginalSummary
       x-required-scopes:
         - account.read
       tags:
@@ -805,14 +823,53 @@ paths:
           required: true
           schema:
             type: integer
-          description: Original ID
       responses:
         '200':
           description: OK
+  '/artdrop/originals/{origId}/extended':
+    get:
+      summary: Get an ArtDrop original extended summary
+      description: Returns W12 extended Original metadata, including edition count, total minted across editions, and optional artist display name.
+      operationId: getArtDropOriginalExtendedSummary
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: origId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  artist:
+                    type: string
+                  createdAtBlock:
+                    type: integer
+                  schemaVersion:
+                    type: integer
+                  editionCount:
+                    type: integer
+                  totalMintedAcrossEditions:
+                    type: integer
+                  displayName:
+                    type: string
+                    nullable: true
   '/artdrop/editions/{edId}':
     get:
-      summary: Get Edition summary
-      operationId: getArtDropEdition
+      summary: Get an ArtDrop edition summary
+      operationId: getArtDropEditionSummary
       x-required-scopes:
         - account.read
       tags:
@@ -823,13 +880,12 @@ paths:
           required: true
           schema:
             type: integer
-          description: Edition ID
       responses:
         '200':
           description: OK
   '/artdrop/config/platform-fee':
     get:
-      summary: Get current platform fee
+      summary: Get ArtDrop platform fee
       operationId: getArtDropPlatformFee
       x-required-scopes:
         - account.read
@@ -840,7 +896,7 @@ paths:
           description: OK
   '/artdrop/config/market-mode':
     get:
-      summary: Get current market mode
+      summary: Get ArtDrop market mode
       operationId: getArtDropMarketMode
       x-required-scopes:
         - account.read
