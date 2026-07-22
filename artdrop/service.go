@@ -352,6 +352,19 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 	}
 	detail := &CertificateDetail{Id: certificateId}
 
+	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateChipPubKeyCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_chip_pubkey script: %w", err)
+	}
+	var found bool
+	detail.ChipPubKey, found, err = optionalUInt8ArrayBytes(chipPubKey)
+	if err != nil {
+		return nil, fmt.Errorf("decode certificate chip public key: %w", err)
+	}
+	if !found {
+		return nil, nil
+	}
+
 	baseTier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateBaseTierCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_base_tier script: %w", err)
@@ -360,24 +373,17 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		return nil, fmt.Errorf("decode certificate base tier: %w", err)
 	}
 
-	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateChipPubKeyCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_chip_pubkey script: %w", err)
-	}
-	detail.ChipPubKey, err = uint8ArrayBytes(chipPubKey)
-	if err != nil {
-		return nil, fmt.Errorf("decode certificate chip public key: %w", err)
-	}
-
 	isRevealed, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIsRevealedCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_is_revealed script: %w", err)
 	}
-	revealed, ok := isRevealed.(cadence.Bool)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Bool", isRevealed)
+	detail.IsRevealed, found, err = optionalBool(isRevealed)
+	if err != nil {
+		return nil, fmt.Errorf("decode certificate reveal status: %w", err)
 	}
-	detail.IsRevealed = bool(revealed)
+	if !found {
+		return nil, nil
+	}
 
 	finalMultiplier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateFinalMultiplierCDC, args)
 	if err != nil {
@@ -391,12 +397,11 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_display_name script: %w", err)
 	}
-	name, ok := displayName.(cadence.String)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.String", displayName)
+	displayNameValue, err := optionalString(displayName)
+	if err != nil {
+		return nil, fmt.Errorf("decode certificate display name: %w", err)
 	}
-	value := string(name)
-	detail.DisplayName = &value
+	detail.DisplayName = displayNameValue
 
 	return detail, nil
 }
@@ -718,6 +723,55 @@ func uint8ArrayBytes(value cadence.Value) ([]byte, error) {
 		bytes = append(bytes, byte(b))
 	}
 	return bytes, nil
+}
+
+func optionalUInt8ArrayBytes(value cadence.Value) ([]byte, bool, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return nil, false, nil
+	}
+
+	bytes, err := uint8ArrayBytes(opt.Value)
+	if err != nil {
+		return nil, false, err
+	}
+	return bytes, true, nil
+}
+
+func optionalBool(value cadence.Value) (bool, bool, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return false, false, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return false, false, nil
+	}
+
+	result, ok := opt.Value.(cadence.Bool)
+	if !ok {
+		return false, false, fmt.Errorf("unexpected optional inner type %T, expected cadence.Bool", opt.Value)
+	}
+	return bool(result), true, nil
+}
+
+func optionalString(value cadence.Value) (*string, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return nil, nil
+	}
+
+	result, ok := opt.Value.(cadence.String)
+	if !ok {
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.String", opt.Value)
+	}
+	str := string(result)
+	return &str, nil
 }
 
 func optionalDictionaryFields(value cadence.Value) (map[string]cadence.Value, bool, error) {

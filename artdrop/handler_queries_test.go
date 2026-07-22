@@ -66,11 +66,11 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
+			cadence.NewOptional(cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)})),
 			cadence.NewOptional(nil),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)}),
-			cadence.NewBool(false),
+			cadence.NewOptional(cadence.NewBool(false)),
 			cadence.NewOptional(nil),
-			cadence.String("Certificate #7"),
+			cadence.NewOptional(cadence.String("Certificate #7")),
 		},
 	}
 	handler := NewHandler(NewService(plugins.PluginDeps{
@@ -133,6 +133,34 @@ func TestGetCertificateDetailHandlerRejectsInvalidAddress(t *testing.T) {
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid address, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerReturnsNotFound(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewOptional(nil),
+		},
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404 for missing certificate, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if strings.Contains(rw.Body.String(), "panic") {
+		t.Fatalf("expected clean not found response without panic details, got %s", rw.Body.String())
 	}
 }
 
