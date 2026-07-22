@@ -22,20 +22,8 @@ var setupCollectionCDC string
 //go:embed cdc/register_provider.cdc
 var registerProviderCDC string
 
-//go:embed cdc/get_certificate_base_tier.cdc
-var getCertificateBaseTierCDC string
-
-//go:embed cdc/get_certificate_chip_pubkey.cdc
-var getCertificateChipPubKeyCDC string
-
-//go:embed cdc/get_certificate_is_revealed.cdc
-var getCertificateIsRevealedCDC string
-
-//go:embed cdc/get_certificate_final_multiplier.cdc
-var getCertificateFinalMultiplierCDC string
-
-//go:embed cdc/get_certificate_display_name.cdc
-var getCertificateDisplayNameCDC string
+//go:embed cdc/get_certificate_detail.cdc
+var getCertificateDetailCDC string
 
 //go:embed cdc/get_certificates.cdc
 var getCertificatesCDC string
@@ -340,6 +328,24 @@ func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uin
 }
 
 // GetCertificateDetail returns consolidated metadata for a single certificate.
+//
+// Single-script implementation — the previous version ran 5 sequential
+// ExecuteScript calls (baseTier, chipPubKey, isRevealed, finalMultiplier,
+// displayName), each of which panicked individually on a missing
+// collection or missing NFT id. That meant a single failure discarded
+// every other successfully-read field and the HTTP response itself, and
+// there was no clean 404 path. See `get_certificate_detail.cdc` and
+// issue #53 for the consolidation rationale.
+//
+// The script returns `{String: AnyStruct}?` (nil when the account has no
+// certificate collection, when the capability is the wrong type, or when
+// the certificate id does not exist in the collection); the handler
+// translates that nil into HTTP 404 — matching the existing
+// GetOriginalSummary / GetEditionSummary / GetOriginalExtendedSummary
+// pattern. This is a deliberate behavior change from the previous 5-script
+// implementation (which returned 400 + a raw panic message for those
+// three cases — see issue #49). Flagged for repo-owner review in the
+// commit message that introduced this function.
 func (s *Service) GetCertificateDetail(ctx context.Context, address string, certificateId uint64) (*CertificateDetail, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
@@ -350,53 +356,52 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		cadence.NewAddress(flow.HexToAddress(address)),
 		cadence.NewUInt64(certificateId),
 	}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateDetailCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_certificate_detail script: %w", err)
+	}
+
+	fields, ok, err := optionalDictionaryFields(val)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+
 	detail := &CertificateDetail{Id: certificateId}
 
-	baseTier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateBaseTierCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_base_tier script: %w", err)
+	if id, ok := fields["id"].(cadence.UInt64); ok {
+		detail.Id = uint64(id)
 	}
-	if detail.BaseTier, err = optionalUFix64String(baseTier); err != nil {
+
+	if detail.BaseTier, err = optionalUFix64String(fields["baseTier"]); err != nil {
 		return nil, fmt.Errorf("decode certificate base tier: %w", err)
 	}
 
-	chipPubKey, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateChipPubKeyCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_chip_pubkey script: %w", err)
-	}
-	detail.ChipPubKey, err = uint8ArrayBytes(chipPubKey)
-	if err != nil {
+	if detail.ChipPubKey, err = uint8ArrayBytes(fields["chipPubKey"]); err != nil {
 		return nil, fmt.Errorf("decode certificate chip public key: %w", err)
 	}
 
-	isRevealed, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateIsRevealedCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_is_revealed script: %w", err)
+	if revealed, ok := fields["isRevealed"].(cadence.Bool); ok {
+		detail.IsRevealed = bool(revealed)
+	} else {
+		return nil, fmt.Errorf("unexpected script result type %T for isRevealed, expected cadence.Bool", fields["isRevealed"])
 	}
-	revealed, ok := isRevealed.(cadence.Bool)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Bool", isRevealed)
-	}
-	detail.IsRevealed = bool(revealed)
 
-	finalMultiplier, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateFinalMultiplierCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_final_multiplier script: %w", err)
-	}
-	if detail.FinalMultiplier, err = optionalUFix64String(finalMultiplier); err != nil {
+	if detail.FinalMultiplier, err = optionalUFix64String(fields["finalMultiplier"]); err != nil {
 		return nil, fmt.Errorf("decode certificate final multiplier: %w", err)
 	}
 
-	displayName, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateDisplayNameCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_certificate_display_name script: %w", err)
+	if dn, ok := fields["displayName"].(cadence.Optional); ok && dn.Value != nil {
+		name, ok := dn.Value.(cadence.String)
+		if !ok {
+			return nil, fmt.Errorf("unexpected displayName optional inner type %T, expected cadence.String", dn.Value)
+		}
+		value := string(name)
+		detail.DisplayName = &value
 	}
-	name, ok := displayName.(cadence.String)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.String", displayName)
-	}
-	value := string(name)
-	detail.DisplayName = &value
 
 	return detail, nil
 }

@@ -181,14 +181,19 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	displayName, err := cadence.NewString("Certificate #7")
+	if err != nil {
+		t.Fatal(err)
+	}
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(baseTier),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)}),
-			cadence.NewBool(true),
-			cadence.NewOptional(finalMultiplier),
-			cadence.String("Certificate #7"),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(baseTier)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(finalMultiplier)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)})},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(true)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -217,28 +222,52 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	if detail.DisplayName == nil || *detail.DisplayName != "Certificate #7" {
 		t.Fatalf("unexpected display name: %+v", detail.DisplayName)
 	}
-	if len(txSvc.calls) != 5 {
-		t.Fatalf("expected 5 script calls, got %d", len(txSvc.calls))
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 script call, got %d", len(txSvc.calls))
 	}
-	for _, args := range txSvc.calls {
-		if len(args) != 2 {
-			t.Fatalf("expected 2 args per script call, got %d", len(args))
-		}
-		if args[0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
-			t.Fatalf("expected address as first arg, got %#v", args[0])
-		}
-		if args[1] != cadence.NewUInt64(7) {
-			t.Fatalf("expected certificate id as second arg, got %#v", args[1])
-		}
+	if len(txSvc.calls[0]) != 2 {
+		t.Fatalf("expected 2 args per script call, got %d", len(txSvc.calls[0]))
+	}
+	if txSvc.calls[0][0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+		t.Fatalf("expected address as first arg, got %#v", txSvc.calls[0][0])
+	}
+	if txSvc.calls[0][1] != cadence.NewUInt64(7) {
+		t.Fatalf("expected certificate id as second arg, got %#v", txSvc.calls[0][1])
+	}
+}
+
+func TestGetCertificateDetailReturnsNilWhenScriptReturnsNil(t *testing.T) {
+	// Mirrors the script's behaviour for: missing collection, wrong-type
+	// capability, empty collection, missing cert id — all four collapse to
+	// `Optional(nil)` and the service returns (nil, nil) so the handler
+	// can answer 404.
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(nil),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	detail, err := svc.GetCertificateDetail(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	if err != nil {
+		t.Fatalf("expected nil error when script returns Optional(nil), got %v", err)
+	}
+	if detail != nil {
+		t.Fatalf("expected nil detail when script returns Optional(nil), got %+v", detail)
 	}
 }
 
 func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(nil),
-			cadence.NewUInt64(42),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewUInt64(42)},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(false)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(nil)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
