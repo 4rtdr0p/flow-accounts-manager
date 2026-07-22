@@ -28,7 +28,6 @@ import (
 	flow_templates "github.com/onflow/flow-go-sdk/templates"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
-	"golang.org/x/sync/singleflight"
 )
 
 const maxGasLimit = 9999
@@ -57,7 +56,6 @@ type ServiceImpl struct {
 	txs           transactions.Service
 	temps         templates.Service
 	txRateLimiter ratelimit.Limiter
-	cpSF          singleflight.Group
 }
 
 // NewService initiates a new account service.
