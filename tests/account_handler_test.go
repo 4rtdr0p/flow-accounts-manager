@@ -234,8 +234,8 @@ func TestGraduateToSelfCustodyInvalidPublicKey(t *testing.T) {
 
 func TestWatchlistAccountManagement(t *testing.T) {
 	cfg := test.LoadConfig(t)
-	fc := test.NewFlowClient(t, cfg)
 	svcs := test.GetServices(t, cfg)
+	fc := test.NewFlowClient(t, cfg)
 	km := svcs.GetKeyManager()
 
 	accHandler := handlers.NewAccounts(svcs.GetAccounts())

@@ -1,7 +1,7 @@
 import NonFungibleToken from "../contracts/NonFungibleToken.cdc"
 import ExampleNFT from "../contracts/ExampleNFT.cdc"
 
-transaction(recipient: Address, name: String, description: String, thumbnail: String) {
+transaction(recipient: Address) {
     
     let minter: &ExampleNFT.NFTMinter
     
@@ -21,9 +21,9 @@ transaction(recipient: Address, name: String, description: String, thumbnail: St
         
         self.minter.mintNFT(
             recipient: recipientCollection,
-            name: name,
-            description: description,
-            thumbnail: thumbnail
+            name: "",
+            description: "",
+            thumbnail: ""
         )
     }
 }

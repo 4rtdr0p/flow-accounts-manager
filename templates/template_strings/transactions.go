@@ -65,26 +65,21 @@ transaction {
     let existingVault = signer.storage.borrow<&TOKEN_DECLARATION_NAME.Vault>(from: TOKEN_VAULT)
 
     if (existingVault != nil) {
-        panic("vault exists")
+        return
     }
 
-    var vault: @TOKEN_DECLARATION_NAME.Vault? = nil
-    if let f = TOKEN_DECLARATION_NAME.createEmptyVault as? fun(): @TOKEN_DECLARATION_NAME.Vault {
-        vault <- f()
-    } else if let f = TOKEN_DECLARATION_NAME.createEmptyVault as? fun(allowUnrestrictedFlow: Bool): @TOKEN_DECLARATION_NAME.Vault {
-        vault <- f(allowUnrestrictedFlow: false)
-    } else {
-        panic("Could not determine the correct function signature for createEmptyVault")
-    }
+    let vault <- TOKEN_DECLARATION_NAME.createEmptyVault(
+      vaultType: Type<@TOKEN_DECLARATION_NAME.Vault>()
+    )
 
-    signer.storage.save(<-vault!, to: TOKEN_VAULT)
+    signer.storage.save(<-vault, to: TOKEN_VAULT)
 
-    let cap = signer.capabilities.storage.issue<&TOKEN_DECLARATION_NAME.Vault & FungibleToken.Receiver>(
+    let cap = signer.capabilities.storage.issue<&{FungibleToken.Receiver}>(
       TOKEN_VAULT
     )
     signer.capabilities.publish(cap, at: TOKEN_RECEIVER)
 
-    let balanceCap = signer.capabilities.storage.issue<&TOKEN_DECLARATION_NAME.Vault & FungibleToken.Balance>(
+    let balanceCap = signer.capabilities.storage.issue<&{FungibleToken.Balance}>(
       TOKEN_VAULT
     )
     signer.capabilities.publish(balanceCap, at: TOKEN_BALANCE)
