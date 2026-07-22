@@ -1,6 +1,6 @@
-/// get_original_extended_summary_v2.cdc — Return the W12-extended Original
+/// get_original_extended_summary.cdc — Return the W12-extended Original
 /// metadata as a flat `{String: AnyStruct}` dictionary, same rationale as
-/// get_original_summary_v2.cdc (the wallet-api Go cadence decoder does not
+/// get_original_summary.cdc (the wallet-api Go cadence decoder does not
 /// extract enum/Address/struct fields reliably from `cadence.Struct`).
 ///
 /// Backed by `ArtDropCore.getOriginalExtendedSummary`, added in

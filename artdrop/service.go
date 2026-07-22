@@ -58,14 +58,14 @@ var cancelEscrowCDC string
 //go:embed cdc/refund_escrow.cdc
 var refundEscrowCDC string
 
-//go:embed cdc/get_original_summary_v2.cdc
-var getOriginalSummaryV2CDC string
+//go:embed cdc/get_original_summary.cdc
+var getOriginalSummaryCDC string
 
-//go:embed cdc/get_original_extended_summary_v2.cdc
-var getOriginalExtendedSummaryV2CDC string
+//go:embed cdc/get_original_extended_summary.cdc
+var getOriginalExtendedSummaryCDC string
 
-//go:embed cdc/get_edition_summary_v2.cdc
-var getEditionSummaryV2CDC string
+//go:embed cdc/get_edition_summary.cdc
+var getEditionSummaryCDC string
 
 //go:embed cdc/get_platform_fee.cdc
 var getPlatformFeeCDC string
@@ -403,15 +403,15 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 
 // GetOriginalSummary returns a summary of an Original.
 //
-// Uses the v2 script (flat dictionary shape) instead of the contract's
+// Uses the flat dictionary script instead of the contract's
 // `ArtDropCore.OriginalSummary` struct — the contract's `artist` field
 // is an Address (not a String), so the previous handler logic that read
 // `fields["artistName"]` was silently broken and `artistName` always
-// returned "". See `get_original_summary_v2.cdc` for the rationale.
+// returned "". See `get_original_summary.cdc` for the rationale.
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryV2CDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
 	}
@@ -463,7 +463,7 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uint64) (*OriginalExtendedSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalExtendedSummaryV2CDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalExtendedSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_extended_summary script: %w", err)
 	}
@@ -512,16 +512,16 @@ func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uin
 
 // GetEditionSummary returns a summary of an Edition.
 //
-// Uses the v2 script (flat dictionary shape) instead of the contract's
+// Uses the flat dictionary script instead of the contract's
 // `ArtDropCore.EditionSummary` struct — the contract's `state` field is
 // an enum (not a bare UInt8), so the previous handler's
 // `fields["state"].(cadence.UInt8)` assertion silently failed and `state`
 // was always returned as 0; also, the contract has no `maxSupply` field
-// (the field is named `reprintLimit`). See `get_edition_summary_v2.cdc`.
+// (the field is named `reprintLimit`). See `get_edition_summary.cdc`.
 func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(editionId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryV2CDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
 	}

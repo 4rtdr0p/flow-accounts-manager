@@ -78,7 +78,7 @@ type OriginalSummary struct {
 // Editions under this Original (via ArtDropRegistry.EditionsPerOriginalIndex);
 // DisplayName is the artist's registry-set name and stays nil until the
 // self-service/admin-curated writer policy is decided. Backed by
-// get_original_extended_summary_v2.cdc / ArtDropCore.getOriginalExtendedSummary
+// get_original_extended_summary.cdc / ArtDropCore.getOriginalExtendedSummary
 // (artdrop-protocol commit f80473f). See
 // artdrop-protocol docs/W12-summary-fields-design.md for the full design.
 type OriginalExtendedSummary struct {

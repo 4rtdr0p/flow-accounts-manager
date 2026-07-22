@@ -827,11 +827,11 @@ flow scripts execute scripts/dev/get_edition_summary.cdc 1 --network testnet
 
 Two new scripts + matching handler updates:
 
-- `artdrop/cdc/get_original_summary_v2.cdc` — returns
+- `artdrop/cdc/get_original_summary.cdc` — returns
   `{String: AnyStruct}?` with the contract's `artist` Address
   exposed under the key `"artist"` (mapped to
   `OriginalSummary.ArtistName` in JSON via the handler).
-- `artdrop/cdc/get_edition_summary_v2.cdc` — returns
+- `artdrop/cdc/get_edition_summary.cdc` — returns
   `{String: AnyStruct}?` with the enum's `rawValue` unwrapped
   into the `"state"` key, and `"reprintLimit"` mapped to the
   JSON `maxSupply` field (preserving the existing API contract
@@ -843,8 +843,8 @@ committing (results match the contract's actual data).
 
 Files touched:
 
-- `artdrop/cdc/get_original_summary_v2.cdc` (new)
-- `artdrop/cdc/get_edition_summary_v2.cdc` (new)
+- `artdrop/cdc/get_original_summary.cdc` (new)
+- `artdrop/cdc/get_edition_summary.cdc` (new)
 - `artdrop/service.go` (`GetOriginalSummary`, `GetEditionSummary`,
   `//go:embed` directives)
 - `artdrop/types.go:OriginalSummary` — `ArtistName` field type
@@ -913,7 +913,7 @@ the same unqualified-form issue.)
 `create_original.cdc` and `create_edition.cdc` were already
 address-qualified (`import ArtDropCore from 0xec581a0282d99a1a`).
 The current session's created `get_certificates.cdc`,
-`get_original_summary_v2.cdc`, `get_edition_summary_v2.cdc` are
+`get_original_summary.cdc`, `get_edition_summary.cdc` are
 all address-qualified by construction.
 
 ### Verification
@@ -1260,7 +1260,7 @@ have been fixed in this session**.
 2. **`/v1/artdrop/originals/{id}` returns empty `artistName`.** Root
    cause: handler reads `fields["artistName"]` but the contract struct
    has `artist: Address` (not `artistName: String`). Fix: new
-   `get_original_summary_v2.cdc` returns flat dict with `artist`
+   `get_original_summary.cdc` returns flat dict with `artist`
    Address exposed; handler maps `artist → ArtistName` (hex string).
    **Commit a5221ea.**
 
@@ -1269,7 +1269,7 @@ have been fixed in this session**.
    `cadence.UInt8` but contract returns `EditionState` enum — type
    assertion fails silently; (b) handler reads `fields["maxSupply"]`
    but contract struct has no such field (it's `reprintLimit`). Fix:
-   new `get_edition_summary_v2.cdc` unwraps the enum and exposes the
+   new `get_edition_summary.cdc` unwraps the enum and exposes the
    correct fields; handler updated. **Commit a5221ea.**
 
 4. **Bundled Cadence scripts (`create_escrow.cdc`,
