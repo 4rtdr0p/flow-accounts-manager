@@ -17,6 +17,7 @@ access(all) fun main(id: UInt64): {String: AnyStruct}? {
         "id": orig.id,
         "artist": orig.artist,
         "name": orig.name,
+        "prices": orig.prices,
         "createdAtBlock": orig.createdAtBlock,
         "schemaVersion": orig.schemaVersion
     }

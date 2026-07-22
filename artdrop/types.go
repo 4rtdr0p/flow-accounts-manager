@@ -82,14 +82,15 @@ type OriginalSummary struct {
 // (artdrop-protocol commit f80473f). See
 // artdrop-protocol docs/W12-summary-fields-design.md for the full design.
 type OriginalExtendedSummary struct {
-	Id                        uint64  `json:"id"`
-	Name                      string  `json:"name"`
-	Artist                    string  `json:"artist"`
-	CreatedAtBlock            uint64  `json:"createdAtBlock"`
-	SchemaVersion             uint8   `json:"schemaVersion"`
-	EditionCount              uint64  `json:"editionCount"`
-	TotalMintedAcrossEditions uint64  `json:"totalMintedAcrossEditions"`
-	DisplayName               *string `json:"displayName,omitempty"`
+	Id                        uint64            `json:"id"`
+	Name                      string            `json:"name"`
+	Artist                    string            `json:"artist"`
+	Prices                    map[string]string `json:"prices,omitempty"`
+	CreatedAtBlock            uint64            `json:"createdAtBlock"`
+	SchemaVersion             uint8             `json:"schemaVersion"`
+	EditionCount              uint64            `json:"editionCount"`
+	TotalMintedAcrossEditions uint64            `json:"totalMintedAcrossEditions"`
+	DisplayName               *string           `json:"displayName,omitempty"`
 }
 
 // EditionSummary contains the metadata of an ArtDrop Edition.

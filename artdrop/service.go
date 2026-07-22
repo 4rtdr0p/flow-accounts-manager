@@ -486,6 +486,9 @@ func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uin
 	if artist, ok := fields["artist"].(cadence.Address); ok {
 		summary.Artist = flow_helpers.FormatAddress(flow.BytesToAddress(artist.Bytes()))
 	}
+	if prices, ok := fields["prices"].(cadence.Dictionary); ok {
+		summary.Prices = ufix64Dictionary(prices)
+	}
 	if createdAt, ok := fields["createdAtBlock"].(cadence.UInt64); ok {
 		summary.CreatedAtBlock = uint64(createdAt)
 	}

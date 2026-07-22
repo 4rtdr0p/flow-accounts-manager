@@ -855,6 +855,10 @@ paths:
                     type: string
                   artist:
                     type: string
+                  prices:
+                    type: object
+                    additionalProperties:
+                      type: string
                   createdAtBlock:
                     type: integer
                   schemaVersion:
