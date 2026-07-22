@@ -812,25 +812,8 @@ paths:
   '/artdrop/originals/{origId}':
     get:
       summary: Get an ArtDrop original summary
+      description: Returns the complete Original metadata, including edition count, total minted across editions, and optional artist display name.
       operationId: getArtDropOriginalSummary
-      x-required-scopes:
-        - account.read
-      tags:
-        - Accounts
-      parameters:
-        - name: origId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: OK
-  '/artdrop/originals/{origId}/extended':
-    get:
-      summary: Get an ArtDrop original extended summary
-      description: Returns W12 extended Original metadata, including edition count, total minted across editions, and optional artist display name.
-      operationId: getArtDropOriginalExtendedSummary
       x-required-scopes:
         - account.read
       tags:
@@ -851,9 +834,9 @@ paths:
                 properties:
                   id:
                     type: integer
-                  name:
-                    type: string
                   artist:
+                    type: string
+                  name:
                     type: string
                   prices:
                     type: object

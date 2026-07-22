@@ -368,7 +368,7 @@ func TestGetEscrowHandlerRequiresLogicOwner(t *testing.T) {
 	}
 }
 
-func TestGetOriginalExtendedSummaryHandlerReturnsOK(t *testing.T) {
+func TestGetOriginalSummaryHandlerReturnsOK(t *testing.T) {
 	displayName, err := cadence.NewString("Ariel Artist")
 	if err != nil {
 		t.Fatal(err)
@@ -390,11 +390,11 @@ func TestGetOriginalExtendedSummaryHandlerReturnsOK(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/extended", nil)
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3", nil)
 	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
 	rw := httptest.NewRecorder()
 
-	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+	handler.GetOriginalSummary().ServeHTTP(rw, req)
 
 	if rw.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
@@ -410,32 +410,32 @@ func TestGetOriginalExtendedSummaryHandlerReturnsOK(t *testing.T) {
 	}
 }
 
-func TestGetOriginalExtendedSummaryHandlerRejectsInvalidOriginalId(t *testing.T) {
+func TestGetOriginalSummaryHandlerRejectsInvalidOriginalId(t *testing.T) {
 	handler := NewHandler(nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/not-a-number/extended", nil)
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/not-a-number", nil)
 	req = mux.SetURLVars(req, map[string]string{"origId": "not-a-number"})
 	rw := httptest.NewRecorder()
 
-	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+	handler.GetOriginalSummary().ServeHTTP(rw, req)
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid origId, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
 
-func TestGetOriginalExtendedSummaryHandlerReturnsNotFound(t *testing.T) {
+func TestGetOriginalSummaryHandlerReturnsNotFound(t *testing.T) {
 	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
 	handler := NewHandler(NewService(plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/extended", nil)
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3", nil)
 	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
 	rw := httptest.NewRecorder()
 
-	handler.GetOriginalExtendedSummary().ServeHTTP(rw, req)
+	handler.GetOriginalSummary().ServeHTTP(rw, req)
 
 	if rw.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())

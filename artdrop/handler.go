@@ -226,10 +226,6 @@ func (h *Handler) GetOriginalSummary() http.Handler {
 	return http.HandlerFunc(h.GetOriginalSummaryFunc)
 }
 
-func (h *Handler) GetOriginalExtendedSummary() http.Handler {
-	return http.HandlerFunc(h.GetOriginalExtendedSummaryFunc)
-}
-
 func (h *Handler) GetOriginalSummaryFunc(rw http.ResponseWriter, r *http.Request) {
 	origId, err := strconv.ParseUint(mux.Vars(r)["origId"], 10, 64)
 	if err != nil {
@@ -241,32 +237,6 @@ func (h *Handler) GetOriginalSummaryFunc(rw http.ResponseWriter, r *http.Request
 	}
 
 	summary, err := h.svc.GetOriginalSummary(r.Context(), origId)
-	if err != nil {
-		handlers.HandleError(rw, r, err)
-		return
-	}
-	if summary == nil {
-		handlers.HandleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusNotFound,
-			Err:        fmt.Errorf("original not found"),
-		})
-		return
-	}
-
-	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
-}
-
-func (h *Handler) GetOriginalExtendedSummaryFunc(rw http.ResponseWriter, r *http.Request) {
-	origId, err := strconv.ParseUint(mux.Vars(r)["origId"], 10, 64)
-	if err != nil {
-		handlers.HandleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("invalid origId: %w", err),
-		})
-		return
-	}
-
-	summary, err := h.svc.GetOriginalExtendedSummary(r.Context(), origId)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return
