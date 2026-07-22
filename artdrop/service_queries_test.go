@@ -3,6 +3,7 @@ package artdrop
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
@@ -337,6 +338,72 @@ func TestIsArtistRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
+func TestSummaryScriptsProjectAllContractFields(t *testing.T) {
+	tests := []struct {
+		name        string
+		script      string
+		projections []string
+	}{
+		{
+			name:   "original",
+			script: getOriginalSummaryCDC,
+			projections: []string{
+				`"id": orig.id`,
+				`"artist": orig.artist`,
+				`"name": orig.name`,
+				`"prices": orig.prices`,
+				`"createdAtBlock": orig.createdAtBlock`,
+				`"schemaVersion": orig.schemaVersion`,
+			},
+		},
+		{
+			name:   "original extended",
+			script: getOriginalExtendedSummaryCDC,
+			projections: []string{
+				`"id": orig.id`,
+				`"artist": orig.artist`,
+				`"name": orig.name`,
+				`"prices": orig.prices`,
+				`"createdAtBlock": orig.createdAtBlock`,
+				`"schemaVersion": orig.schemaVersion`,
+				`"editionCount": orig.editionCount`,
+				`"totalMintedAcrossEditions": orig.totalMintedAcrossEditions`,
+				`"displayName": orig.displayName`,
+			},
+		},
+		{
+			name:   "edition",
+			script: getEditionSummaryCDC,
+			projections: []string{
+				`"id": ed.id`,
+				`"originalId": ed.originalId`,
+				`"artist": ed.artist`,
+				`"shuffleSeedBlock": ed.shuffleSeedBlock`,
+				`"reprintLimit": ed.reprintLimit`,
+				`"prices": ed.prices`,
+				`"profitSplit": ed.profitSplit`,
+				`"rarityCurve": ed.rarityCurve`,
+				`"multiplierWeights": ed.multiplierWeights`,
+				`"createdAtBlock": ed.createdAtBlock`,
+				`"schemaVersion": ed.schemaVersion`,
+				`"state": stateRaw`,
+				`"totalMinted": ed.totalMinted`,
+				`"rarityProfile": ed.rarityProfile`,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, projection := range test.projections {
+				if !strings.Contains(test.script, projection) {
+					t.Errorf("summary script is missing projection %q", projection)
+				}
+			}
+		})
+	}
+}
+
 func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
 	primary, err := cadence.NewUFix64("10.00000000")
 	if err != nil {
@@ -361,12 +428,16 @@ func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOriginalSummary returned error: %v", err)
 	}
-	if summary.Artist != "0xf8d6e0586b0a20c7" || summary.Prices["primary"] != "10.00000000" || summary.CreatedAtBlock != 100 || summary.SchemaVersion != 2 {
+	if summary.Id != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.Name != "Original" || summary.Prices["primary"] != "10.00000000" || summary.CreatedAtBlock != 100 || summary.SchemaVersion != 2 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 }
 
 func TestGetOriginalExtendedSummaryMapsContractFields(t *testing.T) {
+	primary, err := cadence.NewUFix64("10.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
 	displayName, err := cadence.NewString("Ariel Artist")
 	if err != nil {
 		t.Fatal(err)
@@ -376,6 +447,7 @@ func TestGetOriginalExtendedSummaryMapsContractFields(t *testing.T) {
 			{Key: cadence.String("id"), Value: cadence.NewUInt64(3)},
 			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
 			{Key: cadence.String("name"), Value: cadence.String("Original")},
+			{Key: cadence.String("prices"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("primary"), Value: primary}})},
 			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(100)},
 			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
 			{Key: cadence.String("editionCount"), Value: cadence.NewUInt64(5)},
@@ -392,7 +464,7 @@ func TestGetOriginalExtendedSummaryMapsContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOriginalExtendedSummary returned error: %v", err)
 	}
-	if summary.Artist != "0xf8d6e0586b0a20c7" || summary.EditionCount != 5 || summary.TotalMintedAcrossEditions != 42 {
+	if summary.Id != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.Name != "Original" || summary.Prices["primary"] != "10.00000000" || summary.CreatedAtBlock != 100 || summary.SchemaVersion != 2 || summary.EditionCount != 5 || summary.TotalMintedAcrossEditions != 42 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 	if summary.DisplayName == nil || *summary.DisplayName != "Ariel Artist" {
@@ -464,7 +536,7 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 			{Key: cadence.String("multiplierWeights"), Value: cadence.NewDictionary([]cadence.KeyValuePair{{Key: cadence.String("rare"), Value: rareWeight}})},
 			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(101)},
 			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
-			{Key: cadence.String("state"), Value: cadence.String("Active")},
+			{Key: cadence.String("state"), Value: cadence.NewUInt8(3)},
 			{Key: cadence.String("totalMinted"), Value: cadence.NewUInt64(9)},
 			{Key: cadence.String("rarityProfile"), Value: cadence.NewUInt8(1)},
 		})),
@@ -478,7 +550,7 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEditionSummary returned error: %v", err)
 	}
-	if summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ReprintLimit != 500 || summary.MaxSupply != 500 || summary.State != "Active" || summary.TotalMinted != 9 || summary.RarityProfile != 1 {
+	if summary.Id != 4 || summary.OriginalId != 3 || summary.Artist != "0xf8d6e0586b0a20c7" || summary.ShuffleSeedBlock != 99 || summary.ReprintLimit != 500 || summary.MaxSupply != 500 || summary.CreatedAtBlock != 101 || summary.SchemaVersion != 2 || summary.State != "3" || summary.TotalMinted != 9 || summary.RarityProfile != 1 {
 		t.Fatalf("unexpected summary: %+v", summary)
 	}
 	if summary.Prices["primary"] != "12.00000000" || summary.ProfitSplit["artist"] != "0.85000000" || summary.MultiplierWeights["rare"] != "0.25000000" {
