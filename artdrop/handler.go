@@ -202,6 +202,13 @@ func (h *Handler) GetCertificateDetailFunc(rw http.ResponseWriter, r *http.Reque
 		handlers.HandleError(rw, r, err)
 		return
 	}
+	if detail == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusNotFound,
+			Err:        fmt.Errorf("certificate not found"),
+		})
+		return
+	}
 
 	handlers.HandleJsonResponse(rw, http.StatusOK, detail)
 }

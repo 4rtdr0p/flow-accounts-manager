@@ -64,14 +64,19 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 }
 
 func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
+	displayName, err := cadence.NewString("Certificate #7")
+	if err != nil {
+		t.Fatal(err)
+	}
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(nil),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)}),
-			cadence.NewBool(false),
-			cadence.NewOptional(nil),
-			cadence.String("Certificate #7"),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)})},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(false)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
 	}
 	handler := NewHandler(NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -95,6 +100,32 @@ func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
 	}
 	if !strings.Contains(rw.Body.String(), `"displayName":"Certificate #7"`) {
 		t.Fatalf("expected response to contain display name, got %s", rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerReturnsNotFound(t *testing.T) {
+	// Mirrors the live-testnet verification (issue #53): when the script
+	// returns Optional(nil) — missing collection / wrong capability type /
+	// empty collection / unknown cert id — the service returns (nil, nil)
+	// and the handler answers 404. This is the deliberate behavior change
+	// flagged in the commit message and the service doc-comment.
+	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
 
