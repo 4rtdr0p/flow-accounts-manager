@@ -472,3 +472,66 @@ func TestGetOriginalExtendedSummaryHandlerReturnsNotFound(t *testing.T) {
 		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
+
+func TestGetEditionIDsByOriginalHandlerReturnsOK(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+		}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if got := strings.TrimSpace(rw.Body.String()); got != "[11,12]" {
+		t.Fatalf("expected [11,12], got %s", got)
+	}
+}
+
+func TestGetEditionIDsByOriginalHandlerRejectsInvalidOriginalId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/not-a-number/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "not-a-number"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid origId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetEditionIDsByOriginalHandlerReturnsEmptyArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if got := strings.TrimSpace(rw.Body.String()); got != "[]" {
+		t.Fatalf("expected [], got %s", got)
+	}
+}
