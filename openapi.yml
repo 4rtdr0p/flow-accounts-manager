@@ -780,6 +780,8 @@ paths:
       responses:
         '200':
           description: OK
+        '404':
+          description: Not Found
   '/accounts/{address}/artdrop/collection-length':
     get:
       summary: Get ArtDrop collection length for an account
@@ -826,6 +828,8 @@ paths:
       responses:
         '200':
           description: OK
+        '404':
+          description: Not Found
   '/artdrop/originals/{origId}/extended':
     get:
       summary: Get an ArtDrop original extended summary
@@ -870,6 +874,8 @@ paths:
                   displayName:
                     type: string
                     nullable: true
+        '404':
+          description: Not Found
   '/artdrop/editions/{edId}':
     get:
       summary: Get an ArtDrop edition summary
@@ -887,6 +893,8 @@ paths:
       responses:
         '200':
           description: OK
+        '404':
+          description: Not Found
   '/artdrop/config/platform-fee':
     get:
       summary: Get ArtDrop platform fee
