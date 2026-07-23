@@ -55,6 +55,9 @@ var getOriginalExtendedSummaryCDC string
 //go:embed cdc/get_edition_summary.cdc
 var getEditionSummaryCDC string
 
+//go:embed cdc/get_edition_ids_by_original.cdc
+var getEditionIDsByOriginalCDC string
+
 //go:embed cdc/get_platform_fee.cdc
 var getPlatformFeeCDC string
 
@@ -600,6 +603,32 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 	}
 
 	return &summary, nil
+}
+
+// GetEditionIDsByOriginal returns the edition IDs belonging to an Original.
+func (s *Service) GetEditionIDsByOriginal(ctx context.Context, originalId uint64) ([]uint64, error) {
+	args := []transactions.Argument{cadence.NewUInt64(originalId)}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionIDsByOriginalCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_edition_ids_by_original script: %w", err)
+	}
+
+	arr, ok := val.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
+	}
+
+	editionIDs := make([]uint64, 0, len(arr.Values))
+	for _, v := range arr.Values {
+		id, ok := v.(cadence.UInt64)
+		if !ok {
+			return nil, fmt.Errorf("unexpected edition id type %T, expected cadence.UInt64", v)
+		}
+		editionIDs = append(editionIDs, uint64(id))
+	}
+
+	return editionIDs, nil
 }
 
 // GetPlatformFee returns the current platform fee.
