@@ -15,6 +15,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/migrations/internal/m20260619"
 	"github.com/flow-hydraulics/flow-wallet-api/migrations/internal/m20260620"
 	"github.com/flow-hydraulics/flow-wallet-api/migrations/internal/m20260714"
+	"github.com/flow-hydraulics/flow-wallet-api/migrations/internal/m20260723"
 	"github.com/go-gormigrate/gormigrate/v2"
 )
 
@@ -89,6 +90,11 @@ func List() []*gormigrate.Migration {
 			ID:       m20260714.ID,
 			Migrate:  m20260714.Migrate,
 			Rollback: m20260714.Rollback,
+		},
+		{
+			ID:       m20260723.ID,
+			Migrate:  m20260723.Migrate,
+			Rollback: m20260723.Rollback,
 		},
 	}
 	return ms

@@ -90,7 +90,7 @@ All responses follow a consistent structure:
 | `401` | Unauthorized | Authentication required |
 | `403` | Forbidden | Insufficient permissions |
 | `404` | Not Found | Resource not found |
-| `409` | Conflict | Idempotency key conflict |
+| `409` | Conflict | Idempotency key is already pending |
 | `422` | Unprocessable Entity | Valid request but business logic error |
 | `429` | Too Many Requests | Rate limit exceeded |
 | `500` | Internal Server Error | Server error |
@@ -236,7 +236,8 @@ X-RateLimit-Reset: 1642248000
 POST /v1/accounts/{address}/fungible-tokens/FlowToken/withdrawals
 Idempotency-Key: unique-operation-id
 
-# Duplicate request returns:
+# Duplicate completed request returns the original response again.
+# A duplicate while the first request is still pending returns:
 HTTP/1.1 409 Conflict
 ```
 
