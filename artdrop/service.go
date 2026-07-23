@@ -46,9 +46,6 @@ var cancelEscrowCDC string
 //go:embed cdc/refund_escrow.cdc
 var refundEscrowCDC string
 
-//go:embed cdc/get_original_summary.cdc
-var getOriginalSummaryCDC string
-
 //go:embed cdc/get_original_extended_summary.cdc
 var getOriginalExtendedSummaryCDC string
 
@@ -406,66 +403,8 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 	return detail, nil
 }
 
-// GetOriginalSummary returns a summary of an Original.
-//
-// Uses the flat dictionary script instead of the contract's
-// `ArtDropCore.OriginalSummary` struct — the contract's `artist` field
-// is an Address (not a String), so the previous handler logic that read
-// `fields["artistName"]` was silently broken and `artistName` always
-// returned "". See `get_original_summary.cdc` for the rationale.
+// GetOriginalSummary returns the complete W12 summary of an Original.
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
-	args := []transactions.Argument{cadence.NewUInt64(originalId)}
-
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalSummaryCDC, args)
-	if err != nil {
-		return nil, fmt.Errorf("execute get_original_summary script: %w", err)
-	}
-
-	opt, ok := val.(cadence.Optional)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", val)
-	}
-	if opt.Value == nil {
-		return nil, nil
-	}
-
-	dict, ok := opt.Value.(cadence.Dictionary)
-	if !ok {
-		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
-	}
-
-	fields := map[string]cadence.Value{}
-	for _, kv := range dict.Pairs {
-		if k, ok := kv.Key.(cadence.String); ok {
-			fields[string(k)] = kv.Value
-		}
-	}
-
-	var summary OriginalSummary
-	if id, ok := fields["id"].(cadence.UInt64); ok {
-		summary.Id = uint64(id)
-	}
-	if name, ok := fields["name"].(cadence.String); ok {
-		summary.Name = string(name)
-	}
-	if artist, ok := fields["artist"].(cadence.Address); ok {
-		summary.Artist = flow_helpers.FormatAddress(flow.BytesToAddress(artist.Bytes()))
-	}
-	if prices, ok := fields["prices"].(cadence.Dictionary); ok {
-		summary.Prices = ufix64Dictionary(prices)
-	}
-	if createdAt, ok := fields["createdAtBlock"].(cadence.UInt64); ok {
-		summary.CreatedAtBlock = uint64(createdAt)
-	}
-	if schemaVersion, ok := fields["schemaVersion"].(cadence.UInt8); ok {
-		summary.SchemaVersion = uint8(schemaVersion)
-	}
-
-	return &summary, nil
-}
-
-// GetOriginalExtendedSummary returns W12 extended metadata for an Original.
-func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uint64) (*OriginalExtendedSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
 	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalExtendedSummaryCDC, args)
@@ -481,7 +420,7 @@ func (s *Service) GetOriginalExtendedSummary(ctx context.Context, originalId uin
 		return nil, nil
 	}
 
-	var summary OriginalExtendedSummary
+	var summary OriginalSummary
 	if id, ok := fields["id"].(cadence.UInt64); ok {
 		summary.Id = uint64(id)
 	}
