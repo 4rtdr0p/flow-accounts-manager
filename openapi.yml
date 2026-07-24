@@ -876,6 +876,31 @@ paths:
                     nullable: true
         '404':
           description: Not Found
+  '/artdrop/originals/{origId}/edition-ids':
+    get:
+      summary: Get ArtDrop edition ids for an original
+      operationId: getArtDropEditionIdsByOriginal
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - name: origId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: integer
+        '400':
+          description: Invalid original id
   '/artdrop/editions/{edId}':
     get:
       summary: Get an ArtDrop edition summary
