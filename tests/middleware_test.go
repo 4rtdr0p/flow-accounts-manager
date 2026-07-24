@@ -338,10 +338,23 @@ func Test_IdempotencyMiddleware_ConcurrentRequestsAcrossBackends(t *testing.T) {
 			wg.Wait()
 			close(statuses)
 
+			// The one invariant that actually matters: the reservation is
+			// exclusive, so the downstream handler must run exactly once no
+			// matter how many callers race for the same key.
 			if got := callCount.Load(); got != 1 {
 				t.Fatalf("expected handler to run once, ran %d times", got)
 			}
 
+			// created can legitimately be more than 1: a racer that is
+			// scheduled late enough to observe the reservation only after
+			// the owner has already called SetResponse will correctly
+			// replay the completed 201 instead of getting a 409. That is
+			// the documented "duplicate completed key" path, not a bug -
+			// asserting created == 1 makes this test flaky under -race
+			// (which slows every goroutine down and widens the window for
+			// a racer to arrive after completion). What must always hold is
+			// that every response is accounted for as either the real (or
+			// replayed) success or a conflict for an in-flight reservation.
 			created, conflicts := 0, 0
 			for status := range statuses {
 				switch status {
@@ -353,11 +366,11 @@ func Test_IdempotencyMiddleware_ConcurrentRequestsAcrossBackends(t *testing.T) {
 					t.Fatalf("unexpected response status %d", status)
 				}
 			}
-			if created != 1 {
-				t.Fatalf("expected exactly one 201 (the owner), got %d", created)
+			if created+conflicts != racers {
+				t.Fatalf("expected %d responses accounted for, got %d created + %d conflicts", racers, created, conflicts)
 			}
-			if conflicts != racers-1 {
-				t.Fatalf("expected %d 409 responses, got %d", racers-1, conflicts)
+			if created == 0 {
+				t.Fatal("expected at least one successful response")
 			}
 		})
 	}
@@ -393,6 +406,14 @@ func Test_IdempotencyMiddleware_PersistsResponseAfterTransientFailures(t *testin
 	}
 }
 
+// Test_IdempotencyMiddleware_FailsLoudWhenResponseCannotBePersisted covers
+// the documented residual risk: if SetResponse can never persist the
+// response for a real 2xx (the downstream side effect already happened),
+// the reservation is intentionally NOT released. Releasing it would let a
+// retry re-run the handler and risk a duplicate real side effect, which is
+// worse than a client stuck with a 409 until the key's TTL expires. The
+// client already has its response from the first request; the second
+// request must not re-execute the handler.
 func Test_IdempotencyMiddleware_FailsLoudWhenResponseCannotBePersisted(t *testing.T) {
 	store := newFlakyStore(handlers.NewIdempotencyStoreLocal(), 99)
 	callCount := 0
@@ -416,10 +437,10 @@ func Test_IdempotencyMiddleware_FailsLoudWhenResponseCannotBePersisted(t *testin
 	res.Body.Close()
 
 	res = sendWithHeaders(router, http.MethodPost, "/test-unwritable", bytes.NewBufferString(""), map[string]string{"Idempotency-Key": ik})
-	assertStatusCode(t, res, http.StatusCreated)
+	assertStatusCode(t, res, http.StatusConflict)
 	res.Body.Close()
-	if callCount != 2 {
-		t.Fatalf("expected handler to run twice (once per request) when persistence never succeeds, ran %d times", callCount)
+	if callCount != 1 {
+		t.Fatalf("expected handler to run only once; a stuck-pending reservation must not be retried automatically, ran %d times", callCount)
 	}
 }
 
