@@ -10,6 +10,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+	"github.com/google/go-cmp/cmp"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
 )
@@ -587,6 +588,71 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	}
 	if len(summary.RarityCurve) != 2 || summary.RarityCurve[0] != 1 || summary.RarityCurve[1] != 2 {
 		t.Fatalf("unexpected rarity curve: %+v", summary.RarityCurve)
+	}
+}
+
+func TestGetEditionIDsByOriginalMapsArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+			cadence.NewUInt64(13),
+		}),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	editionIDs, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetEditionIDsByOriginal returned error: %v", err)
+	}
+	if diff := cmp.Diff([]uint64{11, 12, 13}, editionIDs); diff != "" {
+		t.Fatalf("unexpected edition ids (-want +got):\n%s", diff)
+	}
+	if len(txSvc.args) != 1 {
+		t.Fatalf("expected one script argument, got %d", len(txSvc.args))
+	}
+	idArg, ok := txSvc.args[0].(cadence.UInt64)
+	if !ok || uint64(idArg) != 3 {
+		t.Fatalf("expected originalId argument 3, got %#v", txSvc.args[0])
+	}
+}
+
+func TestGetEditionIDsByOriginalAllowsEmptyArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	editionIDs, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetEditionIDsByOriginal returned error: %v", err)
+	}
+	if editionIDs == nil {
+		t.Fatal("expected empty slice, got nil")
+	}
+	if len(editionIDs) != 0 {
+		t.Fatalf("expected empty slice, got %+v", editionIDs)
+	}
+}
+
+func TestGetEditionIDsByOriginalRejectsUnexpectedType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(nil),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err == nil {
+		t.Fatal("expected error for unexpected result type, got nil")
 	}
 }
 
