@@ -64,14 +64,19 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 }
 
 func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
+	displayName, err := cadence.NewString("Certificate #7")
+	if err != nil {
+		t.Fatal(err)
+	}
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(nil),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)}),
-			cadence.NewBool(false),
-			cadence.NewOptional(nil),
-			cadence.String("Certificate #7"),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2)})},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(false)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
 	}
 	handler := NewHandler(NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -95,6 +100,32 @@ func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
 	}
 	if !strings.Contains(rw.Body.String(), `"displayName":"Certificate #7"`) {
 		t.Fatalf("expected response to contain display name, got %s", rw.Body.String())
+	}
+}
+
+func TestGetCertificateDetailHandlerReturnsNotFound(t *testing.T) {
+	// Mirrors the live-testnet verification (issue #53): when the script
+	// returns Optional(nil) — missing collection / wrong capability type /
+	// empty collection / unknown cert id — the service returns (nil, nil)
+	// and the handler answers 404. This is the deliberate behavior change
+	// flagged in the commit message and the service doc-comment.
+	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/certificates/7", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address": "0xf8d6e0586b0a20c7",
+		"certId":  "7",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.GetCertificateDetail().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
 
@@ -436,6 +467,144 @@ func TestGetOriginalSummaryHandlerReturnsNotFound(t *testing.T) {
 	rw := httptest.NewRecorder()
 
 	handler.GetOriginalSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetEditionIDsByOriginalHandlerReturnsOK(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+		}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if got := strings.TrimSpace(rw.Body.String()); got != "[11,12]" {
+		t.Fatalf("expected [11,12], got %s", got)
+	}
+}
+
+func TestGetEditionIDsByOriginalHandlerRejectsInvalidOriginalId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/not-a-number/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "not-a-number"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid origId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetEditionIDsByOriginalHandlerReturnsEmptyArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/originals/3/edition-ids", nil)
+	req = mux.SetURLVars(req, map[string]string{"origId": "3"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionIDsByOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if got := strings.TrimSpace(rw.Body.String()); got != "[]" {
+		t.Fatalf("expected [], got %s", got)
+	}
+}
+
+func TestGetEditionSummaryHandlerReturnsOK(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(4)},
+			{Key: cadence.String("originalId"), Value: cadence.NewUInt64(3)},
+			{Key: cadence.String("artist"), Value: cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7"))},
+			{Key: cadence.String("shuffleSeedBlock"), Value: cadence.NewUInt64(99)},
+			{Key: cadence.String("reprintLimit"), Value: cadence.NewUInt64(500)},
+			{Key: cadence.String("maxSupply"), Value: cadence.NewUInt64(500)},
+			{Key: cadence.String("createdAtBlock"), Value: cadence.NewUInt64(101)},
+			{Key: cadence.String("schemaVersion"), Value: cadence.NewUInt8(2)},
+			{Key: cadence.String("state"), Value: cadence.NewUInt8(3)},
+			{Key: cadence.String("totalMinted"), Value: cadence.NewUInt64(9)},
+		})),
+	}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/editions/4", nil)
+	req = mux.SetURLVars(req, map[string]string{"edId": "4"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"id":4`) {
+		t.Fatalf("expected response to contain id 4, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"state":"3"`) {
+		t.Fatalf("expected response to contain mapped state, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"totalMinted":9`) {
+		t.Fatalf("expected response to contain totalMinted 9, got %s", rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"maxSupply":500`) {
+		t.Fatalf("expected response to contain maxSupply 500, got %s", rw.Body.String())
+	}
+}
+
+func TestGetEditionSummaryHandlerRejectsInvalidEditionId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/editions/not-a-number", nil)
+	req = mux.SetURLVars(req, map[string]string{"edId": "not-a-number"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionSummary().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid edId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestGetEditionSummaryHandlerReturnsNotFound(t *testing.T) {
+	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/artdrop/editions/4", nil)
+	req = mux.SetURLVars(req, map[string]string{"edId": "4"})
+	rw := httptest.NewRecorder()
+
+	handler.GetEditionSummary().ServeHTTP(rw, req)
 
 	if rw.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d: %s", rw.Code, rw.Body.String())

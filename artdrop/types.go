@@ -4,19 +4,44 @@ import "github.com/flow-hydraulics/flow-wallet-api/transactions"
 
 // Transaction types used by the artdrop plugin.
 const (
-	TxTypeSetup        transactions.Type = "ArtdropSetup"
-	TxTypeTransfer     transactions.Type = "ArtdropTransfer"
-	TxTypeCreateEscrow transactions.Type = "ArtdropCreateEscrow"
-	TxTypeActivateChip transactions.Type = "ArtdropActivateChip"
-	TxTypeRelease      transactions.Type = "ArtdropRelease"
-	TxTypeCancel       transactions.Type = "ArtdropCancel"
-	TxTypeRefund       transactions.Type = "ArtdropRefund"
+	TxTypeSetup             transactions.Type = "ArtdropSetup"
+	TxTypeTransfer          transactions.Type = "ArtdropTransfer"
+	TxTypeCreateEscrow      transactions.Type = "ArtdropCreateEscrow"
+	TxTypeActivateChip      transactions.Type = "ArtdropActivateChip"
+	TxTypeRelease           transactions.Type = "ArtdropRelease"
+	TxTypeCancel            transactions.Type = "ArtdropCancel"
+	TxTypeRefund            transactions.Type = "ArtdropRefund"
+	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
+	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
+	TxTypeCreateEdition     transactions.Type = "ArtdropCreateEdition"
 )
 
 // TransferRequest contains the parameters needed to transfer a certificate.
 type TransferRequest struct {
 	CertificateID *uint64 `json:"certificateId"`
 	To            string  `json:"to"`
+}
+
+// CreateOriginalRequest contains the parameters needed for an artist to
+// create a new Original. The artist identity itself is not part of the
+// body — it comes from the {artistAddress} path segment and is bound to
+// the real transaction signer via UserAuthorizer, never from client input.
+type CreateOriginalRequest struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Prices      map[string]float64 `json:"prices"`
+}
+
+// CreateEditionRequest contains the parameters needed for an artist to
+// create a new Edition for one of their existing Originals. originalId
+// comes from the path, not the body.
+type CreateEditionRequest struct {
+	ReprintLimit      uint64             `json:"reprint_limit"`
+	Prices            map[string]float64 `json:"prices"`
+	ProfitSplit       map[string]float64 `json:"profit_split"`
+	RarityCurve       []uint64           `json:"rarity_curve"`
+	MultiplierWeights map[string]float64 `json:"multiplier_weights"`
+	RarityProfile     uint8              `json:"rarity_profile"`
 }
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.

@@ -10,6 +10,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+	"github.com/google/go-cmp/cmp"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk"
 )
@@ -181,14 +182,19 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	displayName, err := cadence.NewString("Certificate #7")
+	if err != nil {
+		t.Fatal(err)
+	}
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(baseTier),
-			cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)}),
-			cadence.NewBool(true),
-			cadence.NewOptional(finalMultiplier),
-			cadence.String("Certificate #7"),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(baseTier)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(finalMultiplier)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewArray([]cadence.Value{cadence.NewUInt8(1), cadence.NewUInt8(2), cadence.NewUInt8(3)})},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(true)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -217,28 +223,52 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 	if detail.DisplayName == nil || *detail.DisplayName != "Certificate #7" {
 		t.Fatalf("unexpected display name: %+v", detail.DisplayName)
 	}
-	if len(txSvc.calls) != 5 {
-		t.Fatalf("expected 5 script calls, got %d", len(txSvc.calls))
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 script call, got %d", len(txSvc.calls))
 	}
-	for _, args := range txSvc.calls {
-		if len(args) != 2 {
-			t.Fatalf("expected 2 args per script call, got %d", len(args))
-		}
-		if args[0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
-			t.Fatalf("expected address as first arg, got %#v", args[0])
-		}
-		if args[1] != cadence.NewUInt64(7) {
-			t.Fatalf("expected certificate id as second arg, got %#v", args[1])
-		}
+	if len(txSvc.calls[0]) != 2 {
+		t.Fatalf("expected 2 args per script call, got %d", len(txSvc.calls[0]))
+	}
+	if txSvc.calls[0][0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+		t.Fatalf("expected address as first arg, got %#v", txSvc.calls[0][0])
+	}
+	if txSvc.calls[0][1] != cadence.NewUInt64(7) {
+		t.Fatalf("expected certificate id as second arg, got %#v", txSvc.calls[0][1])
+	}
+}
+
+func TestGetCertificateDetailReturnsNilWhenScriptReturnsNil(t *testing.T) {
+	// Mirrors the script's behaviour for: missing collection, wrong-type
+	// capability, empty collection, missing cert id — all four collapse to
+	// `Optional(nil)` and the service returns (nil, nil) so the handler
+	// can answer 404.
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(nil),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	detail, err := svc.GetCertificateDetail(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	if err != nil {
+		t.Fatalf("expected nil error when script returns Optional(nil), got %v", err)
+	}
+	if detail != nil {
+		t.Fatalf("expected nil detail when script returns Optional(nil), got %+v", detail)
 	}
 }
 
 func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
 	txSvc := &queryTxService{
-		scriptResults: []cadence.Value{
-			cadence.NewOptional(nil),
-			cadence.NewUInt64(42),
-		},
+		scriptResult: cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+			{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
+			{Key: cadence.String("baseTier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("finalMultiplier"), Value: cadence.NewOptional(nil)},
+			{Key: cadence.String("chipPubKey"), Value: cadence.NewUInt64(42)},
+			{Key: cadence.String("isRevealed"), Value: cadence.NewBool(false)},
+			{Key: cadence.String("displayName"), Value: cadence.NewOptional(nil)},
+		})),
 	}
 	svc := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
@@ -517,6 +547,71 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 	}
 	if len(summary.RarityCurve) != 2 || summary.RarityCurve[0] != 1 || summary.RarityCurve[1] != 2 {
 		t.Fatalf("unexpected rarity curve: %+v", summary.RarityCurve)
+	}
+}
+
+func TestGetEditionIDsByOriginalMapsArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+			cadence.NewUInt64(13),
+		}),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	editionIDs, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetEditionIDsByOriginal returned error: %v", err)
+	}
+	if diff := cmp.Diff([]uint64{11, 12, 13}, editionIDs); diff != "" {
+		t.Fatalf("unexpected edition ids (-want +got):\n%s", diff)
+	}
+	if len(txSvc.args) != 1 {
+		t.Fatalf("expected one script argument, got %d", len(txSvc.args))
+	}
+	idArg, ok := txSvc.args[0].(cadence.UInt64)
+	if !ok || uint64(idArg) != 3 {
+		t.Fatalf("expected originalId argument 3, got %#v", txSvc.args[0])
+	}
+}
+
+func TestGetEditionIDsByOriginalAllowsEmptyArray(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	editionIDs, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("GetEditionIDsByOriginal returned error: %v", err)
+	}
+	if editionIDs == nil {
+		t.Fatal("expected empty slice, got nil")
+	}
+	if len(editionIDs) != 0 {
+		t.Fatalf("expected empty slice, got %+v", editionIDs)
+	}
+}
+
+func TestGetEditionIDsByOriginalRejectsUnexpectedType(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(nil),
+	}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.GetEditionIDsByOriginal(context.Background(), 3)
+	if err == nil {
+		t.Fatal("expected error for unexpected result type, got nil")
 	}
 }
 

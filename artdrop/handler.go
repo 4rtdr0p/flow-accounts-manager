@@ -202,6 +202,13 @@ func (h *Handler) GetCertificateDetailFunc(rw http.ResponseWriter, r *http.Reque
 		handlers.HandleError(rw, r, err)
 		return
 	}
+	if detail == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusNotFound,
+			Err:        fmt.Errorf("certificate not found"),
+		})
+		return
+	}
 
 	handlers.HandleJsonResponse(rw, http.StatusOK, detail)
 }
@@ -256,6 +263,10 @@ func (h *Handler) GetEditionSummary() http.Handler {
 	return http.HandlerFunc(h.GetEditionSummaryFunc)
 }
 
+func (h *Handler) GetEditionIDsByOriginal() http.Handler {
+	return http.HandlerFunc(h.GetEditionIDsByOriginalFunc)
+}
+
 func (h *Handler) GetEditionSummaryFunc(rw http.ResponseWriter, r *http.Request) {
 	edId, err := strconv.ParseUint(mux.Vars(r)["edId"], 10, 64)
 	if err != nil {
@@ -280,6 +291,25 @@ func (h *Handler) GetEditionSummaryFunc(rw http.ResponseWriter, r *http.Request)
 	}
 
 	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
+}
+
+func (h *Handler) GetEditionIDsByOriginalFunc(rw http.ResponseWriter, r *http.Request) {
+	origId, err := strconv.ParseUint(mux.Vars(r)["origId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid origId: %w", err),
+		})
+		return
+	}
+
+	editionIDs, err := h.svc.GetEditionIDsByOriginal(r.Context(), origId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, editionIDs)
 }
 
 func (h *Handler) GetPlatformFee() http.Handler {
