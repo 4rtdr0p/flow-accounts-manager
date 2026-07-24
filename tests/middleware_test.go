@@ -17,7 +17,6 @@ import (
 	"github.com/gorilla/mux"
 	upstreamgorm "gorm.io/gorm"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 )
 
 func Test_IdempotencyMiddleware(t *testing.T) {
@@ -563,19 +562,4 @@ func (f *flakyIdempotencyStore) SetResponse(key string, record handlers.Idempote
 
 func (f *flakyIdempotencyStore) Release(key string) error {
 	return f.inner.Release(key)
-}
-
-// openTestSQLiteDB is a tiny helper used by the sqlite-only fallback if the
-// suite is run without a Postgres DSN. It mirrors the engine used by the
-// Gorm idempotency store so the test exercises the same code path.
-func openTestSQLiteDB(t *testing.T) *upstreamgorm.DB {
-	t.Helper()
-	db, err := upstreamgorm.Open(sqlite.Open(":memory:"), &upstreamgorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := db.AutoMigrate(&handlers.IdempotencyRecord{}); err != nil {
-		t.Fatalf("auto-migrate sqlite: %v", err)
-	}
-	return db
 }
