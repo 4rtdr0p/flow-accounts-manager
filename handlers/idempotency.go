@@ -26,6 +26,9 @@ const (
 	IdempotencyStoreTypeLocal IdempotencyStoreType = iota
 	IdempotencyStoreTypeShared
 	IdempotencyStoreTypeRedis
+
+	idempotencyResponseSaveAttempts = 3
+	idempotencyResponseSaveBackoff  = 10 * time.Millisecond
 )
 
 func (ist IdempotencyStoreType) String() string {
@@ -49,6 +52,7 @@ type IdempotencyRecord struct {
 type IdempotencyStore interface {
 	TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error)
 	SetResponse(key string, record IdempotencyRecord, expiry time.Duration) error
+	Release(key string) error
 }
 
 // Redis store for idempotency keys
@@ -136,6 +140,14 @@ func (r *IdempotencyStoreRedis) SetResponse(key string, record IdempotencyRecord
 	defer r.mu.Unlock()
 
 	return r.setRecord(key, record, expiry)
+}
+
+func (r *IdempotencyStoreRedis) Release(key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	_, err := r.conn.Do("DEL", r.prefixedKey(key))
+	return err
 }
 
 func (r *IdempotencyStoreRedis) setRecord(key string, record IdempotencyRecord, expiry time.Duration) error {
@@ -256,6 +268,10 @@ func (g *IdempotencyStoreGorm) SetResponse(
 	}).Create(&record).Error
 }
 
+func (g *IdempotencyStoreGorm) Release(key string) error {
+	return g.db.Where("key = ?", key).Delete(&IdempotencyRecord{}).Error
+}
+
 // Prune deletes all expired IdempotencyStoreGormItems from the database
 func (g *IdempotencyStoreGorm) Prune() error {
 	err := g.db.Delete(IdempotencyRecord{}, "expiry_date < ?", time.Now()).Error
@@ -322,6 +338,14 @@ func (m *IdempotencyStoreLocal) SetResponse(
 	defer m.mu.Unlock()
 
 	m.keys[key] = record
+	return nil
+}
+
+func (m *IdempotencyStoreLocal) Release(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.keys, key)
 	return nil
 }
 
@@ -424,15 +448,40 @@ func IdempotencyHandler(h http.Handler, opts IdempotencyHandlerOptions, store Id
 		recorder, wrapped := captureIdempotencyResponse(rw)
 		h.ServeHTTP(wrapped, r)
 
-		err = store.SetResponse(key, IdempotencyRecord{
-			StatusCode:  recorder.finalStatusCode(),
+		finalStatus := recorder.finalStatusCode()
+		if finalStatus >= 500 {
+			if releaseErr := store.Release(key); releaseErr != nil {
+				log.
+					WithFields(log.Fields{"error": releaseErr, "key": key, "status": finalStatus}).
+					Warn("Error while releasing idempotency reservation after 5xx")
+			}
+			return
+		}
+
+		saveRecord := IdempotencyRecord{
+			StatusCode:  finalStatus,
 			ContentType: rw.Header().Get("Content-Type"),
 			Body:        recorder.body.Bytes(),
-		}, opts.Expiry)
-		if err != nil {
+		}
+		if err := persistIdempotencyResponse(store, key, saveRecord, opts.Expiry); err != nil {
 			log.
-				WithFields(log.Fields{"error": err, "key": key}).
-				Warn("Error while saving idempotency response")
+				WithFields(log.Fields{"error": err, "key": key, "status": finalStatus}).
+				Error("Failed to persist idempotency response after retries; client may be unable to replay this response")
 		}
 	})
+}
+
+func persistIdempotencyResponse(store IdempotencyStore, key string, record IdempotencyRecord, expiry time.Duration) error {
+	var lastErr error
+	for attempt := 0; attempt < idempotencyResponseSaveAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(idempotencyResponseSaveBackoff)
+		}
+		if err := store.SetResponse(key, record, expiry); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
 }

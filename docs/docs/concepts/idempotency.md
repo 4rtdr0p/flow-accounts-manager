@@ -181,11 +181,33 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 
 | Scenario | HTTP Status | Response |
 |----------|-------------|----------|
-| First request with key | `200/201` | Normal response |
-| Duplicate completed key | Original status | Original response body replayed |
+| First request with key | `200/201/4xx` | Normal response, stored as completed |
+| First request that returned `5xx` | `5xx` | Reservation released; safe to retry with the same key |
+| Duplicate completed key | Original status | Original response body replayed (handler not re-run) |
 | Duplicate pending key | `409 Conflict` | "Idempotency-Key conflict" |
 | Missing key (POST) | `400 Bad Request` | "Idempotency-Key header not found" |
 | GET/DELETE requests | `200` | Key not required |
+
+**Retrying with the same `Idempotency-Key`:**
+
+- After a successful response (`2xx`) or a business-side error (`4xx`) the
+  original response is replayed exactly as stored, and the downstream handler
+  is **not** executed again. Re-using a key that already produced a `4xx`
+  keeps returning that same `4xx` payload.
+- After a transient failure (`5xx`) the reservation is released. A retry with
+  the same key executes the downstream handler again from scratch, so the
+  client can recover instead of looping forever on a stored error.
+
+### **Known Residual Risk**
+
+If persisting a successful response to the idempotency store fails even after
+the in-process retries (transient store outage at the same time as a side
+effect already happened on the downstream, e.g. a Flow transaction was
+submitted), the client receives the real response but the key is **not**
+marked completed. A retry with the same `Idempotency-Key` will then run the
+handler again and may produce a duplicate side effect. This window is bounded
+by the in-process retry loop and is logged at `error` level for operators, but
+it is not closed by a two-phase commit.
 
 ### **Key Expiration**
 
@@ -299,11 +321,11 @@ async function safeTransfer(transferData) {
     }
     
     if (error.status >= 500) {
-      // Server error - safe to retry with same key
+      // Server error - the reservation is released, retry re-runs the handler.
       return await apiCall(transferData, idempotencyKey);
     }
-    
-    // Client error - don't retry
+
+    // Client error - don't retry, the same 4xx will be replayed.
     throw error;
   }
 }

@@ -90,7 +90,7 @@ All responses follow a consistent structure:
 | `401` | Unauthorized | Authentication required |
 | `403` | Forbidden | Insufficient permissions |
 | `404` | Not Found | Resource not found |
-| `409` | Conflict | Idempotency key is already pending |
+| `409` | Conflict | Idempotency key is currently in flight for another request |
 | `422` | Unprocessable Entity | Valid request but business logic error |
 | `429` | Too Many Requests | Rate limit exceeded |
 | `500` | Internal Server Error | Server error |
@@ -239,6 +239,9 @@ Idempotency-Key: unique-operation-id
 # Duplicate completed request returns the original response again.
 # A duplicate while the first request is still pending returns:
 HTTP/1.1 409 Conflict
+
+# A retry with the same Idempotency-Key after a 5xx re-runs the
+# downstream handler; only completed responses are replayed.
 ```
 
 ### **Input Validation**
