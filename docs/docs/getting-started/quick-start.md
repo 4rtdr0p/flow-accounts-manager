@@ -196,7 +196,7 @@ curl -X POST "http://localhost:3000/v1/accounts/${ACCOUNT_ADDRESS}/fungible-toke
   }"
 ```
 
-If you run the same command again with the same `Idempotency-Key`, you'll get a `409 Conflict` response, preventing duplicate transfers.
+If you run the same command again with the same `Idempotency-Key` after the first request completes, the API replays the original response without creating another transfer. A `409 Conflict` only means another request with that key is still pending.
 
 ## 🌐 **Testing with Different Networks**
 

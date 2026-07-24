@@ -319,7 +319,7 @@ If you want to use an AWS KMS symmetric encryption key for encrypting the stored
 
 ### Idempotency middleware
 
-Idempotency middleware ensures that `POST` requests are idempotent. When the middleware is enabled an `Idempotency-Key` HTTP header is required for `POST` requests. The header value should be a unique identifier for the request (UUID or similar is recommended). Trying to send a request with a duplicate idempotency key will result in a `409 Conflict` HTTP response.
+Idempotency middleware ensures that `POST` requests are idempotent. When the middleware is enabled an `Idempotency-Key` HTTP header is required for `POST` requests. The header value should be a unique identifier for the request (UUID or similar is recommended). Retrying a completed request with the same idempotency key replays the first response without executing the handler again.
 
 To configure the middleware set the following configuration settings;
 

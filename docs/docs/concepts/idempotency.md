@@ -52,8 +52,8 @@ sequenceDiagram
     Note over API,Blockchain: Network timeout, retry
     Frontend->>API: POST /transfer<br/>Idempotency-Key: uuid-123
     API->>Database: Check if uuid-123 exists
-    Database-->>API: Found! (409 Conflict)
-    API-->>Frontend: 409 Conflict - Already processed
+    Database-->>API: Found! (stored response)
+    API-->>Frontend: Replayed original response
     
     Note over User: Only 100 FLOW transferred ✓
 ```
@@ -71,10 +71,12 @@ graph TB
     
     Header -->|Yes| CheckStore[Check Key Store]
     CheckStore --> Exists{Key Exists?}
-    Exists -->|Yes| Conflict[409 Conflict]
-    Exists -->|No| StoreKey[Store Key]
+    Exists -->|Completed| Replay[Replay stored response]
+    Exists -->|Pending| Conflict[409 Conflict]
+    Exists -->|No| StoreKey[Store pending key]
     StoreKey --> Process
-    Process --> Response[Return Response]
+    Process --> StoreResponse[Store response]
+    StoreResponse --> Response[Return response]
 ```
 
 ### **Storage Mechanisms**
@@ -179,10 +181,33 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 
 | Scenario | HTTP Status | Response |
 |----------|-------------|----------|
-| First request with key | `200/201` | Normal response |
-| Duplicate key | `409 Conflict` | "Idempotency-Key conflict" |
+| First request with key | `200/201/4xx` | Normal response, stored as completed |
+| First request that returned `5xx` | `5xx` | Reservation released; safe to retry with the same key |
+| Duplicate completed key | Original status | Original response body replayed (handler not re-run) |
+| Duplicate pending key | `409 Conflict` | "Idempotency-Key conflict" |
 | Missing key (POST) | `400 Bad Request` | "Idempotency-Key header not found" |
 | GET/DELETE requests | `200` | Key not required |
+
+**Retrying with the same `Idempotency-Key`:**
+
+- After a successful response (`2xx`) or a business-side error (`4xx`) the
+  original response is replayed exactly as stored, and the downstream handler
+  is **not** executed again. Re-using a key that already produced a `4xx`
+  keeps returning that same `4xx` payload.
+- After a transient failure (`5xx`) the reservation is released. A retry with
+  the same key executes the downstream handler again from scratch, so the
+  client can recover instead of looping forever on a stored error.
+
+### **Known Residual Risk**
+
+If persisting a successful response to the idempotency store fails even after
+the in-process retries (transient store outage at the same time as a side
+effect already happened on the downstream, e.g. a Flow transaction was
+submitted), the client receives the real response but the key is **not**
+marked completed. A retry with the same `Idempotency-Key` will then run the
+handler again and may produce a duplicate side effect. This window is bounded
+by the in-process retry loop and is logged at `error` level for operators, but
+it is not closed by a two-phase commit.
 
 ### **Key Expiration**
 
@@ -255,11 +280,8 @@ const response = await fetch('/v1/accounts/0x123.../withdrawals', {
   })
 });
 
-// Handle idempotency conflicts
-if (response.status === 409) {
-  console.log('Operation already processed');
-  // Don't retry, operation was successful
-}
+// A completed retry returns the original response again.
+// A 409 means another request with this key is still pending.
 ```
 
 ### **Key Generation Strategies**
@@ -293,17 +315,17 @@ async function safeTransfer(transferData) {
     return response;
   } catch (error) {
     if (error.status === 409) {
-      // Idempotency conflict - operation already processed
-      console.log('Transfer already completed');
-      return { success: true, duplicate: true };
-    }
-    
-    if (error.status >= 500) {
-      // Server error - safe to retry with same key
+      // Same key is already in flight. Wait briefly before retrying.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       return await apiCall(transferData, idempotencyKey);
     }
     
-    // Client error - don't retry
+    if (error.status >= 500) {
+      // Server error - the reservation is released, retry re-runs the handler.
+      return await apiCall(transferData, idempotencyKey);
+    }
+
+    // Client error - don't retry, the same 4xx will be replayed.
     throw error;
   }
 }
@@ -318,7 +340,8 @@ graph TB
     subgraph "Metrics Collection"
         Requests[Total Requests] --> Unique[Unique Operations]
         Requests --> Duplicates[Duplicate Attempts]
-        Duplicates --> Conflicts[409 Conflicts]
+        Duplicates --> Replays[Response replays]
+        Duplicates --> Conflicts[Pending-key 409 conflicts]
     end
     
     subgraph "Analysis"
@@ -333,7 +356,7 @@ graph TB
 
 | Issue | Symptom | Solution |
 |-------|---------|----------|
-| **High conflict rate** | Many 409 responses | Check client retry logic |
+| **High conflict rate** | Many pending-key 409 responses | Check concurrent client retry logic |
 | **Missing keys** | 400 Bad Request | Ensure client sends keys |
 | **Key reuse** | Unexpected conflicts | Generate truly unique keys |
 | **Storage full** | Performance issues | Configure key expiration |

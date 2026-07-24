@@ -529,13 +529,18 @@ func TestW02AccountCreateIdempotencyConflict(t *testing.T) {
 		t.Fatalf("expected first request status %d, got %d: %s", http.StatusCreated, rr.Code, rr.Body.String())
 	}
 
+	firstBody := rr.Body.String()
+
 	req, err = http.NewRequest(http.MethodPost, "/accounts", nil)
 	fatal(t, err)
 	req.Header.Set("Idempotency-Key", ik)
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
-	if rr.Code != http.StatusConflict {
-		t.Fatalf("expected duplicate idempotency key status %d, got %d: %s", http.StatusConflict, rr.Code, rr.Body.String())
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected duplicate idempotency key status %d, got %d: %s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+	if rr.Body.String() != firstBody {
+		t.Fatalf("expected duplicate idempotency key to replay first account response, got %s want %s", rr.Body.String(), firstBody)
 	}
 }
 
