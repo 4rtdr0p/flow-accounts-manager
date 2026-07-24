@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/felixge/httpsnoop"
@@ -46,8 +47,7 @@ type IdempotencyRecord struct {
 }
 
 type IdempotencyStore interface {
-	Get(key string) (*IdempotencyRecord, bool, error)
-	SetPending(key string, expiry time.Duration) error
+	TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error)
 	SetResponse(key string, record IdempotencyRecord, expiry time.Duration) error
 }
 
@@ -55,6 +55,7 @@ type IdempotencyStore interface {
 type IdempotencyStoreRedis struct {
 	conn   redis.Conn
 	prefix string
+	mu     sync.Mutex
 }
 
 func NewIdempotencyStoreRedis(c redis.Conn) *IdempotencyStoreRedis {
@@ -66,6 +67,13 @@ func (r *IdempotencyStoreRedis) prefixedKey(key string) string {
 }
 
 func (r *IdempotencyStoreRedis) Get(key string) (*IdempotencyRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.get(key)
+}
+
+func (r *IdempotencyStoreRedis) get(key string) (*IdempotencyRecord, bool, error) {
 	raw, err := redis.Bytes(r.conn.Do("GET", r.prefixedKey(key)))
 	if errors.Is(err, redis.ErrNil) {
 		return nil, false, nil
@@ -82,15 +90,51 @@ func (r *IdempotencyStoreRedis) Get(key string) (*IdempotencyRecord, bool, error
 	return &record, true, nil
 }
 
-func (r *IdempotencyStoreRedis) SetPending(key string, expiry time.Duration) error {
+func (r *IdempotencyStoreRedis) TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error) {
 	record := IdempotencyRecord{Key: key, ExpiryDate: time.Now().Add(expiry)}
-	return r.setRecord(key, record, expiry)
+	raw, err := json.Marshal(record)
+	if err != nil {
+		return false, nil, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	res, err := r.conn.Do("SET", r.prefixedKey(key), raw, "PX", int(expiry.Milliseconds()), "NX")
+	if err != nil {
+		return false, nil, err
+	}
+
+	if res == nil {
+		existing, exists, err := r.get(key)
+		if err != nil {
+			return false, nil, err
+		}
+		if !exists {
+			return false, nil, fmt.Errorf("idempotency key disappeared after reservation conflict")
+		}
+		return false, existing, nil
+	}
+
+	status, err := redis.String(res)
+	if err != nil {
+		return false, nil, err
+	}
+	if status != "OK" {
+		return false, nil, fmt.Errorf("failed to reserve key: %s", status)
+	}
+
+	return true, nil, nil
 }
 
 func (r *IdempotencyStoreRedis) SetResponse(key string, record IdempotencyRecord, expiry time.Duration) error {
 	record.Key = key
 	record.ExpiryDate = time.Now().Add(expiry)
 	record.Completed = true
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	return r.setRecord(key, record, expiry)
 }
 
@@ -140,18 +184,36 @@ func (g *IdempotencyStoreGorm) Get(key string) (*IdempotencyRecord, bool, error)
 	return &item, true, nil
 }
 
-func (g *IdempotencyStoreGorm) SetPending(key string, expiry time.Duration) error {
-	// update expiry date if exists or create a new item
-	err := g.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"expiry_date", "completed"}),
-	}).Create(&IdempotencyRecord{Key: key, ExpiryDate: time.Now().Add(expiry)}).Error
+func (g *IdempotencyStoreGorm) TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error) {
+	var existing IdempotencyRecord
+	reserved := false
 
+	err := g.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		pending := IdempotencyRecord{Key: key, ExpiryDate: now.Add(expiry)}
+		if err := tx.Delete(&IdempotencyRecord{}, "key = ? AND expiry_date <= ?", key, now).Error; err != nil {
+			return err
+		}
+
+		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&pending)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 1 {
+			reserved = true
+			return nil
+		}
+
+		return tx.First(&existing, "key = ?", key).Error
+	})
 	if err != nil {
-		return err
+		return false, nil, err
+	}
+	if reserved {
+		return true, nil, nil
 	}
 
-	return nil
+	return false, &existing, nil
 }
 
 func (g *IdempotencyStoreGorm) SetResponse(
@@ -184,37 +246,48 @@ func (g *IdempotencyStoreGorm) Prune() error {
 // Local / in-memory store for idempotency keys, mainly for testing purposes
 type IdempotencyStoreLocal struct {
 	keys map[string]IdempotencyRecord
+	mu   sync.Mutex
 }
 
 func NewIdempotencyStoreLocal() *IdempotencyStoreLocal {
-	return &IdempotencyStoreLocal{make(map[string]IdempotencyRecord)}
+	return &IdempotencyStoreLocal{keys: make(map[string]IdempotencyRecord)}
 }
 
 func (m *IdempotencyStoreLocal) Get(key string) (*IdempotencyRecord, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.get(key)
+}
+
+func (m *IdempotencyStoreLocal) get(key string) (*IdempotencyRecord, bool, error) {
 	v, ok := m.keys[key]
 	if !ok {
 		return nil, false, nil
 	}
 
-	// Still valid
 	if v.ExpiryDate.After(time.Now()) {
 		return &v, true, nil
 	}
 
-	// Expired
-	// NOTE: item is removed as a side effect
-	if v.ExpiryDate.Before(time.Now()) {
-		delete(m.keys, key)
-		return nil, false, nil
-	}
-
+	delete(m.keys, key)
 	return nil, false, nil
 }
 
-func (m *IdempotencyStoreLocal) SetPending(key string, expiry time.Duration) error {
-	m.keys[key] = IdempotencyRecord{Key: key, ExpiryDate: time.Now().Add(expiry)}
+func (m *IdempotencyStoreLocal) TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	return nil
+	existing, exists, err := m.get(key)
+	if err != nil {
+		return false, nil, err
+	}
+	if exists {
+		return false, existing, nil
+	}
+
+	m.keys[key] = IdempotencyRecord{Key: key, ExpiryDate: time.Now().Add(expiry)}
+	return true, nil, nil
 }
 
 func (m *IdempotencyStoreLocal) SetResponse(
@@ -225,8 +298,11 @@ func (m *IdempotencyStoreLocal) SetResponse(
 	record.Key = key
 	record.ExpiryDate = time.Now().Add(expiry)
 	record.Completed = true
-	m.keys[key] = record
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.keys[key] = record
 	return nil
 }
 
@@ -307,16 +383,16 @@ func IdempotencyHandler(h http.Handler, opts IdempotencyHandlerOptions, store Id
 			return
 		}
 
-		record, exists, err := store.Get(key)
+		reserved, record, err := store.TryReserve(key, opts.Expiry)
 		if err != nil {
 			log.
 				WithFields(log.Fields{"error": err, "key": key}).
-				Warn("Error while reading idempotency key from storage")
-			http.Error(rw, "Error while reading idempotency key", http.StatusInternalServerError)
+				Warn("Error while reserving idempotency key")
+			http.Error(rw, "Error while reserving idempotency key", http.StatusInternalServerError)
 			return
 		}
 
-		if exists {
+		if !reserved {
 			if record != nil && record.Completed {
 				replayIdempotencyResponse(rw, record)
 				return
@@ -324,15 +400,6 @@ func IdempotencyHandler(h http.Handler, opts IdempotencyHandlerOptions, store Id
 
 			http.Error(rw, fmt.Sprintf("Idempotency-Key conflict, key: %s", key), http.StatusConflict)
 			return
-		} else {
-			err := store.SetPending(key, opts.Expiry)
-			if err != nil {
-				log.
-					WithFields(log.Fields{"error": err, "key": key}).
-					Warn("Error while saving used idempotency key")
-				http.Error(rw, "Error while saving used idempotency key", http.StatusInternalServerError)
-				return
-			}
 		}
 
 		recorder, wrapped := captureIdempotencyResponse(rw)

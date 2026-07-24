@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -66,6 +68,70 @@ func Test_IdempotencyMiddleware(t *testing.T) {
 		assertStatusCode(t, res, http.StatusBadRequest)
 	})
 
+}
+
+func Test_IdempotencyMiddleware_ConcurrentRequests(t *testing.T) {
+	is := handlers.NewIdempotencyStoreLocal()
+	var callCount atomic.Int32
+
+	testHandler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		time.Sleep(25 * time.Millisecond)
+		rw.WriteHeader(http.StatusCreated)
+		_, _ = rw.Write([]byte("ok"))
+	})
+
+	server := httptest.NewServer(handlers.UseIdempotency(testHandler, handlers.IdempotencyHandlerOptions{
+		Expiry: time.Minute,
+	}, is))
+	defer server.Close()
+
+	const requests = 200
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	client := &http.Client{}
+	statuses := make(chan int, requests)
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			req.Header.Set("Idempotency-Key", "concurrent-idempotency-key")
+			res, err := client.Do(req)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			res.Body.Close()
+			statuses <- res.StatusCode
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(statuses)
+
+	if got := callCount.Load(); got != 1 {
+		t.Fatalf("expected handler to run once, ran %d times", got)
+	}
+
+	created := 0
+	for status := range statuses {
+		switch status {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+		default:
+			t.Fatalf("unexpected response status %d", status)
+		}
+	}
+	if created == 0 {
+		t.Fatal("expected at least one successful response")
+	}
 }
 
 func Test_IdempotencyMiddleware_ReplaysErrorResponses(t *testing.T) {
