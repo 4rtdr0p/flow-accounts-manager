@@ -116,7 +116,7 @@ func (r *IdempotencyStoreRedis) TryReserve(key string, expiry time.Duration) (bo
 		return false, existing, nil
 	}
 
-	status, err := redis.String(res)
+	status, err := redis.String(res, nil)
 	if err != nil {
 		return false, nil, err
 	}
