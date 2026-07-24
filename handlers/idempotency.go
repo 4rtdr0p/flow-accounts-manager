@@ -184,27 +184,45 @@ func (g *IdempotencyStoreGorm) Get(key string) (*IdempotencyRecord, bool, error)
 	return &item, true, nil
 }
 
+// TryReserve atomically claims an idempotency key for the caller. It uses a
+// single SQL statement via a CTE so that the expired-row deletion and the
+// conditional insert happen as one logical step:
+//
+//	WITH expired AS (
+//	  DELETE FROM idempotency_keys
+//	  WHERE key = $1 AND expiry_date <= NOW()
+//	  RETURNING NULL
+//	)
+//	INSERT INTO idempotency_keys (key, expiry_date, status_code, content_type, body, completed)
+//	SELECT $1, NOW() + $2, 0, '', '', false
+//	WHERE NOT EXISTS (SELECT 1 FROM idempotency_keys WHERE key = $1)
+//
+// RowsAffected on the final INSERT reports whether the caller now owns the
+// key (1) or whether a non-expired row already exists (0). Doing the DELETE
+// and the INSERT inside one statement closes the TOCTOU window where one
+// transaction's deleted-but-not-committed row could otherwise be resurrected
+// by a concurrent transaction's DELETE.
 func (g *IdempotencyStoreGorm) TryReserve(key string, expiry time.Duration) (bool, *IdempotencyRecord, error) {
-	var existing IdempotencyRecord
+	now := time.Now()
+
 	reserved := false
-
 	err := g.db.Transaction(func(tx *gorm.DB) error {
-		now := time.Now()
-		pending := IdempotencyRecord{Key: key, ExpiryDate: now.Add(expiry)}
-		if err := tx.Delete(&IdempotencyRecord{}, "key = ? AND expiry_date <= ?", key, now).Error; err != nil {
-			return err
-		}
-
-		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&pending)
+		// One atomic statement: drop expired entries, then insert-if-absent.
+		result := tx.Exec(`
+			WITH expired AS (
+				DELETE FROM idempotency_keys
+				WHERE key = ? AND expiry_date <= ?
+				RETURNING NULL
+			)
+			INSERT INTO idempotency_keys (key, expiry_date, status_code, content_type, body, completed)
+			SELECT ?, ?, 0, '', '', false
+			WHERE NOT EXISTS (SELECT 1 FROM idempotency_keys WHERE key = ?)
+		`, key, now, key, now.Add(expiry), key)
 		if result.Error != nil {
 			return result.Error
 		}
-		if result.RowsAffected == 1 {
-			reserved = true
-			return nil
-		}
-
-		return tx.First(&existing, "key = ?", key).Error
+		reserved = result.RowsAffected == 1
+		return nil
 	})
 	if err != nil {
 		return false, nil, err
@@ -213,7 +231,8 @@ func (g *IdempotencyStoreGorm) TryReserve(key string, expiry time.Duration) (boo
 		return true, nil, nil
 	}
 
-	return false, &existing, nil
+	existing, _, getErr := g.Get(key)
+	return false, existing, getErr
 }
 
 func (g *IdempotencyStoreGorm) SetResponse(
