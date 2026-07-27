@@ -142,6 +142,139 @@ func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
 	}
 }
 
+func TestSetupArtistDirectFuncReturnsCreatedTransaction(t *testing.T) {
+	txSvc := &setupTxService{}
+	h := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/accounts/0x0ae53cb6e3f42a79/artdrop/artist-direct/setup?sync=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"artistAddress": "0x0ae53cb6e3f42a79"})
+	rr := httptest.NewRecorder()
+
+	h.SetupArtistDirect().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"transactionType":"ArtdropSetupArtistDirect"`) {
+		t.Fatalf("expected setup artist direct transaction response, got %s", rr.Body.String())
+	}
+}
+
+func TestCreateOriginalHandlerReturnsCreated(t *testing.T) {
+	txSvc := &setupTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	body := `{"name":"Original 1","description":"Artist drop","prices":{"primary":10.5}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"artistAddress": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.CreateOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestCreateOriginalHandlerRequiresFields(t *testing.T) {
+	txSvc := &setupTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	body := `{"description":"Artist drop","prices":{"primary":10.5}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"artistAddress": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.CreateOriginal().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestCreateEditionHandlerReturnsCreated(t *testing.T) {
+	txSvc := &setupTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	body := `{"reprint_limit":500,"prices":{"primary":12},"profit_split":{"artist":0.85},"rarity_curve":[1,2,3],"multiplier_weights":{"rare":0.25},"rarity_profile":1}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals/77/editions?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{
+		"artistAddress": "0xf8d6e0586b0a20c7",
+		"originalId":    "77",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.CreateEdition().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestCreateEditionHandlerRejectsInvalidOriginalID(t *testing.T) {
+	txSvc := &setupTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	body := `{"reprint_limit":500,"prices":{"primary":12},"profit_split":{"artist":0.85},"rarity_curve":[1,2,3],"multiplier_weights":{"rare":0.25},"rarity_profile":1}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals/not-a-number/editions?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{
+		"artistAddress": "0xf8d6e0586b0a20c7",
+		"originalId":    "not-a-number",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.CreateEdition().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestCreateEditionHandlerRequiresFields(t *testing.T) {
+	txSvc := &setupTxService{}
+	handler := NewHandler(NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	body := `{"reprint_limit":500,"profit_split":{"artist":0.85},"rarity_curve":[1,2,3],"multiplier_weights":{"rare":0.25},"rarity_profile":1}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals/77/editions?sync=true", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{
+		"artistAddress": "0xf8d6e0586b0a20c7",
+		"originalId":    "77",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.CreateEdition().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
 type captureTransactionService struct {
 	args []transactions.Argument
 }

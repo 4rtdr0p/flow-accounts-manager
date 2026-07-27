@@ -98,6 +98,77 @@ func (h *Handler) SetupFunc(rw http.ResponseWriter, r *http.Request) {
 	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
 }
 
+func (h *Handler) SetupArtistDirect() http.Handler {
+	return http.HandlerFunc(h.SetupArtistDirectFunc)
+}
+
+func (h *Handler) SetupArtistDirectFunc(rw http.ResponseWriter, r *http.Request) {
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, transaction, err := h.svc.SetupArtistDirect(r.Context(), sync, mux.Vars(r)["artistAddress"])
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var res interface{}
+	if sync {
+		res = transaction.ToJSONResponse()
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
+}
+
+func (h *Handler) CreateOriginal() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.CreateOriginalFunc))
+}
+
+func (h *Handler) CreateOriginalFunc(rw http.ResponseWriter, r *http.Request) {
+	var req CreateOriginalRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.CreateOriginal(r.Context(), sync, mux.Vars(r)["artistAddress"], req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
+func (h *Handler) CreateEdition() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.CreateEditionFunc))
+}
+
+func (h *Handler) CreateEditionFunc(rw http.ResponseWriter, r *http.Request) {
+	var req CreateEditionRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	originalID, err := strconv.ParseUint(mux.Vars(r)["originalId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid originalId: %w", err),
+		})
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.CreateEdition(r.Context(), sync, mux.Vars(r)["artistAddress"], originalID, req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
 func (h *Handler) CreateEscrow() http.Handler {
 	return handlers.UseJson(http.HandlerFunc(h.CreateEscrowFunc))
 }

@@ -674,6 +674,111 @@ paths:
       responses:
         '201':
           description: Created
+  '/accounts/{artistAddress}/artdrop/artist-direct/setup':
+    post:
+      summary: Onboard an artist and claim ArtistDirect
+      operationId: setupArtDropArtistDirect
+      x-required-scopes:
+        - account.artdrop.artist.onboard
+      tags:
+        - Accounts
+      parameters:
+        - name: artistAddress
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sync'
+        - $ref: '#/components/parameters/idempotencyKey'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — invalid artist address
+        '403':
+          description: Forbidden — wrong scope or signer not authorized
+  '/accounts/{artistAddress}/artdrop/originals':
+    post:
+      summary: Create an ArtDrop Original
+      operationId: createArtDropOriginal
+      x-required-scopes:
+        - account.artdrop.original.create
+      tags:
+        - Account Transactions
+      parameters:
+        - name: artistAddress
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sync'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/artdropCreateOriginalRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — missing or invalid body fields
+        '403':
+          description: Forbidden — wrong scope or signer not authorized
+  '/accounts/{artistAddress}/artdrop/originals/{originalId}/editions':
+    post:
+      summary: Create an ArtDrop Edition
+      operationId: createArtDropEdition
+      x-required-scopes:
+        - account.artdrop.edition.create
+      tags:
+        - Account Transactions
+      parameters:
+        - name: artistAddress
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: originalId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/sync'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/artdropCreateEditionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — missing or invalid body fields
+        '403':
+          description: Forbidden — wrong scope or signer not authorized
   '/accounts/{address}/artdrop/escrows':
     post:
       summary: Create an ArtDrop escrow
@@ -1430,6 +1535,53 @@ components:
           type: string
           description: Recipient Flow account address.
           example: '0xf8d6e0586b0a20c7'
+    artdropCreateOriginalRequest:
+      type: object
+      required:
+        - name
+        - description
+        - prices
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        prices:
+          type: object
+          additionalProperties:
+            type: number
+    artdropCreateEditionRequest:
+      type: object
+      required:
+        - reprint_limit
+        - prices
+        - profit_split
+        - rarity_curve
+        - multiplier_weights
+        - rarity_profile
+      properties:
+        reprint_limit:
+          type: integer
+          format: int64
+        prices:
+          type: object
+          additionalProperties:
+            type: number
+        profit_split:
+          type: object
+          additionalProperties:
+            type: number
+        rarity_curve:
+          type: array
+          items:
+            type: integer
+            format: int64
+        multiplier_weights:
+          type: object
+          additionalProperties:
+            type: number
+        rarity_profile:
+          type: integer
     jobState:
       type: string
       example: ACCEPTED
