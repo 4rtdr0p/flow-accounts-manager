@@ -10,6 +10,7 @@ import (
 	"time"
 
 	flowgorm "github.com/flow-hydraulics/flow-wallet-api/datastore/gorm"
+	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	access "github.com/onflow/flow-go-sdk/access/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -134,6 +135,14 @@ func runServer(cfg *configs.Config) {
 	}
 	defer flowgorm.Close(db)
 
+	// Mongo (read-only pricing data from Payload). Optional: when MONGO_URI is
+	// empty, mongoClient is nil and pricing features are disabled.
+	mongoClient, err := datastoremongo.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mongoClient.Close()
+
 	systemService := system.NewService(
 		system.NewGormStore(db),
 		system.WithPauseDuration(cfg.PauseDuration),
@@ -214,6 +223,7 @@ func runServer(cfg *configs.Config) {
 		Transactions: transactionService,
 		Config:       cfg,
 		WorkerPool:   wp,
+		Mongo:        mongoClient,
 	}
 	registeredPlugins := registerPlugins(cfg, pluginDeps)
 
