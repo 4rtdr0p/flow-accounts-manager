@@ -7,7 +7,6 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 )
 
@@ -102,9 +101,8 @@ func TestPricingStoreGetActive(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
 	mt.Run("returns active config", func(mt *mtest.T) {
-		id := primitive.NewObjectID()
 		doc := bson.D{
-			{Key: "_id", Value: id},
+			{Key: "_id", Value: "cfg-1"},
 			{Key: "domain", Value: "studio-printing"},
 			{Key: "status", Value: "active"},
 			{Key: "effectiveFrom", Value: time.Now().Add(-time.Hour)},
@@ -125,9 +123,6 @@ func TestPricingStoreGetActive(t *testing.T) {
 		}
 		if got == nil {
 			mt.Fatal("expected a config, got nil")
-		}
-		if got.ID != id {
-			mt.Fatalf("expected ID %s, got %s", id.Hex(), got.ID.Hex())
 		}
 		if got.Domain != "studio-printing" {
 			mt.Fatalf("expected domain studio-printing, got %s", got.Domain)

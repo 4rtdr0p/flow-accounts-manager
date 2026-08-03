@@ -7,16 +7,14 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // PricingConfiguration is the minimal read-only shape of a document in the
 // pricing-configurations collection. Only the fields needed for the test query
 // and for the downstream pricing issues are mapped; unknown fields are ignored.
 type PricingConfiguration struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty"`
-	Domain        string             `bson:"domain"`
-	Status        string             `bson:"status"`
+	Domain        string    `bson:"domain"`
+	Status        string    `bson:"status"`
 	EffectiveFrom time.Time `bson:"effectiveFrom"`
 	UpdatedAt     time.Time `bson:"updatedAt"`
 }

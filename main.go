@@ -146,7 +146,7 @@ func runServer(cfg *configs.Config) {
 		log.Fatal(err)
 	}
 	defer mongoClient.Close()
-	if err := probeMongoPricingStore(context.Background(), datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
+	if err := probeMongoPricingStore(context.Background(), cfg.MongoConnectTimeout, datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -408,9 +408,15 @@ func runServer(cfg *configs.Config) {
 	}
 }
 
-func probeMongoPricingStore(ctx context.Context, store mongoPricingProbe) error {
+func probeMongoPricingStore(ctx context.Context, timeout time.Duration, store mongoPricingProbe) error {
 	if store == nil {
 		return nil
+	}
+
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	count, err := store.TestQuery(ctx)
