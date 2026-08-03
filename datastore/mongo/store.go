@@ -7,17 +7,18 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // PricingConfiguration is the minimal read-only shape of a document in the
 // pricing-configurations collection. Only the fields needed for the test query
 // and for the downstream pricing issues are mapped; unknown fields are ignored.
 type PricingConfiguration struct {
-	ID           string    `bson:"_id"`
-	Domain       string    `bson:"domain"`
-	Status       string    `bson:"status"`
+	ID            primitive.ObjectID `bson:"_id,omitempty"`
+	Domain        string             `bson:"domain"`
+	Status        string             `bson:"status"`
 	EffectiveFrom time.Time `bson:"effectiveFrom"`
-	UpdatedAt    time.Time `bson:"updatedAt"`
+	UpdatedAt     time.Time `bson:"updatedAt"`
 }
 
 // PricingStore provides read-only access to pricing data in Mongo.
@@ -67,8 +68,8 @@ func (s *PricingStore) GetActive(ctx context.Context) (*PricingConfiguration, er
 	}
 
 	filter := bson.M{
-		"domain":       "studio-printing",
-		"status":       "active",
+		"domain":        "studio-printing",
+		"status":        "active",
 		"effectiveFrom": bson.M{"$lte": time.Now()},
 	}
 

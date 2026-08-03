@@ -1922,3 +1922,33 @@ func TestOpsServices(t *testing.T) {
 		}
 	})
 }
+
+type stubMongoPricingProbe struct {
+	count int64
+	err   error
+}
+
+func (s stubMongoPricingProbe) TestQuery(context.Context) (int64, error) {
+	return s.count, s.err
+}
+
+func TestProbeMongoPricingStore(t *testing.T) {
+	t.Run("skips nil store", func(t *testing.T) {
+		if err := probeMongoPricingStore(context.Background(), nil); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("returns nil on success", func(t *testing.T) {
+		if err := probeMongoPricingStore(context.Background(), stubMongoPricingProbe{count: 3}); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("wraps probe failures", func(t *testing.T) {
+		err := probeMongoPricingStore(context.Background(), stubMongoPricingProbe{err: fmt.Errorf("boom")})
+		if err == nil || !strings.Contains(err.Error(), "mongo pricing probe failed") {
+			t.Fatalf("expected wrapped probe error, got %v", err)
+		}
+	})
+}

@@ -37,6 +37,10 @@ import (
 	"go.uber.org/ratelimit"
 )
 
+type mongoPricingProbe interface {
+	TestQuery(ctx context.Context) (int64, error)
+}
+
 const version = "0.9.0"
 
 var (
@@ -142,6 +146,9 @@ func runServer(cfg *configs.Config) {
 		log.Fatal(err)
 	}
 	defer mongoClient.Close()
+	if err := probeMongoPricingStore(context.Background(), datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
+		log.Fatal(err)
+	}
 
 	systemService := system.NewService(
 		system.NewGormStore(db),
@@ -399,6 +406,20 @@ func runServer(cfg *configs.Config) {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Warnf("Error in server shutdown: %s", err)
 	}
+}
+
+func probeMongoPricingStore(ctx context.Context, store mongoPricingProbe) error {
+	if store == nil {
+		return nil
+	}
+
+	count, err := store.TestQuery(ctx)
+	if err != nil {
+		return fmt.Errorf("mongo pricing probe failed: %w", err)
+	}
+
+	log.WithField("count", count).Info("Mongo pricing probe succeeded")
+	return nil
 }
 
 type routeOptions struct {
