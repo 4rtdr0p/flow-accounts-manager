@@ -146,8 +146,15 @@ func runServer(cfg *configs.Config) {
 		log.Fatal(err)
 	}
 	defer mongoClient.Close()
-	if err := probeMongoPricingStore(context.Background(), cfg.MongoConnectTimeout, datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
-		log.Fatal(err)
+	if mongoClient != nil {
+		// Passing a nil *PricingStore straight into the mongoPricingProbe
+		// interface parameter would make probeMongoPricingStore's `store ==
+		// nil` check pass a typed-nil interface value, which is not nil in
+		// Go - the probe would then run against a nil receiver and fail
+		// startup even when Mongo is deliberately left unconfigured.
+		if err := probeMongoPricingStore(context.Background(), cfg.MongoConnectTimeout, datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	systemService := system.NewService(

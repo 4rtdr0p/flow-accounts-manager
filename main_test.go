@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
+	"github.com/flow-hydraulics/flow-wallet-api/configs"
+	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/example"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
@@ -1968,6 +1970,25 @@ func TestProbeMongoPricingStore(t *testing.T) {
 		}
 		if !seenDeadline {
 			t.Fatal("expected probe context to have deadline")
+		}
+	})
+
+	// Regression: NewPricingStore(nil, cfg) returns a nil *PricingStore, but
+	// passing that nil pointer straight into the mongoPricingProbe interface
+	// parameter does NOT make `store == nil` true inside the function - a
+	// nil concrete pointer boxed in an interface is a non-nil interface.
+	// This used to crash server startup with MONGO_URI unset (the supposedly
+	// safe default) because runServer called this exact chain unconditionally.
+	// It's fixed by guarding the whole call with `if mongoClient != nil`
+	// in main.go instead of relying on this function's nil check for that.
+	t.Run("typed-nil PricingStore boxed in the interface is not skipped", func(t *testing.T) {
+		var nilStore *datastoremongo.PricingStore = datastoremongo.NewPricingStore(nil, &configs.Config{})
+		err := probeMongoPricingStore(context.Background(), 0, nilStore)
+		if err == nil {
+			t.Fatal("expected an error: a typed-nil store boxed in the interface must not be treated as nil")
+		}
+		if !strings.Contains(err.Error(), "mongo client is not configured") {
+			t.Fatalf("expected the underlying nil-receiver error, got %v", err)
 		}
 	})
 }
