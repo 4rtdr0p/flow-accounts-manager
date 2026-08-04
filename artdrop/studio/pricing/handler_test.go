@@ -54,7 +54,11 @@ func TestGetActiveHandlerInternalError(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "read active studio pricing configuration") {
-		t.Fatalf("expected wrapped error in body, got %s", rr.Body.String())
+	// The internal driver error must be logged, never leaked to the client.
+	if strings.Contains(rr.Body.String(), "mongo down") {
+		t.Fatalf("expected generic 500 body without internal error, got %s", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "internal server error") {
+		t.Fatalf("expected generic message in body, got %s", rr.Body.String())
 	}
 }

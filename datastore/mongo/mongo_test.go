@@ -154,3 +154,47 @@ func TestPricingStoreGetActive(t *testing.T) {
 		}
 	})
 }
+
+func TestPricingStoreGetActiveUpdatedAt(t *testing.T) {
+	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+
+	mt.Run("returns updatedAt via projection", func(mt *mtest.T) {
+		// BSON stores dates as millisecond precision, so the expected value is
+		// truncated to survive the mock round-trip.
+		updated := time.Now().UTC().Truncate(time.Millisecond)
+		doc := bson.D{
+			{Key: "updatedAt", Value: updated},
+		}
+		mt.AddMockResponses(mtest.CreateCursorResponse(1, "payload.pricing-configurations", mtest.FirstBatch, doc))
+
+		client := &Client{
+			client: mt.Client,
+			db:     mt.Client.Database("payload"),
+		}
+		cfg := newTestConfig("mongodb://mock")
+		s := NewPricingStore(client, cfg)
+
+		got, err := s.GetActiveUpdatedAt(context.Background())
+		if err != nil {
+			mt.Fatalf("unexpected error: %v", err)
+		}
+		if !got.Equal(updated) {
+			mt.Fatalf("expected updatedAt %v, got %v", updated, got)
+		}
+	})
+
+	mt.Run("returns ErrNoActivePricing when no active config", func(mt *mtest.T) {
+		mt.AddMockResponses(mtest.CreateCursorResponse(0, "payload.pricing-configurations", mtest.FirstBatch))
+
+		client := &Client{
+			client: mt.Client,
+			db:     mt.Client.Database("payload"),
+		}
+		cfg := newTestConfig("mongodb://mock")
+		s := NewPricingStore(client, cfg)
+
+		if _, err := s.GetActiveUpdatedAt(context.Background()); !errors.Is(err, ErrNoActivePricing) {
+			mt.Fatalf("expected ErrNoActivePricing, got %v", err)
+		}
+	})
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // ErrNoActivePricing is returned when no row in pricing-configurations matches
@@ -111,4 +112,34 @@ func (s *PricingStore) GetActive(ctx context.Context) (*PricingConfiguration, er
 	cfg.Data = full
 
 	return &cfg, nil
+}
+
+// GetActiveUpdatedAt returns the updatedAt of the active Studio printing
+// configuration using a projection, without loading the full document. It is
+// the lightweight read the cache invalidation uses to detect an updatedAt
+// change before deciding to re-fetch the full configuration.
+func (s *PricingStore) GetActiveUpdatedAt(ctx context.Context) (time.Time, error) {
+	if s == nil || s.client == nil {
+		return time.Time{}, fmt.Errorf("mongo client is not configured")
+	}
+
+	filter := bson.M{
+		"domain":        "studio-printing",
+		"status":        "active",
+		"effectiveFrom": bson.M{"$lte": time.Now()},
+	}
+
+	var result struct {
+		UpdatedAt time.Time `bson:"updatedAt"`
+	}
+	opts := options.FindOne().SetProjection(bson.M{"updatedAt": 1})
+	err := s.client.Collection(s.coll).FindOne(ctx, filter, opts).Decode(&result)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return time.Time{}, ErrNoActivePricing
+		}
+		return time.Time{}, fmt.Errorf("find active pricing-configuration updatedAt: %w", err)
+	}
+
+	return result.UpdatedAt, nil
 }

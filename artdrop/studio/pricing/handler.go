@@ -1,12 +1,14 @@
 package pricing
 
 import (
+	stdErrs "errors"
 	"fmt"
 	"net/http"
 
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	log "github.com/sirupsen/logrus"
 )
 
 // Handler exposes HTTP endpoints for studio pricing.
@@ -28,21 +30,21 @@ func (h *Handler) GetActiveFunc(rw http.ResponseWriter, r *http.Request) {
 	cfg, err := h.svc.Get(r.Context())
 	if err != nil {
 		switch {
-		case err == ErrPricingDisabled:
+		case stdErrs.Is(err, ErrPricingDisabled):
 			handlers.HandleError(rw, r, &errors.RequestError{
 				StatusCode: http.StatusServiceUnavailable,
-				Err:        fmt.Errorf("studio pricing is disabled: %w", err),
+				Err:        fmt.Errorf("studio pricing is disabled"),
 			})
-		case err == datastoremongo.ErrNoActivePricing:
+		case stdErrs.Is(err, datastoremongo.ErrNoActivePricing):
 			handlers.HandleError(rw, r, &errors.RequestError{
 				StatusCode: http.StatusNotFound,
 				Err:        fmt.Errorf("active studio pricing configuration not found"),
 			})
 		default:
-			handlers.HandleError(rw, r, &errors.RequestError{
-				StatusCode: http.StatusInternalServerError,
-				Err:        fmt.Errorf("read active studio pricing configuration: %w", err),
-			})
+			// Log the underlying failure but never leak driver internals to the
+			// client.
+			log.WithFields(log.Fields{"error": err}).Warn("failed to read active studio pricing configuration")
+			http.Error(rw, "internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
