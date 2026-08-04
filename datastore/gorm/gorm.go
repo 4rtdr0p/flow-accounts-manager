@@ -43,6 +43,15 @@ func New(cfg *configs.Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	if cfg.DatabaseType == dbTypeSqlite {
+		// SQLite doesn't handle multiple pooled connections well; pin to one.
+		sqlDB, err := db.DB()
+		if err != nil {
+			return nil, err
+		}
+		sqlDB.SetMaxOpenConns(1)
+	}
+
 	m := gormigrate.New(db, gormigrate.DefaultOptions, migrations.List())
 	if cfg.DatabaseVersion == "" {
 		err = m.Migrate()
