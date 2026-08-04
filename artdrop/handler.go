@@ -6,13 +6,39 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
 )
+
+// requireArtistSubject rejects the request if the caller's token identifies a
+// specific subject (artist) that doesn't match the artistAddress in the path.
+// These endpoints let an artist create their own Original/Edition; the
+// on-chain transaction already ties identity to the signer and can't be
+// forged, but without this check any caller holding the right scope could
+// ask the wallet-api to sign on behalf of a *different* artist's custodial
+// account. Tokens without a subject claim (e.g. service/admin tokens) are
+// left untouched by this check, since this repo has no existing convention
+// for what `sub` carries — confirm with whoever issues artist tokens that
+// `sub` is set to the artist's own address for this to be effective.
+func requireArtistSubject(r *http.Request, artistAddress string) error {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.Subject == "" {
+		return nil
+	}
+	if !strings.EqualFold(claims.Subject, artistAddress) {
+		return &errors.RequestError{
+			StatusCode: http.StatusForbidden,
+			Err:        fmt.Errorf("token subject does not match artistAddress"),
+		}
+	}
+	return nil
+}
 
 // Handler exposes HTTP endpoints for the artdrop plugin.
 type Handler struct {
@@ -96,6 +122,95 @@ func (h *Handler) SetupFunc(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
+}
+
+func (h *Handler) SetupArtistDirect() http.Handler {
+	return http.HandlerFunc(h.SetupArtistDirectFunc)
+}
+
+func (h *Handler) SetupArtistDirectFunc(rw http.ResponseWriter, r *http.Request) {
+	artistAddress := mux.Vars(r)["artistAddress"]
+	if err := requireArtistSubject(r, artistAddress); err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, transaction, err := h.svc.SetupArtistDirect(r.Context(), sync, artistAddress)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var res interface{}
+	if sync {
+		res = transaction.ToJSONResponse()
+	} else {
+		res = job.ToJSONResponse()
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, res)
+}
+
+func (h *Handler) CreateOriginal() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.CreateOriginalFunc))
+}
+
+func (h *Handler) CreateOriginalFunc(rw http.ResponseWriter, r *http.Request) {
+	artistAddress := mux.Vars(r)["artistAddress"]
+	if err := requireArtistSubject(r, artistAddress); err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var req CreateOriginalRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.CreateOriginal(r.Context(), sync, artistAddress, req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
+func (h *Handler) CreateEdition() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.CreateEditionFunc))
+}
+
+func (h *Handler) CreateEditionFunc(rw http.ResponseWriter, r *http.Request) {
+	artistAddress := mux.Vars(r)["artistAddress"]
+	if err := requireArtistSubject(r, artistAddress); err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	var req CreateEditionRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	originalID, err := strconv.ParseUint(mux.Vars(r)["originalId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid originalId: %w", err),
+		})
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.CreateEdition(r.Context(), sync, artistAddress, originalID, req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
 func (h *Handler) CreateEscrow() http.Handler {

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,18 @@ var getMarketModeNameCDC string
 
 //go:embed cdc/is_artist.cdc
 var isArtistCDC string
+
+//go:embed cdc/onboard_artist.cdc
+var onboardArtistCDC string
+
+//go:embed cdc/setup_artist_direct_claim.cdc
+var setupArtistDirectClaimCDC string
+
+//go:embed cdc/create_original.cdc
+var createOriginalCDC string
+
+//go:embed cdc/create_edition.cdc
+var createEditionCDC string
 
 // Service implements the artdrop plugin business logic.
 type Service struct {
@@ -126,6 +139,131 @@ func (s *Service) Setup(ctx context.Context, sync bool, address string) (*jobs.J
 	}
 
 	return job, tx, nil
+}
+
+// SetupArtistDirect onboards an artist and claims ArtistDirect in the artist account.
+func (s *Service) SetupArtistDirect(ctx context.Context, sync bool, artistAddress string) (*jobs.Job, *transactions.Transaction, error) {
+	artistAddress, err := flow_helpers.ValidateAddress(artistAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	adminAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("validate admin address: %w", err)
+	}
+
+	if _, _, err := s.deps.Transactions.Create(
+		ctx,
+		true,
+		adminAddress,
+		onboardArtistCDC,
+		[]transactions.Argument{cadence.NewAddress(flow.HexToAddress(artistAddress))},
+		TxTypeSetupArtistDirect,
+	); err != nil {
+		return nil, nil, fmt.Errorf("onboard artist: %w", err)
+	}
+
+	job, tx, err := s.deps.Transactions.Create(
+		ctx,
+		sync,
+		artistAddress,
+		setupArtistDirectClaimCDC,
+		[]transactions.Argument{
+			cadence.NewAddress(flow.HexToAddress(adminAddress)),
+			cadence.String("artist-direct-" + artistAddress),
+		},
+		TxTypeSetupArtistDirect,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("claim artist direct capability: %w", err)
+	}
+
+	return job, tx, nil
+}
+
+// CreateOriginal creates an Original signed by the artist account.
+func (s *Service) CreateOriginal(ctx context.Context, sync bool, artistAddress string, req CreateOriginalRequest) (*jobs.Job, *transactions.Transaction, error) {
+	artistAddress, err := flow_helpers.ValidateAddress(artistAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req.Name == "" {
+		return nil, nil, fmt.Errorf("field 'name' is required")
+	}
+	if req.Description == "" {
+		return nil, nil, fmt.Errorf("field 'description' is required")
+	}
+	if len(req.Prices) == 0 {
+		return nil, nil, fmt.Errorf("field 'prices' is required")
+	}
+
+	prices, err := cadenceUFix64Dictionary(req.Prices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'prices': %w", err)
+	}
+
+	return s.deps.Transactions.Create(
+		ctx,
+		sync,
+		artistAddress,
+		createOriginalCDC,
+		[]transactions.Argument{
+			cadence.String(req.Name),
+			cadence.String(req.Description),
+			prices,
+		},
+		TxTypeCreateOriginal,
+	)
+}
+
+// CreateEdition creates an Edition signed by the artist account.
+func (s *Service) CreateEdition(ctx context.Context, sync bool, artistAddress string, originalID uint64, req CreateEditionRequest) (*jobs.Job, *transactions.Transaction, error) {
+	artistAddress, err := flow_helpers.ValidateAddress(artistAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(req.Prices) == 0 {
+		return nil, nil, fmt.Errorf("field 'prices' is required")
+	}
+	if len(req.ProfitSplit) == 0 {
+		return nil, nil, fmt.Errorf("field 'profit_split' is required")
+	}
+	if len(req.RarityCurve) == 0 {
+		return nil, nil, fmt.Errorf("field 'rarity_curve' is required")
+	}
+	if len(req.MultiplierWeights) == 0 {
+		return nil, nil, fmt.Errorf("field 'multiplier_weights' is required")
+	}
+
+	prices, err := cadenceUFix64Dictionary(req.Prices)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'prices': %w", err)
+	}
+	profitSplit, err := cadenceUFix64Dictionary(req.ProfitSplit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'profit_split': %w", err)
+	}
+	multiplierWeights, err := cadenceUFix64Dictionary(req.MultiplierWeights)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'multiplier_weights': %w", err)
+	}
+
+	return s.deps.Transactions.Create(
+		ctx,
+		sync,
+		artistAddress,
+		createEditionCDC,
+		[]transactions.Argument{
+			cadence.NewUInt64(originalID),
+			cadence.NewUInt64(req.ReprintLimit),
+			prices,
+			profitSplit,
+			cadenceUInt64Array(req.RarityCurve),
+			multiplierWeights,
+			cadence.NewUInt8(req.RarityProfile),
+		},
+		TxTypeCreateEdition,
+	)
 }
 
 // CreateEscrow starts a new escrow between a buyer and a seller.
@@ -753,4 +891,33 @@ func cadenceString(value cadence.Value) string {
 		return string(str)
 	}
 	return value.String()
+}
+
+func cadenceUFix64Dictionary(values map[string]float64) (cadence.Dictionary, error) {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	pairs := make([]cadence.KeyValuePair, 0, len(keys))
+	for _, key := range keys {
+		value, err := newUFix64(values[key])
+		if err != nil {
+			return cadence.Dictionary{}, fmt.Errorf("%s: %w", key, err)
+		}
+		pairs = append(pairs, cadence.KeyValuePair{
+			Key:   cadence.String(key),
+			Value: value,
+		})
+	}
+	return cadence.NewDictionary(pairs), nil
+}
+
+func cadenceUInt64Array(values []uint64) cadence.Array {
+	cadenceValues := make([]cadence.Value, 0, len(values))
+	for _, value := range values {
+		cadenceValues = append(cadenceValues, cadence.NewUInt64(value))
+	}
+	return cadence.NewArray(cadenceValues)
 }

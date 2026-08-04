@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -28,6 +29,22 @@ type AuthRule struct {
 type AuthClaims struct {
 	Scope string `json:"scope"`
 	jwt.RegisteredClaims
+}
+
+type claimsContextKey struct{}
+
+// ClaimsFromContext returns the validated claims of the request's bearer
+// token, if auth ran and succeeded for this request.
+func ClaimsFromContext(ctx context.Context) (*AuthClaims, bool) {
+	claims, ok := ctx.Value(claimsContextKey{}).(*AuthClaims)
+	return claims, ok
+}
+
+// ContextWithClaims attaches claims to ctx the same way AuthHandler does.
+// Exported for tests of downstream handlers that read claims via
+// ClaimsFromContext.
+func ContextWithClaims(ctx context.Context, claims *AuthClaims) context.Context {
+	return context.WithValue(ctx, claimsContextKey{}, claims)
 }
 
 var pathParamPattern = regexp.MustCompile(`\\\{[^}]+\\\}`)
@@ -119,7 +136,8 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 			return
 		}
 
-		h.ServeHTTP(rw, r)
+		ctx := context.WithValue(r.Context(), claimsContextKey{}, &claims)
+		h.ServeHTTP(rw, r.WithContext(ctx))
 	})
 }
 

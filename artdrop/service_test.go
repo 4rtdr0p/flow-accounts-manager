@@ -100,6 +100,96 @@ func TestServiceSetupStopsWhenCollectionSetupFails(t *testing.T) {
 	}
 }
 
+func TestServiceSetupArtistDirectRunsOnboardThenClaim(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	})
+
+	_, tx, err := svc.SetupArtistDirect(context.Background(), true, "0x0ae53cb6e3f42a79")
+	if err != nil {
+		t.Fatalf("SetupArtistDirect returned error: %v", err)
+	}
+	if tx == nil {
+		t.Fatal("expected returned transaction")
+	}
+	if len(txSvc.calls) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(txSvc.calls))
+	}
+	if txSvc.calls[0].proposerAddress != "0xf8d6e0586b0a20c7" {
+		t.Fatalf("expected admin proposer on onboard call, got %q", txSvc.calls[0].proposerAddress)
+	}
+	if txSvc.calls[1].proposerAddress != "0x0ae53cb6e3f42a79" {
+		t.Fatalf("expected artist proposer on claim call, got %q", txSvc.calls[1].proposerAddress)
+	}
+	if !txSvc.calls[0].sync || !txSvc.calls[1].sync {
+		t.Fatal("expected sync setup to execute both transactions synchronously")
+	}
+	if txSvc.calls[0].txType != TxTypeSetupArtistDirect || txSvc.calls[1].txType != TxTypeSetupArtistDirect {
+		t.Fatalf("expected tx type %q on both calls", TxTypeSetupArtistDirect)
+	}
+	if got := txSvc.calls[0].args[0]; got != cadence.NewAddress(flow.HexToAddress("0x0ae53cb6e3f42a79")) {
+		t.Fatalf("expected onboard arg artist address, got %#v", got)
+	}
+	if got := txSvc.calls[1].args[0]; got != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+		t.Fatalf("expected claim arg provider address, got %#v", got)
+	}
+	if got := txSvc.calls[1].args[1]; got != cadence.String("artist-direct-0x0ae53cb6e3f42a79") {
+		t.Fatalf("expected inbox name arg, got %#v", got)
+	}
+}
+
+func TestServiceSetupArtistDirectAsyncKeepsOnboardSync(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	})
+
+	job, tx, err := svc.SetupArtistDirect(context.Background(), false, "0x0ae53cb6e3f42a79")
+	if err != nil {
+		t.Fatalf("SetupArtistDirect returned error: %v", err)
+	}
+	if job == nil || tx == nil {
+		t.Fatal("expected async setup to return claim job and transaction")
+	}
+	if len(txSvc.calls) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(txSvc.calls))
+	}
+	if !txSvc.calls[0].sync {
+		t.Fatal("expected onboard transaction to run synchronously")
+	}
+	if txSvc.calls[1].sync {
+		t.Fatal("expected claim transaction to honor async request")
+	}
+}
+
+func TestServiceSetupArtistDirectStopsWhenOnboardFails(t *testing.T) {
+	txSvc := &setupTxService{err: errors.New("onboard failed")}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	})
+
+	_, _, err := svc.SetupArtistDirect(context.Background(), true, "0x0ae53cb6e3f42a79")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected only onboard transaction, got %d calls", len(txSvc.calls))
+	}
+}
+
 func TestSetupFuncReturnsCreatedTransaction(t *testing.T) {
 	txSvc := &setupTxService{}
 	h := NewHandler(NewService(plugins.PluginDeps{
@@ -118,6 +208,87 @@ func TestSetupFuncReturnsCreatedTransaction(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), `"transactionType":"ArtdropSetup"`) {
 		t.Fatalf("expected setup transaction response, got %s", rr.Body.String())
+	}
+}
+
+func TestServiceCreateOriginalUsesArtistProposerAndCadenceArgs(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, _, err := svc.CreateOriginal(context.Background(), true, "0xf8d6e0586b0a20c7", CreateOriginalRequest{
+		Name:        "Original 1",
+		Description: "Artist drop",
+		Prices:      map[string]float64{"primary": 10.5},
+	})
+	if err != nil {
+		t.Fatalf("CreateOriginal returned error: %v", err)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+	}
+	call := txSvc.calls[0]
+	if call.proposerAddress != "0xf8d6e0586b0a20c7" {
+		t.Fatalf("expected artist proposer, got %q", call.proposerAddress)
+	}
+	if call.txType != TxTypeCreateOriginal {
+		t.Fatalf("expected type %q, got %q", TxTypeCreateOriginal, call.txType)
+	}
+	if len(call.args) != 3 {
+		t.Fatalf("expected 3 args, got %d", len(call.args))
+	}
+	if _, ok := call.args[2].(cadence.Dictionary); !ok {
+		t.Fatalf("expected prices cadence dictionary, got %T", call.args[2])
+	}
+}
+
+func TestServiceCreateEditionUsesArtistProposerAndCadenceArgs(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, _, err := svc.CreateEdition(context.Background(), true, "0xf8d6e0586b0a20c7", 77, CreateEditionRequest{
+		ReprintLimit:      500,
+		Prices:            map[string]float64{"primary": 12},
+		ProfitSplit:       map[string]float64{"artist": 0.85},
+		RarityCurve:       []uint64{1, 2, 3},
+		MultiplierWeights: map[string]float64{"rare": 0.25},
+		RarityProfile:     1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEdition returned error: %v", err)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+	}
+	call := txSvc.calls[0]
+	if call.proposerAddress != "0xf8d6e0586b0a20c7" {
+		t.Fatalf("expected artist proposer, got %q", call.proposerAddress)
+	}
+	if call.txType != TxTypeCreateEdition {
+		t.Fatalf("expected type %q, got %q", TxTypeCreateEdition, call.txType)
+	}
+	if len(call.args) != 7 {
+		t.Fatalf("expected 7 args, got %d", len(call.args))
+	}
+	if got := call.args[0]; got != cadence.NewUInt64(77) {
+		t.Fatalf("expected original id arg 77, got %#v", got)
+	}
+	if _, ok := call.args[2].(cadence.Dictionary); !ok {
+		t.Fatalf("expected prices cadence dictionary, got %T", call.args[2])
+	}
+	if _, ok := call.args[3].(cadence.Dictionary); !ok {
+		t.Fatalf("expected profit split cadence dictionary, got %T", call.args[3])
+	}
+	if _, ok := call.args[4].(cadence.Array); !ok {
+		t.Fatalf("expected rarity curve cadence array, got %T", call.args[4])
+	}
+	if _, ok := call.args[5].(cadence.Dictionary); !ok {
+		t.Fatalf("expected multiplier weights cadence dictionary, got %T", call.args[5])
 	}
 }
 
