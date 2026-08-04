@@ -1922,3 +1922,52 @@ func TestOpsServices(t *testing.T) {
 		}
 	})
 }
+
+type stubMongoPricingProbe struct {
+	count int64
+	err   error
+	seenDeadline *bool
+}
+
+func (s stubMongoPricingProbe) TestQuery(ctx context.Context) (int64, error) {
+	if s.seenDeadline != nil {
+		_, ok := ctx.Deadline()
+		*s.seenDeadline = ok
+	}
+	return s.count, s.err
+}
+
+func TestProbeMongoPricingStore(t *testing.T) {
+	t.Run("skips nil store", func(t *testing.T) {
+		if err := probeMongoPricingStore(context.Background(), 0, nil); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("returns nil on success", func(t *testing.T) {
+		if err := probeMongoPricingStore(context.Background(), 0, stubMongoPricingProbe{count: 3}); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("wraps probe failures", func(t *testing.T) {
+		err := probeMongoPricingStore(context.Background(), 0, stubMongoPricingProbe{err: fmt.Errorf("boom")})
+		if err == nil || !strings.Contains(err.Error(), "mongo pricing probe failed") {
+			t.Fatalf("expected wrapped probe error, got %v", err)
+		}
+	})
+
+	t.Run("applies timeout to probe context", func(t *testing.T) {
+		seenDeadline := false
+		err := probeMongoPricingStore(context.Background(), time.Second, stubMongoPricingProbe{
+			count:        1,
+			seenDeadline: &seenDeadline,
+		})
+		if err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+		if !seenDeadline {
+			t.Fatal("expected probe context to have deadline")
+		}
+	})
+}

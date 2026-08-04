@@ -180,6 +180,19 @@ type Config struct {
 	OpsWorkerCount uint `env:"OPS_WORKER_COUNT" envDefault:"200"`
 	// Capacity of buffered jobs queues for system jobs.
 	OpsWorkerQueueCapacity uint `env:"OPS_WORKER_QUEUE_CAPACITY" envDefault:"300000"`
+
+	// -- Mongo (read-only pricing data from Payload) --
+	// MongoURI is the connection string for the Mongo database that holds
+	// Payload-Galaxy pricing data (pricing-configurations and studio-quotes).
+	// When empty, the Mongo client is not initialized.
+	MongoURI string `env:"MONGO_URI" envDefault:""`
+	// MongoDatabase is the name of the Mongo database to read pricing data from.
+	MongoDatabase string `env:"MONGO_DATABASE" envDefault:"payload"`
+	// MongoPricingConfigurationsCollection is the collection holding active
+	// pricing configurations (domain studio-printing).
+	MongoPricingConfigurationsCollection string `env:"MONGO_PRICING_CONFIGURATIONS_COLLECTION" envDefault:"pricing-configurations"`
+	// MongoConnectTimeout is the timeout for establishing the Mongo connection.
+	MongoConnectTimeout time.Duration `env:"MONGO_CONNECT_TIMEOUT" envDefault:"10s"`
 }
 
 // Parse parses environment variables and flags to a valid Config.

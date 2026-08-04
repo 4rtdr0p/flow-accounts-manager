@@ -10,6 +10,7 @@ import (
 	"time"
 
 	flowgorm "github.com/flow-hydraulics/flow-wallet-api/datastore/gorm"
+	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	access "github.com/onflow/flow-go-sdk/access/grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,6 +36,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
 )
+
+type mongoPricingProbe interface {
+	TestQuery(ctx context.Context) (int64, error)
+}
 
 const version = "0.9.0"
 
@@ -134,6 +139,17 @@ func runServer(cfg *configs.Config) {
 	}
 	defer flowgorm.Close(db)
 
+	// Mongo (read-only pricing data from Payload). Optional: when MONGO_URI is
+	// empty, mongoClient is nil and pricing features are disabled.
+	mongoClient, err := datastoremongo.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mongoClient.Close()
+	if err := probeMongoPricingStore(context.Background(), cfg.MongoConnectTimeout, datastoremongo.NewPricingStore(mongoClient, cfg)); err != nil {
+		log.Fatal(err)
+	}
+
 	systemService := system.NewService(
 		system.NewGormStore(db),
 		system.WithPauseDuration(cfg.PauseDuration),
@@ -214,6 +230,7 @@ func runServer(cfg *configs.Config) {
 		Transactions: transactionService,
 		Config:       cfg,
 		WorkerPool:   wp,
+		Mongo:        mongoClient,
 	}
 	registeredPlugins := registerPlugins(cfg, pluginDeps)
 
@@ -389,6 +406,26 @@ func runServer(cfg *configs.Config) {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Warnf("Error in server shutdown: %s", err)
 	}
+}
+
+func probeMongoPricingStore(ctx context.Context, timeout time.Duration, store mongoPricingProbe) error {
+	if store == nil {
+		return nil
+	}
+
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	count, err := store.TestQuery(ctx)
+	if err != nil {
+		return fmt.Errorf("mongo pricing probe failed: %w", err)
+	}
+
+	log.WithField("count", count).Info("Mongo pricing probe succeeded")
+	return nil
 }
 
 type routeOptions struct {

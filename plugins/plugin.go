@@ -3,6 +3,7 @@ package plugins
 import (
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
+	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/tokens"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
@@ -22,4 +23,7 @@ type PluginDeps struct {
 	Transactions transactions.Service
 	Config       *configs.Config
 	WorkerPool   jobs.WorkerPool
+	// Mongo is the read-only Mongo client for Payload pricing data. It is nil
+	// when Mongo is not configured (MONGO_URI empty).
+	Mongo *datastoremongo.Client
 }
