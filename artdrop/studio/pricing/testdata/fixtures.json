@@ -1,0 +1,5853 @@
+{
+ "_synced": "2026-07-23",
+ "_source": "pricing-engine (verified vs spreadsheet)",
+ "config": {
+  "printing": {
+   "mach_cmin": 1.636,
+   "press_mk": 5.0916870416,
+   "press_hr_day": 7,
+   "press_setup_min": 5,
+   "bed_disc": 0.05,
+   "disc_per_bed": 0.05,
+   "disc_max": 0.25,
+   "bed_speed": 0.3,
+   "bed_w": 126,
+   "bed_l": 79,
+   "bed_gap": 2,
+   "bed_maxw": 120,
+   "min_order": 150,
+   "rush_pct": 1,
+   "reprint_pct": 0.05,
+   "mm_per_layer": 0.16,
+   "varnish_tbl": {
+    "No Gloss": 0,
+    "Matte": 1,
+    "Semi-Gloss": 2,
+    "Hi Gloss": 3
+   }
+  },
+  "presentation": {
+   "pm_waste": 0.2,
+   "pm_setup": 5,
+   "pm_lab": 1.5,
+   "pf_mat": "Aluminum Frame Strip",
+   "pf_tape": "Framing Tape",
+   "pf_waste": 0.1,
+   "pf_inset": 2,
+   "pf_corner": "Push Corner",
+   "pf_cornerqty": 4,
+   "pf_setup": 5,
+   "pf_lab": 1.5,
+   "ps_waste": 0.1,
+   "ps_setup": 5,
+   "ps_lab": 2,
+   "fold_mult": 2,
+   "cross_threshold": 40,
+   "pl_corner": "Frame Corner Join",
+   "pl_cornerqty": 4,
+   "pl_clip": "Float Mount Clip",
+   "pl_clipqty": 4,
+   "pl_waste": 0.12,
+   "pl_setup": 6,
+   "pl_lab": 2
+  },
+  "cutting": {
+   "cnc_hr": 150,
+   "cnc_mk": 1.5,
+   "cnc_setup": 5,
+   "cnc_secin": 1,
+   "hand_setup": 2,
+   "hand_secin": 2
+  },
+  "fulfillment": {
+   "ff_bulk_min": 1,
+   "ff_pickup_min": 5,
+   "ff_drop_min": 5,
+   "sign_unbox_min": 2
+  },
+  "package": {
+   "card_mat": "Double-wall Cardboard",
+   "craft_mat": "Craft Tape",
+   "strap_mat": "Strapping Tape",
+   "glassine_mat": "Glassine Roll",
+   "wrap_mat": "Bubble Wrap",
+   "packtape_mat": "Packing Tape",
+   "artist_mat": "Artist Tape",
+   "pk_custom_border": 3,
+   "pk_custom_card": 3,
+   "pk_custom_wrap": 2,
+   "pk_custom_craft": 2,
+   "pk_custom_strap": 0.25,
+   "pk_custom_packtape": 0.25,
+   "pk_custom_glas": 2,
+   "pk_custom_setup": 10,
+   "pk_custom_lab": 5,
+   "pk_custom_artist": 1,
+   "pk_pack_border": 2,
+   "pk_pack_card": 4,
+   "pk_pack_craft": 1,
+   "pk_pack_strap": 0,
+   "pk_pack_packtape": 0.25,
+   "pk_pack_glas": 2,
+   "pk_pack_setup": 5,
+   "pk_pack_lab": 5,
+   "pk_pack_artist": 1
+  },
+  "labor": {
+   "production": {
+    "hourly": 30.0,
+    "markup": 2.5
+   },
+   "handling": {
+    "hourly": 18.0,
+    "markup": 1.3
+   },
+   "creative": {
+    "hourly": 45.0,
+    "markup": 3.0
+   }
+  },
+  "ink": {
+   "markup": 2
+  },
+  "recipes": {
+   "recipe": [
+    {
+     "process": "Textured Reproductions",
+     "comp100": 2.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 1.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 1.0,
+     "texture_grid": "Comp200",
+     "brush_grid": "White420",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Foil / Holographic",
+     "comp100": 1.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 1.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 1.0,
+     "texture_grid": "Comp200",
+     "brush_grid": "",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Lenticular on Acrylic",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 0.0,
+     "white100": 1.0,
+     "color": 1.0,
+     "varnish": 2.0,
+     "texture_grid": "White420",
+     "brush_grid": "",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "BeSpoke Custom",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 0.0,
+     "white100": 1.0,
+     "color": 1.0,
+     "varnish": 2.0,
+     "texture_grid": "White420",
+     "brush_grid": "",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Metal Print",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 0.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 0.0,
+     "texture_grid": "None",
+     "brush_grid": "None",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Acrylic Print",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 1.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 0.0,
+     "texture_grid": "None",
+     "brush_grid": "None",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Canvas Print",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 0.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 0.0,
+     "texture_grid": "None",
+     "brush_grid": "None",
+     "setup_fee": 100.0
+    },
+    {
+     "process": "Heavy Archival Print",
+     "comp100": 0.0,
+     "comp200": 0.0,
+     "white420": 0.0,
+     "whiteflood": 0.0,
+     "white100": 0.0,
+     "color": 1.0,
+     "varnish": 0.0,
+     "texture_grid": "None",
+     "brush_grid": "None",
+     "setup_fee": 100.0
+    }
+   ],
+   "setups": {
+    "Textured Reproductions": 100.0,
+    "Foil / Holographic": 100.0,
+    "Lenticular on Acrylic": 100.0,
+    "BeSpoke Custom": 100.0,
+    "Metal Print": 100.0,
+    "Acrylic Print": 100.0,
+    "Canvas Print": 100.0,
+    "Heavy Archival Print": 100.0
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "spreadsheet ground truth",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "matcat": "Canvas",
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "Flat Pack",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 10
+   },
+   "expect": {
+    "grand_total_1pc": 250.0616296302498,
+    "build_price": 150.0616296302498,
+    "build_price_row": 85.25978296313504,
+    "setup_fee": 100.0,
+    "run_perprint": 80.99679381497828,
+    "run_total": 909.9679381497828,
+    "printing_1off": 91.1153333339535,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 26.88962962962963,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 150.0616296302498,
+      "save": 0.0,
+      "job_total": 250.0616296302498
+     },
+     {
+      "units": 5,
+      "per_print": 85.25978296313504,
+      "save": 0.43183488561856753,
+      "job_total": 526.2989148156752
+     },
+     {
+      "units": 10,
+      "per_print": 80.99679381497828,
+      "save": 0.4602431413376392,
+      "job_total": 909.9679381497828
+     },
+     {
+      "units": 20,
+      "per_print": 76.73380466682154,
+      "save": 0.4886513970567107,
+      "job_total": 1634.6760933364308
+     },
+     {
+      "units": 40,
+      "per_print": 68.20782637050803,
+      "save": 0.5454679084948539,
+      "job_total": 2828.313054820321
+     },
+     {
+      "units": 60,
+      "per_print": 63.94483722235128,
+      "save": 0.5738761642139256,
+      "job_total": 3936.690233341077
+     },
+     {
+      "units": 80,
+      "per_print": 63.94483722235128,
+      "save": 0.5738761642139256,
+      "job_total": 5215.586977788103
+     },
+     {
+      "units": 120,
+      "per_print": 63.94483722235128,
+      "save": 0.5738761642139256,
+      "job_total": 7773.380466682154
+     }
+    ]
+   }
+  },
+  {
+   "name": "Foil/Holo default",
+   "cfg": {
+    "process": "Foil / Holographic",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Brilliance Rainbow Holographic",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 421.6401060624975,
+    "build_price": 321.6401060624975,
+    "build_price_row": 139.37692939457054,
+    "setup_fee": 100.0,
+    "run_perprint": 321.6401060624975,
+    "run_total": 421.6401060624975,
+    "printing_1off": 305.8561666685581,
+    "media_unit": 8.727272727272727,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 321.6401060624975,
+      "save": 0.0,
+      "job_total": 421.6401060624975
+     },
+     {
+      "units": 5,
+      "per_print": 139.37692939457054,
+      "save": 0.5666680654324608,
+      "job_total": 796.8846469728527
+     },
+     {
+      "units": 10,
+      "per_print": 132.408082924842,
+      "save": 0.5883346621608379,
+      "job_total": 1424.08082924842
+     },
+     {
+      "units": 20,
+      "per_print": 125.43923645511349,
+      "save": 0.6100012588892147,
+      "job_total": 2608.78472910227
+     },
+     {
+      "units": 40,
+      "per_print": 111.50154351565644,
+      "save": 0.6533344523459687,
+      "job_total": 4560.061740626257
+     },
+     {
+      "units": 60,
+      "per_print": 104.5326970459279,
+      "save": 0.6750010490743457,
+      "job_total": 6371.961822755674
+     },
+     {
+      "units": 80,
+      "per_print": 104.5326970459279,
+      "save": 0.6750010490743457,
+      "job_total": 8462.615763674232
+     },
+     {
+      "units": 120,
+      "per_print": 104.5326970459279,
+      "save": 0.6750010490743457,
+      "job_total": 12643.923645511348
+     }
+    ]
+   }
+  },
+  {
+   "name": "Lenticular default",
+   "cfg": {
+    "process": "Lenticular on Acrylic",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Museum Acrylic",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 566.7814958344716,
+    "build_price": 466.78149583447157,
+    "build_price_row": 346.6795558336411,
+    "setup_fee": 100.0,
+    "run_perprint": 466.78149583447157,
+    "run_total": 566.7814958344716,
+    "printing_1off": 169.58160000113818,
+    "media_unit": 271.80989583333337,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 466.78149583447157,
+      "save": 0.0,
+      "job_total": 566.7814958344716
+     },
+     {
+      "units": 5,
+      "per_print": 346.6795558336411,
+      "save": 0.25729798861482855,
+      "job_total": 1833.3977791682055
+     },
+     {
+      "units": 10,
+      "per_print": 329.345578041959,
+      "save": 0.29443308918408706,
+      "job_total": 3393.45578041959
+     },
+     {
+      "units": 20,
+      "per_print": 312.01160025027696,
+      "save": 0.3315681897533457,
+      "job_total": 6340.232005005539
+     },
+     {
+      "units": 40,
+      "per_print": 277.3436446669129,
+      "save": 0.4058383908918628,
+      "job_total": 11193.745786676516
+     },
+     {
+      "units": 60,
+      "per_print": 260.0096668752308,
+      "save": 0.4429734914611214,
+      "job_total": 15700.580012513847
+     },
+     {
+      "units": 80,
+      "per_print": 260.0096668752308,
+      "save": 0.4429734914611214,
+      "job_total": 20900.773350018462
+     },
+     {
+      "units": 120,
+      "per_print": 260.0096668752308,
+      "save": 0.4429734914611214,
+      "job_total": 31301.160025027693
+     }
+    ]
+   }
+  },
+  {
+   "name": "BeSpoke default",
+   "cfg": {
+    "process": "BeSpoke Custom",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Float Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 546.4716000011382,
+    "build_price": 446.4716000011382,
+    "build_price_row": 326.3696600003077,
+    "setup_fee": 100.0,
+    "run_perprint": 446.4716000011382,
+    "run_total": 546.4716000011382,
+    "printing_1off": 169.58160000113818,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 244.83333333333337,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 446.4716000011382,
+      "save": 0.0,
+      "job_total": 546.4716000011382
+     },
+     {
+      "units": 5,
+      "per_print": 326.3696600003077,
+      "save": 0.269002418072111,
+      "job_total": 1731.8483000015385
+     },
+     {
+      "units": 10,
+      "per_print": 310.0511770002923,
+      "save": 0.3055522971685055,
+      "job_total": 3200.5117700029227
+     },
+     {
+      "units": 20,
+      "per_print": 293.7326940002769,
+      "save": 0.3421021762648999,
+      "job_total": 5974.653880005539
+     },
+     {
+      "units": 40,
+      "per_print": 261.0957280002462,
+      "save": 0.4152019344576887,
+      "job_total": 10543.829120009848
+     },
+     {
+      "units": 60,
+      "per_print": 244.77724500023078,
+      "save": 0.4517518135540832,
+      "job_total": 14786.634700013847
+     },
+     {
+      "units": 80,
+      "per_print": 244.77724500023078,
+      "save": 0.4517518135540832,
+      "job_total": 19682.179600018462
+     },
+     {
+      "units": 120,
+      "per_print": 244.77724500023078,
+      "save": 0.4517518135540832,
+      "job_total": 29473.269400027693
+     }
+    ]
+   }
+  },
+  {
+   "name": "Metal default",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 273.7970000006202,
+    "build_price": 173.79700000062016,
+    "build_price_row": 108.9951533335054,
+    "setup_fee": 100.0,
+    "run_perprint": 173.79700000062016,
+    "run_total": 273.7970000006202,
+    "printing_1off": 91.1153333339535,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 173.79700000062016,
+      "save": 0.0,
+      "job_total": 273.7970000006202
+     },
+     {
+      "units": 5,
+      "per_print": 108.9951533335054,
+      "save": 0.3728594087750855,
+      "job_total": 644.975766667527
+     },
+     {
+      "units": 10,
+      "per_print": 103.54539566683013,
+      "save": 0.40421643833633114,
+      "job_total": 1135.4539566683013
+     },
+     {
+      "units": 20,
+      "per_print": 98.09563800015486,
+      "save": 0.4355734678975769,
+      "job_total": 2061.912760003097
+     },
+     {
+      "units": 40,
+      "per_print": 87.19612266680433,
+      "save": 0.4982875270200683,
+      "job_total": 3587.8449066721732
+     },
+     {
+      "units": 60,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 5004.7819000077425
+     },
+     {
+      "units": 80,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 6639.709200010324
+     },
+     {
+      "units": 120,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 9909.563800015485
+     }
+    ]
+   }
+  },
+  {
+   "name": "Acrylic default",
+   "cfg": {
+    "process": "Acrylic Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Museum Acrylic",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 522.0346625008285,
+    "build_price": 422.0346625008285,
+    "build_price_row": 337.9905158335807,
+    "setup_fee": 100.0,
+    "run_perprint": 422.0346625008285,
+    "run_total": 522.0346625008285,
+    "printing_1off": 124.83476666749515,
+    "media_unit": 271.80989583333337,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 422.0346625008285,
+      "save": 0.0,
+      "job_total": 522.0346625008285
+     },
+     {
+      "units": 5,
+      "per_print": 337.9905158335807,
+      "save": 0.1991403885387799,
+      "job_total": 1789.9525791679034
+     },
+     {
+      "units": 10,
+      "per_print": 321.09099004190165,
+      "save": 0.2391833691118409,
+      "job_total": 3310.9099004190166
+     },
+     {
+      "units": 20,
+      "per_print": 304.1914642502226,
+      "save": 0.2792263496849019,
+      "job_total": 6183.829285004453
+     },
+     {
+      "units": 40,
+      "per_print": 270.3924126668646,
+      "save": 0.3593123108310239,
+      "job_total": 10915.696506674583
+     },
+     {
+      "units": 60,
+      "per_print": 253.4928868751855,
+      "save": 0.399355291404085,
+      "job_total": 15309.57321251113
+     },
+     {
+      "units": 80,
+      "per_print": 253.4928868751855,
+      "save": 0.399355291404085,
+      "job_total": 20379.430950014837
+     },
+     {
+      "units": 120,
+      "per_print": 253.4928868751855,
+      "save": 0.399355291404085,
+      "job_total": 30519.14642502226
+     }
+    ]
+   }
+  },
+  {
+   "name": "Canvas default",
+   "cfg": {
+    "process": "Canvas Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 223.1720000006202,
+    "build_price": 123.17200000062017,
+    "build_price_row": 58.3701533335054,
+    "setup_fee": 100.0,
+    "run_perprint": 123.17200000062017,
+    "run_total": 223.1720000006202,
+    "printing_1off": 91.1153333339535,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 123.17200000062017,
+      "save": 0.0,
+      "job_total": 223.1720000006202
+     },
+     {
+      "units": 5,
+      "per_print": 58.3701533335054,
+      "save": 0.5261085852855234,
+      "job_total": 391.850766667527
+     },
+     {
+      "units": 10,
+      "per_print": 55.451645666830125,
+      "save": 0.5498031560212473,
+      "job_total": 654.5164566683012
+     },
+     {
+      "units": 20,
+      "per_print": 52.533138000154864,
+      "save": 0.5734977267569711,
+      "job_total": 1150.6627600030972
+     },
+     {
+      "units": 40,
+      "per_print": 46.69612266680432,
+      "save": 0.6208868682284188,
+      "job_total": 1967.8449066721728
+     },
+     {
+      "units": 60,
+      "per_print": 43.777615000129046,
+      "save": 0.6445814389641427,
+      "job_total": 2726.656900007743
+     },
+     {
+      "units": 80,
+      "per_print": 43.777615000129046,
+      "save": 0.6445814389641427,
+      "job_total": 3602.209200010324
+     },
+     {
+      "units": 120,
+      "per_print": 43.777615000129046,
+      "save": 0.6445814389641427,
+      "job_total": 5353.313800015486
+     }
+    ]
+   }
+  },
+  {
+   "name": "Heavy Archival default",
+   "cfg": {
+    "process": "Heavy Archival Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "ARCHES 88",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 235.9290454551656,
+    "build_price": 135.9290454551656,
+    "build_price_row": 71.12719878805086,
+    "setup_fee": 100.0,
+    "run_perprint": 135.9290454551656,
+    "run_total": 235.9290454551656,
+    "printing_1off": 91.1153333339535,
+    "media_unit": 37.75704545454546,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 135.9290454551656,
+      "save": 0.0,
+      "job_total": 235.9290454551656
+     },
+     {
+      "units": 5,
+      "per_print": 71.12719878805086,
+      "save": 0.4767328899435903,
+      "job_total": 455.6359939402543
+     },
+     {
+      "units": 10,
+      "per_print": 67.57083884864832,
+      "save": 0.5028962454464108,
+      "job_total": 775.7083884864833
+     },
+     {
+      "units": 20,
+      "per_print": 64.01447890924578,
+      "save": 0.5290596009492312,
+      "job_total": 1380.2895781849156
+     },
+     {
+      "units": 40,
+      "per_print": 56.901759030440694,
+      "save": 0.5813863119548721,
+      "job_total": 2376.0703612176276
+     },
+     {
+      "units": 60,
+      "per_print": 53.345399091038146,
+      "save": 0.6075496674576928,
+      "job_total": 3300.7239454622886
+     },
+     {
+      "units": 80,
+      "per_print": 53.345399091038146,
+      "save": 0.6075496674576928,
+      "job_total": 4367.6319272830515
+     },
+     {
+      "units": 120,
+      "per_print": 53.345399091038146,
+      "save": 0.6075496674576928,
+      "job_total": 6501.447890924577
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Natural",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Natural",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 353.51985666805757,
+    "build_price": 253.51985666805757,
+    "build_price_row": 117.52427666711722,
+    "setup_fee": 100.0,
+    "run_perprint": 253.51985666805757,
+    "run_total": 353.51985666805757,
+    "printing_1off": 221.46319000139093,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 53.049000000312475,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 253.51985666805757,
+      "save": 0.0,
+      "job_total": 353.51985666805757
+     },
+     {
+      "units": 5,
+      "per_print": 117.52427666711722,
+      "save": 0.5364296974142113,
+      "job_total": 687.6213833355861
+     },
+     {
+      "units": 10,
+      "per_print": 111.64806283376136,
+      "save": 0.5596082125435008,
+      "job_total": 1216.4806283376136
+     },
+     {
+      "units": 20,
+      "per_print": 105.7718490004055,
+      "save": 0.5827867276727903,
+      "job_total": 2215.43698000811
+     },
+     {
+      "units": 40,
+      "per_print": 94.01942133369378,
+      "save": 0.629143757931369,
+      "job_total": 3860.7768533477515
+     },
+     {
+      "units": 60,
+      "per_print": 88.14320750033792,
+      "save": 0.6523222730606585,
+      "job_total": 5388.5924500202755
+     },
+     {
+      "units": 80,
+      "per_print": 88.14320750033792,
+      "save": 0.6523222730606585,
+      "job_total": 7151.456600027033
+     },
+     {
+      "units": 120,
+      "per_print": 88.14320750033792,
+      "save": 0.6523222730606585,
+      "job_total": 10677.184900040551
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Light",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Light",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 406.5688566683701,
+    "build_price": 306.5688566683701,
+    "build_price_row": 141.7098266672301,
+    "setup_fee": 100.0,
+    "run_perprint": 306.5688566683701,
+    "run_total": 406.5688566683701,
+    "printing_1off": 274.5121900017034,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 106.09800000062495,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 306.5688566683701,
+      "save": 0.0,
+      "job_total": 406.5688566683701
+     },
+     {
+      "units": 5,
+      "per_print": 141.7098266672301,
+      "save": 0.5377553081964739,
+      "job_total": 808.5491333361505
+     },
+     {
+      "units": 10,
+      "per_print": 134.62433533386857,
+      "save": 0.5608675427866503,
+      "job_total": 1446.2433533386857
+     },
+     {
+      "units": 20,
+      "per_print": 127.53884400050708,
+      "save": 0.5839797773768265,
+      "job_total": 2650.7768800101417
+     },
+     {
+      "units": 40,
+      "per_print": 113.36786133378408,
+      "save": 0.6302042465571791,
+      "job_total": 4634.714453351363
+     },
+     {
+      "units": 60,
+      "per_print": 106.28237000042256,
+      "save": 0.6533164811473555,
+      "job_total": 6476.9422000253535
+     },
+     {
+      "units": 80,
+      "per_print": 106.28237000042256,
+      "save": 0.6533164811473555,
+      "job_total": 8602.589600033805
+     },
+     {
+      "units": 120,
+      "per_print": 106.28237000042256,
+      "save": 0.6533164811473555,
+      "job_total": 12853.884400050707
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Medium",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 359.6178566686826,
+    "run_total": 459.6178566686826,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Impasto",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Impasto",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 512.666856668995,
+    "build_price": 412.666856668995,
+    "build_price_row": 190.08092666745588,
+    "setup_fee": 100.0,
+    "run_perprint": 412.666856668995,
+    "run_total": 512.666856668995,
+    "printing_1off": 380.61019000232835,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 212.1960000012499,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 412.666856668995,
+      "save": 0.0,
+      "job_total": 512.666856668995
+     },
+     {
+      "units": 5,
+      "per_print": 190.08092666745588,
+      "save": 0.5393840731437223,
+      "job_total": 1050.4046333372794
+     },
+     {
+      "units": 10,
+      "per_print": 180.57688033408309,
+      "save": 0.5624148694865361,
+      "job_total": 1905.7688033408308
+     },
+     {
+      "units": 20,
+      "per_print": 171.0728340007103,
+      "save": 0.58544566582935,
+      "job_total": 3521.4566800142056
+     },
+     {
+      "units": 40,
+      "per_print": 152.06474133396472,
+      "save": 0.6315072585149777,
+      "job_total": 6182.589653358589
+     },
+     {
+      "units": 60,
+      "per_print": 142.56069500059192,
+      "save": 0.6545380548577917,
+      "job_total": 8653.641700035516
+     },
+     {
+      "units": 80,
+      "per_print": 142.56069500059192,
+      "save": 0.6545380548577917,
+      "job_total": 11504.855600047355
+     },
+     {
+      "units": 120,
+      "per_print": 142.56069500059192,
+      "save": 0.6545380548577917,
+      "job_total": 17207.28340007103
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Heavy Impasto",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Heavy Impasto",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 618.7648566696199,
+    "build_price": 518.7648566696199,
+    "build_price_row": 238.45202666768168,
+    "setup_fee": 100.0,
+    "run_perprint": 518.7648566696199,
+    "run_total": 618.7648566696199,
+    "printing_1off": 486.7081900029533,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 318.29400000187485,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 518.7648566696199,
+      "save": 0.0,
+      "job_total": 618.7648566696199
+     },
+     {
+      "units": 5,
+      "per_print": 238.45202666768168,
+      "save": 0.5403466067487643,
+      "job_total": 1292.2601333384084
+     },
+     {
+      "units": 10,
+      "per_print": 226.52942533429757,
+      "save": 0.5633292764113262,
+      "job_total": 2365.294253342976
+     },
+     {
+      "units": 20,
+      "per_print": 214.60682400091352,
+      "save": 0.5863119460738879,
+      "job_total": 4392.13648001827
+     },
+     {
+      "units": 40,
+      "per_print": 190.76162133414536,
+      "save": 0.6322772853990115,
+      "job_total": 7730.464853365815
+     },
+     {
+      "units": 60,
+      "per_print": 178.83902000076125,
+      "save": 0.6552599550615733,
+      "job_total": 10830.341200045676
+     },
+     {
+      "units": 80,
+      "per_print": 178.83902000076125,
+      "save": 0.6552599550615733,
+      "job_total": 14407.1216000609
+     },
+     {
+      "units": 120,
+      "per_print": 178.83902000076125,
+      "save": 0.6552599550615733,
+      "job_total": 21560.68240009135
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Relief",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Relief",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 724.8628566702448,
+    "build_price": 624.8628566702448,
+    "build_price_row": 286.8231266679075,
+    "setup_fee": 100.0,
+    "run_perprint": 624.8628566702448,
+    "run_total": 724.8628566702448,
+    "printing_1off": 592.8061900035782,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 424.3920000024998,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 624.8628566702448,
+      "save": 0.0,
+      "job_total": 724.8628566702448
+     },
+     {
+      "units": 5,
+      "per_print": 286.8231266679075,
+      "save": 0.5409822753806746,
+      "job_total": 1534.1156333395375
+     },
+     {
+      "units": 10,
+      "per_print": 272.48197033451214,
+      "save": 0.5639331616116408,
+      "job_total": 2824.8197033451215
+     },
+     {
+      "units": 20,
+      "per_print": 258.1408140011168,
+      "save": 0.586884047842607,
+      "job_total": 5262.816280022335
+     },
+     {
+      "units": 40,
+      "per_print": 229.458501334326,
+      "save": 0.6327858203045396,
+      "job_total": 9278.34005337304
+     },
+     {
+      "units": 60,
+      "per_print": 215.11734500093064,
+      "save": 0.6557367065355059,
+      "job_total": 13007.040700055839
+     },
+     {
+      "units": 80,
+      "per_print": 215.11734500093064,
+      "save": 0.6557367065355059,
+      "job_total": 17309.38760007445
+     },
+     {
+      "units": 120,
+      "per_print": 215.11734500093064,
+      "save": 0.6557367065355059,
+      "job_total": 25914.081400111678
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR preset Sculptural",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Sculptural",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 1149.2548566727448,
+    "build_price": 1049.2548566727448,
+    "build_price_row": 480.3075266688107,
+    "setup_fee": 100.0,
+    "run_perprint": 1049.2548566727448,
+    "run_total": 1149.2548566727448,
+    "printing_1off": 1017.198190006078,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 848.7840000049996,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 1049.2548566727448,
+      "save": 0.0,
+      "job_total": 1149.2548566727448
+     },
+     {
+      "units": 5,
+      "per_print": 480.3075266688107,
+      "save": 0.54223940578946,
+      "job_total": 2501.5376333440536
+     },
+     {
+      "units": 10,
+      "per_print": 456.29215033537014,
+      "save": 0.565127435499987,
+      "job_total": 4662.921503353701
+     },
+     {
+      "units": 20,
+      "per_print": 432.2767740019296,
+      "save": 0.5880154652105141,
+      "job_total": 8745.535480038592
+     },
+     {
+      "units": 40,
+      "per_print": 384.24602133504857,
+      "save": 0.633791524631568,
+      "job_total": 15469.840853401944
+     },
+     {
+      "units": 60,
+      "per_print": 360.230645001608,
+      "save": 0.6566795543420949,
+      "job_total": 21713.838700096483
+     },
+     {
+      "units": 80,
+      "per_print": 360.230645001608,
+      "save": 0.6566795543420949,
+      "job_total": 28918.451600128643
+     },
+     {
+      "units": 120,
+      "per_print": 360.230645001608,
+      "save": 0.6566795543420949,
+      "job_total": 43327.677400192966
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR custom 0.5mm",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0.5,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 605.2971011131895,
+    "build_price": 505.2971011131895,
+    "build_price_row": 305.80193111181006,
+    "setup_fee": 100.0,
+    "run_perprint": 505.2971011131895,
+    "run_total": 605.2971011131895,
+    "printing_1off": 338.1709900020784,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 84.44444444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 169.75680000099993,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 505.2971011131895,
+      "save": 0.0,
+      "job_total": 605.2971011131895
+     },
+     {
+      "units": 5,
+      "per_print": 305.80193111181006,
+      "save": 0.39480766773029907,
+      "job_total": 1629.0096555590503
+     },
+     {
+      "units": 10,
+      "per_print": 290.5118345562195,
+      "save": 0.42506728434378416,
+      "job_total": 3005.1183455621954
+     },
+     {
+      "units": 20,
+      "per_print": 275.22173800062905,
+      "save": 0.45532690095726913,
+      "job_total": 5604.434760012581
+     },
+     {
+      "units": 40,
+      "per_print": 244.64154488944806,
+      "save": 0.5158461341842393,
+      "job_total": 9885.661795577922
+     },
+     {
+      "units": 60,
+      "per_print": 229.35144833385755,
+      "save": 0.5461057507977243,
+      "job_total": 13861.086900031452
+     },
+     {
+      "units": 80,
+      "per_print": 229.35144833385755,
+      "save": 0.5461057507977243,
+      "job_total": 18448.115866708606
+     },
+     {
+      "units": 120,
+      "per_print": 229.35144833385755,
+      "save": 0.5461057507977243,
+      "job_total": 27622.173800062905
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR custom 1.6mm",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 1.6,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 859.9323011146893,
+    "build_price": 759.9323011146893,
+    "build_price_row": 421.89257111235196,
+    "setup_fee": 100.0,
+    "run_perprint": 759.9323011146893,
+    "run_total": 859.9323011146893,
+    "printing_1off": 592.8061900035782,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 84.44444444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 424.3920000024998,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 759.9323011146893,
+      "save": 0.0,
+      "job_total": 859.9323011146893
+     },
+     {
+      "units": 5,
+      "per_print": 421.89257111235196,
+      "save": 0.44482874264785366,
+      "job_total": 2209.4628555617596
+     },
+     {
+      "units": 10,
+      "per_print": 400.79794255673437,
+      "save": 0.4725873055154609,
+      "job_total": 4107.979425567344
+     },
+     {
+      "units": 20,
+      "per_print": 379.7033140011168,
+      "save": 0.5003458683830682,
+      "job_total": 7694.066280022335
+     },
+     {
+      "units": 40,
+      "per_print": 337.5140568898816,
+      "save": 0.5558629941182829,
+      "job_total": 13600.562275595265
+     },
+     {
+      "units": 60,
+      "per_print": 316.41942833426396,
+      "save": 0.5836215569858902,
+      "job_total": 19085.165700055837
+     },
+     {
+      "units": 80,
+      "per_print": 316.41942833426396,
+      "save": 0.5836215569858902,
+      "job_total": 25413.554266741117
+     },
+     {
+      "units": 120,
+      "per_print": 316.41942833426396,
+      "save": 0.5836215569858902,
+      "job_total": 38070.331400111674
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR custom 2.5mm",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 2.5,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 1114.5675011161893,
+    "build_price": 1014.5675011161892,
+    "build_price_row": 537.9832111128939,
+    "setup_fee": 100.0,
+    "run_perprint": 1014.5675011161892,
+    "run_total": 1114.5675011161893,
+    "printing_1off": 847.4413900050781,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 84.44444444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 679.0272000039997,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 1014.5675011161892,
+      "save": 0.0,
+      "job_total": 1114.5675011161893
+     },
+     {
+      "units": 5,
+      "per_print": 537.9832111128939,
+      "save": 0.4697413326160902,
+      "job_total": 2789.9160555644694
+     },
+     {
+      "units": 10,
+      "per_print": 511.08405055724916,
+      "save": 0.49625426598528577,
+      "job_total": 5210.840505572492
+     },
+     {
+      "units": 20,
+      "per_print": 484.18489000160446,
+      "save": 0.5227671993544812,
+      "job_total": 9783.697800032089
+     },
+     {
+      "units": 40,
+      "per_print": 430.3865688903151,
+      "save": 0.5757930660928722,
+      "job_total": 17315.462755612603
+     },
+     {
+      "units": 60,
+      "per_print": 403.48740833467036,
+      "save": 0.6023059994620676,
+      "job_total": 24309.24450008022
+     },
+     {
+      "units": 80,
+      "per_print": 403.48740833467036,
+      "save": 0.6023059994620676,
+      "job_total": 32378.99266677363
+     },
+     {
+      "units": 120,
+      "per_print": 403.48740833467036,
+      "save": 0.6023059994620676,
+      "job_total": 48518.48900016044
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR custom 6.0mm",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 6.0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 2048.229901121689,
+    "build_price": 1948.229901121689,
+    "build_price_row": 963.6488911148808,
+    "setup_fee": 100.0,
+    "run_perprint": 1948.229901121689,
+    "run_total": 2048.229901121689,
+    "printing_1off": 1781.1037900105778,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 84.44444444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 1612.6896000094994,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 1948.229901121689,
+      "save": 0.0,
+      "job_total": 2048.229901121689
+     },
+     {
+      "units": 5,
+      "per_print": 963.6488911148808,
+      "save": 0.505372086446234,
+      "job_total": 4918.244455574404
+     },
+     {
+      "units": 10,
+      "per_print": 915.4664465591368,
+      "save": 0.5301034821239223,
+      "job_total": 9254.664465591368
+     },
+     {
+      "units": 20,
+      "per_print": 867.2840020033927,
+      "save": 0.5548348778016106,
+      "job_total": 17445.680040067855
+     },
+     {
+      "units": 40,
+      "per_print": 770.9191128919047,
+      "save": 0.6042976691569872,
+      "job_total": 30936.764515676186
+     },
+     {
+      "units": 60,
+      "per_print": 722.7366683361606,
+      "save": 0.6290290648346755,
+      "job_total": 43464.20010016963
+     },
+     {
+      "units": 80,
+      "per_print": 722.7366683361606,
+      "save": 0.6290290648346755,
+      "job_total": 57918.93346689285
+     },
+     {
+      "units": 120,
+      "per_print": 722.7366683361606,
+      "save": 0.6290290648346755,
+      "job_total": 86828.40020033927
+     }
+    ]
+   }
+  },
+  {
+   "name": "TR Medium + brush",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "Yes",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 527.4241233357659,
+    "build_price": 427.4241233357659,
+    "build_price_row": 195.2170433341602,
+    "setup_fee": 100.0,
+    "run_perprint": 427.4241233357659,
+    "run_total": 527.4241233357659,
+    "printing_1off": 395.3674566690992,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 67.8062666670833,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 427.4241233357659,
+      "save": 0.0,
+      "job_total": 527.4241233357659
+     },
+     {
+      "units": 5,
+      "per_print": 195.2170433341602,
+      "save": 0.5432708808978333,
+      "job_total": 1076.085216670801
+     },
+     {
+      "units": 10,
+      "per_print": 185.45619116745218,
+      "save": 0.5661073368529417,
+      "job_total": 1954.5619116745218
+     },
+     {
+      "units": 20,
+      "per_print": 175.69533900074418,
+      "save": 0.58894379280805,
+      "job_total": 3613.9067800148837
+     },
+     {
+      "units": 40,
+      "per_print": 156.17363466732817,
+      "save": 0.6346167047182667,
+      "job_total": 6346.945386693127
+     },
+     {
+      "units": 60,
+      "per_print": 146.41278250062015,
+      "save": 0.657453160673375,
+      "job_total": 8884.766950037209
+     },
+     {
+      "units": 80,
+      "per_print": 146.41278250062015,
+      "save": 0.657453160673375,
+      "job_total": 11813.022600049611
+     },
+     {
+      "units": 120,
+      "per_print": 146.41278250062015,
+      "save": 0.657453160673375,
+      "job_total": 17669.533900074417
+     }
+    ]
+   }
+  },
+  {
+   "name": "Foil/Holo Impasto (TF grid)",
+   "cfg": {
+    "process": "Foil / Holographic",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Brilliance Rainbow Holographic",
+    "preset": "Impasto",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 474.68910606281,
+    "build_price": 374.68910606281,
+    "build_price_row": 163.56247939468344,
+    "setup_fee": 100.0,
+    "run_perprint": 374.68910606281,
+    "run_total": 474.68910606281,
+    "printing_1off": 358.9051666688706,
+    "media_unit": 8.727272727272727,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 212.1960000012499,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 374.68910606281,
+      "save": 0.0,
+      "job_total": 474.68910606281
+     },
+     {
+      "units": 5,
+      "per_print": 163.56247939468344,
+      "save": 0.5634714840968313,
+      "job_total": 917.8123969734172
+     },
+     {
+      "units": 10,
+      "per_print": 155.38435542494926,
+      "save": 0.5852979098919897,
+      "job_total": 1653.8435542494926
+     },
+     {
+      "units": 20,
+      "per_print": 147.2062314552151,
+      "save": 0.6071243356871482,
+      "job_total": 3044.1246291043017
+     },
+     {
+      "units": 40,
+      "per_print": 130.84998351574674,
+      "save": 0.650777187277465,
+      "job_total": 5333.99934062987
+     },
+     {
+      "units": 60,
+      "per_print": 122.67185954601257,
+      "save": 0.6726036130726235,
+      "job_total": 7460.311572760755
+     },
+     {
+      "units": 80,
+      "per_print": 122.67185954601257,
+      "save": 0.6726036130726235,
+      "job_total": 9913.748763681006
+     },
+     {
+      "units": 120,
+      "per_print": 122.67185954601257,
+      "save": 0.6726036130726235,
+      "job_total": 14820.62314552151
+     }
+    ]
+   }
+  },
+  {
+   "name": "Metal varnish No Gloss",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "No Gloss",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 213.15796666687345,
+    "build_price": 113.15796666687346,
+    "build_price_row": 91.54994666672404,
+    "setup_fee": 100.0,
+    "run_perprint": 113.15796666687346,
+    "run_total": 213.15796666687345,
+    "printing_1off": 30.476300000206788,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 113.15796666687346,
+      "save": 0.0,
+      "job_total": 213.15796666687345
+     },
+     {
+      "units": 5,
+      "per_print": 91.54994666672404,
+      "save": 0.190954473967895,
+      "job_total": 557.7497333336203
+     },
+     {
+      "units": 10,
+      "per_print": 86.97244933338783,
+      "save": 0.23140675026950042,
+      "job_total": 969.7244933338783
+     },
+     {
+      "units": 20,
+      "per_print": 82.39495200005163,
+      "save": 0.2718590265711056,
+      "job_total": 1747.8990400010325
+     },
+     {
+      "units": 40,
+      "per_print": 73.23995733337924,
+      "save": 0.352763579174316,
+      "job_total": 3029.5982933351697
+     },
+     {
+      "units": 60,
+      "per_print": 68.66246000004303,
+      "save": 0.3932158554759213,
+      "job_total": 4219.747600002582
+     },
+     {
+      "units": 80,
+      "per_print": 68.66246000004303,
+      "save": 0.3932158554759213,
+      "job_total": 5592.996800003442
+     },
+     {
+      "units": 120,
+      "per_print": 68.66246000004303,
+      "save": 0.3932158554759213,
+      "job_total": 8339.495200005163
+     }
+    ]
+   }
+  },
+  {
+   "name": "Metal varnish Matte",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 273.7970000006202,
+    "build_price": 173.79700000062016,
+    "build_price_row": 108.9951533335054,
+    "setup_fee": 100.0,
+    "run_perprint": 173.79700000062016,
+    "run_total": 273.7970000006202,
+    "printing_1off": 91.1153333339535,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 173.79700000062016,
+      "save": 0.0,
+      "job_total": 273.7970000006202
+     },
+     {
+      "units": 5,
+      "per_print": 108.9951533335054,
+      "save": 0.3728594087750855,
+      "job_total": 644.975766667527
+     },
+     {
+      "units": 10,
+      "per_print": 103.54539566683013,
+      "save": 0.40421643833633114,
+      "job_total": 1135.4539566683013
+     },
+     {
+      "units": 20,
+      "per_print": 98.09563800015486,
+      "save": 0.4355734678975769,
+      "job_total": 2061.912760003097
+     },
+     {
+      "units": 40,
+      "per_print": 87.19612266680433,
+      "save": 0.4982875270200683,
+      "job_total": 3587.8449066721732
+     },
+     {
+      "units": 60,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 5004.7819000077425
+     },
+     {
+      "units": 80,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 6639.709200010324
+     },
+     {
+      "units": 120,
+      "per_print": 81.74636500012905,
+      "save": 0.5296445565813142,
+      "job_total": 9909.563800015485
+     }
+    ]
+   }
+  },
+  {
+   "name": "Metal varnish Semi-Gloss",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Semi-Gloss",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 334.43603333436687,
+    "build_price": 234.43603333436687,
+    "build_price_row": 126.44036000028677,
+    "setup_fee": 100.0,
+    "run_perprint": 234.43603333436687,
+    "run_total": 334.43603333436687,
+    "printing_1off": 151.7543666677002,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 234.43603333436687,
+      "save": 0.0,
+      "job_total": 334.43603333436687
+     },
+     {
+      "units": 5,
+      "per_print": 126.44036000028677,
+      "save": 0.46066157918672057,
+      "job_total": 732.2018000014339
+     },
+     {
+      "units": 10,
+      "per_print": 120.11834200027243,
+      "save": 0.48762850022738446,
+      "job_total": 1301.1834200027242
+     },
+     {
+      "units": 20,
+      "per_print": 113.7963240002581,
+      "save": 0.5145954212680485,
+      "job_total": 2375.926480005162
+     },
+     {
+      "units": 40,
+      "per_print": 101.15228800022942,
+      "save": 0.5685292633493764,
+      "job_total": 4146.091520009177
+     },
+     {
+      "units": 60,
+      "per_print": 94.83027000021508,
+      "save": 0.5954961843900404,
+      "job_total": 5789.816200012905
+     },
+     {
+      "units": 80,
+      "per_print": 94.83027000021508,
+      "save": 0.5954961843900404,
+      "job_total": 7686.421600017206
+     },
+     {
+      "units": 120,
+      "per_print": 94.83027000021508,
+      "save": 0.5954961843900404,
+      "job_total": 11479.63240002581
+     }
+    ]
+   }
+  },
+  {
+   "name": "Metal varnish Hi Gloss",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Hi Gloss",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 395.07506666811355,
+    "build_price": 295.07506666811355,
+    "build_price_row": 143.88556666706813,
+    "setup_fee": 100.0,
+    "run_perprint": 295.07506666811355,
+    "run_total": 395.07506666811355,
+    "printing_1off": 212.3934000014469,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 295.07506666811355,
+      "save": 0.0,
+      "job_total": 395.07506666811355
+     },
+     {
+      "units": 5,
+      "per_print": 143.88556666706813,
+      "save": 0.5123763986846649,
+      "job_total": 819.4278333353407
+     },
+     {
+      "units": 10,
+      "per_print": 136.6912883337147,
+      "save": 0.5367575787504317,
+      "job_total": 1466.9128833371472
+     },
+     {
+      "units": 20,
+      "per_print": 129.4970100003613,
+      "save": 0.5611387588161985,
+      "job_total": 2689.9402000072264
+     },
+     {
+      "units": 40,
+      "per_print": 115.10845333365451,
+      "save": 0.6099011189477319,
+      "job_total": 4704.33813334618
+     },
+     {
+      "units": 60,
+      "per_print": 107.9141750003011,
+      "save": 0.6342822990134986,
+      "job_total": 6574.850500018066
+     },
+     {
+      "units": 80,
+      "per_print": 107.9141750003011,
+      "save": 0.6342822990134986,
+      "job_total": 8733.134000024089
+     },
+     {
+      "units": 120,
+      "per_print": 107.9141750003011,
+      "save": 0.6342822990134986,
+      "job_total": 13049.701000036132
+     }
+    ]
+   }
+  },
+  {
+   "name": "Mounted",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Mounted",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 359.0646066677451,
+    "build_price": 259.0646066677451,
+    "build_price_row": 151.93247666700432,
+    "setup_fee": 100.0,
+    "run_perprint": 259.0646066677451,
+    "run_total": 359.0646066677451,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 31.666666666666668,
+    "presentation_price": 33.59375,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 259.0646066677451,
+      "save": 0.0,
+      "job_total": 359.0646066677451
+     },
+     {
+      "units": 5,
+      "per_print": 151.93247666700432,
+      "save": 0.4135344128198092,
+      "job_total": 859.6623833350216
+     },
+     {
+      "units": 10,
+      "per_print": 144.3358528336541,
+      "save": 0.44285769217881876,
+      "job_total": 1543.358528336541
+     },
+     {
+      "units": 20,
+      "per_print": 136.7392290003039,
+      "save": 0.47218097153782823,
+      "job_total": 2834.784580006078
+     },
+     {
+      "units": 40,
+      "per_print": 121.54598133360346,
+      "save": 0.5308275302558474,
+      "job_total": 4961.839253344138
+     },
+     {
+      "units": 60,
+      "per_print": 113.94935750025324,
+      "save": 0.5601508096148569,
+      "job_total": 6936.961450015195
+     },
+     {
+      "units": 80,
+      "per_print": 113.94935750025324,
+      "save": 0.5601508096148569,
+      "job_total": 9215.94860002026
+     },
+     {
+      "units": 120,
+      "per_print": 113.94935750025324,
+      "save": 0.5601508096148569,
+      "job_total": 13773.92290003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "Back Frame metal",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 435.5403011121896,
+    "build_price": 335.5403011121896,
+    "build_price_row": 228.40817111144878,
+    "setup_fee": 100.0,
+    "run_perprint": 335.5403011121896,
+    "run_total": 435.5403011121896,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 57.29166666666667,
+    "cutting_price": 25.0,
+    "presentation_price": 84.44444444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 335.5403011121896,
+      "save": 0.0,
+      "job_total": 435.5403011121896
+     },
+     {
+      "units": 5,
+      "per_print": 228.40817111144878,
+      "save": 0.319282451752109,
+      "job_total": 1242.040855557244
+     },
+     {
+      "units": 10,
+      "per_print": 216.98776255587634,
+      "save": 0.35331832916450356,
+      "job_total": 2269.8776255587636
+     },
+     {
+      "units": 20,
+      "per_print": 205.5673540003039,
+      "save": 0.3873542065768981,
+      "job_total": 4211.347080006079
+     },
+     {
+      "units": 40,
+      "per_print": 182.72653688915904,
+      "save": 0.45542596140168723,
+      "job_total": 7409.061475566361
+     },
+     {
+      "units": 60,
+      "per_print": 171.30612833358657,
+      "save": 0.4894618388140818,
+      "job_total": 10378.367700015195
+     },
+     {
+      "units": 80,
+      "per_print": 171.30612833358657,
+      "save": 0.4894618388140818,
+      "job_total": 13804.490266686926
+     },
+     {
+      "units": 120,
+      "per_print": 171.30612833358657,
+      "save": 0.4894618388140818,
+      "job_total": 20656.73540003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "Mounted + Back Frame",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Mounted + Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 443.5090511121895,
+    "build_price": 343.5090511121895,
+    "build_price_row": 236.37692111144875,
+    "setup_fee": 100.0,
+    "run_perprint": 343.5090511121895,
+    "run_total": 443.5090511121895,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 31.666666666666668,
+    "presentation_price": 118.03819444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 343.5090511121895,
+      "save": 0.0,
+      "job_total": 443.5090511121895
+     },
+     {
+      "units": 5,
+      "per_print": 236.37692111144875,
+      "save": 0.3118757123105661,
+      "job_total": 1281.8846055572437
+     },
+     {
+      "units": 10,
+      "per_print": 224.55807505587632,
+      "save": 0.34628192669503777,
+      "job_total": 2345.580750558763
+     },
+     {
+      "units": 20,
+      "per_print": 212.73922900030388,
+      "save": 0.38068814107950955,
+      "job_total": 4354.784580006078
+     },
+     {
+      "units": 40,
+      "per_print": 189.101536889159,
+      "save": 0.4495005698484529,
+      "job_total": 7664.06147556636
+     },
+     {
+      "units": 60,
+      "per_print": 177.28269083358657,
+      "save": 0.48390678423292455,
+      "job_total": 10736.961450015195
+     },
+     {
+      "units": 80,
+      "per_print": 177.28269083358657,
+      "save": 0.48390678423292455,
+      "job_total": 14282.615266686926
+     },
+     {
+      "units": 120,
+      "per_print": 177.28269083358657,
+      "save": 0.48390678423292455,
+      "job_total": 21373.92290003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "Stretched gallery bar",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Stretched",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 488.45696666811807,
+    "build_price": 388.45696666811807,
+    "build_price_row": 255.0728416671957,
+    "setup_fee": 100.0,
+    "run_perprint": 388.45696666811807,
+    "run_total": 488.45696666811807,
+    "printing_1off": 226.9836333347847,
+    "media_unit": 47.125,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 107.29166666666669,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 4,
+    "e_maxrows": 1,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 388.45696666811807,
+      "save": 0.0,
+      "job_total": 488.45696666811807
+     },
+     {
+      "units": 4,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 1120.2913666687828
+     },
+     {
+      "units": 4,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 1120.2913666687828
+     },
+     {
+      "units": 8,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 2140.5827333375655
+     },
+     {
+      "units": 16,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 4181.165466675131
+     },
+     {
+      "units": 24,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 6221.7482000126965
+     },
+     {
+      "units": 32,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 8262.330933350262
+     },
+     {
+      "units": 48,
+      "per_print": 255.0728416671957,
+      "save": 0.34336911536170334,
+      "job_total": 12343.496400025393
+     }
+    ]
+   }
+  },
+  {
+   "name": "Stretched deep bar",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Stretched",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Deep 2.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 583.5334000017219,
+    "build_price": 483.5334000017219,
+    "build_price_row": 346.02361111188213,
+    "setup_fee": 100.0,
+    "run_perprint": 483.5334000017219,
+    "run_total": 583.5334000017219,
+    "printing_1off": 269.1850666683885,
+    "media_unit": 65.625,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 141.66666666666669,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 3,
+    "e_maxrows": 1,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 483.5334000017219,
+      "save": 0.0,
+      "job_total": 583.5334000017219
+     },
+     {
+      "units": 3,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 1138.0708333356465
+     },
+     {
+      "units": 3,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 1138.0708333356465
+     },
+     {
+      "units": 6,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 2176.141666671293
+     },
+     {
+      "units": 12,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 4252.283333342586
+     },
+     {
+      "units": 18,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 6328.425000013878
+     },
+     {
+      "units": 24,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 8404.566666685172
+     },
+     {
+      "units": 36,
+      "per_print": 346.02361111188213,
+      "save": 0.28438529559560943,
+      "job_total": 12556.850000027756
+     }
+    ]
+   }
+  },
+  {
+   "name": "Float Frame walnut",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Float Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Walnut 2.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 615.3041900010785,
+    "build_price": 515.3041900010785,
+    "build_price_row": 408.1720600003377,
+    "setup_fee": 100.0,
+    "run_perprint": 515.3041900010785,
+    "run_total": 615.3041900010785,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 314.83333333333337,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 515.3041900010785,
+      "save": 0.0,
+      "job_total": 615.3041900010785
+     },
+     {
+      "units": 5,
+      "per_print": 408.1720600003377,
+      "save": 0.20790075469892177,
+      "job_total": 2140.8603000016883
+     },
+     {
+      "units": 10,
+      "per_print": 387.7634570003208,
+      "save": 0.24750571696397572,
+      "job_total": 3977.634570003208
+     },
+     {
+      "units": 20,
+      "per_print": 367.35485400030393,
+      "save": 0.28711067922902955,
+      "job_total": 7447.097080006079
+     },
+     {
+      "units": 40,
+      "per_print": 326.53764800027017,
+      "save": 0.36632060375913744,
+      "job_total": 13161.505920010806
+     },
+     {
+      "units": 60,
+      "per_print": 306.12904500025326,
+      "save": 0.4059255660241914,
+      "job_total": 18467.742700015195
+     },
+     {
+      "units": 80,
+      "per_print": 306.12904500025326,
+      "save": 0.4059255660241914,
+      "job_total": 24590.32360002026
+     },
+     {
+      "units": 120,
+      "per_print": 306.12904500025326,
+      "save": 0.4059255660241914,
+      "job_total": 36835.48540003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "Holo auto-mount (Back Frame)",
+   "cfg": {
+    "process": "Foil / Holographic",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Brilliance Rainbow Holographic",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Back Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 405.5313005060045,
+    "build_price": 305.5313005060045,
+    "build_price_row": 209.85847383867633,
+    "setup_fee": 100.0,
+    "run_perprint": 305.5313005060045,
+    "run_total": 405.5313005060045,
+    "printing_1off": 146.7091666676207,
+    "media_unit": 8.727272727272727,
+    "cutting_price": 31.666666666666668,
+    "presentation_price": 118.03819444444444,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "Yes",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 305.5313005060045,
+      "save": 0.0,
+      "job_total": 405.5313005060045
+     },
+     {
+      "units": 5,
+      "per_print": 209.85847383867633,
+      "save": 0.31313592587365024,
+      "job_total": 1149.2923691933815
+     },
+     {
+      "units": 10,
+      "per_print": 199.3655501467425,
+      "save": 0.34747912957996785,
+      "job_total": 2093.655501467425
+     },
+     {
+      "units": 20,
+      "per_print": 188.8726264548087,
+      "save": 0.38182233328628523,
+      "job_total": 3877.452529096174
+     },
+     {
+      "units": 40,
+      "per_print": 167.8867790709411,
+      "save": 0.4505087406989201,
+      "job_total": 6815.4711628376435
+     },
+     {
+      "units": 60,
+      "per_print": 157.39385537900725,
+      "save": 0.4848519444052377,
+      "job_total": 9543.631322740435
+     },
+     {
+      "units": 80,
+      "per_print": 157.39385537900725,
+      "save": 0.4848519444052377,
+      "job_total": 12691.50843032058
+     },
+     {
+      "units": 120,
+      "per_print": 157.39385537900725,
+      "save": 0.4848519444052377,
+      "job_total": 18987.26264548087
+     }
+    ]
+   }
+  },
+  {
+   "name": "Holo auto-mount (Float)",
+   "cfg": {
+    "process": "Foil / Holographic",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Brilliance Rainbow Holographic",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Float Frame",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 565.9201893948934,
+    "build_price": 465.92018939489344,
+    "build_price_row": 370.24736272756525,
+    "setup_fee": 100.0,
+    "run_perprint": 465.92018939489344,
+    "run_total": 565.9201893948934,
+    "printing_1off": 146.7091666676207,
+    "media_unit": 8.727272727272727,
+    "cutting_price": 31.666666666666668,
+    "presentation_price": 278.42708333333337,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "Yes",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 465.92018939489344,
+      "save": 0.0,
+      "job_total": 565.9201893948934
+     },
+     {
+      "units": 5,
+      "per_print": 370.24736272756525,
+      "save": 0.20534166332560477,
+      "job_total": 1951.2368136378263
+     },
+     {
+      "units": 10,
+      "per_print": 351.734994591187,
+      "save": 0.24507458015932448,
+      "job_total": 3617.34994591187
+     },
+     {
+      "units": 20,
+      "per_print": 333.22262645480873,
+      "save": 0.2848074969930442,
+      "job_total": 6764.452529096175
+     },
+     {
+      "units": 40,
+      "per_print": 296.1978901820522,
+      "save": 0.36427333066048373,
+      "job_total": 11947.915607282088
+     },
+     {
+      "units": 60,
+      "per_print": 277.6855220456739,
+      "save": 0.40400624749420355,
+      "job_total": 16761.131322740435
+     },
+     {
+      "units": 80,
+      "per_print": 277.6855220456739,
+      "save": 0.40400624749420355,
+      "job_total": 22314.841763653912
+     },
+     {
+      "units": 120,
+      "per_print": 277.6855220456739,
+      "save": 0.40400624749420355,
+      "job_total": 33422.26264548087
+     }
+    ]
+   }
+  },
+  {
+   "name": "Circle 40",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Circle",
+    "W": 40,
+    "L": 40,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Impasto",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 846.113455319934,
+    "build_price": 746.113455319934,
+    "build_price_row": 452.0755619845675,
+    "setup_fee": 100.0,
+    "run_perprint": 746.113455319934,
+    "run_total": 846.113455319934,
+    "printing_1off": 685.6275900041212,
+    "media_unit": 52.35987755982989,
+    "cutting_price": 7.735987755982988,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 432.5292000025117,
+    "brush_1off": 0.0,
+    "e_N": 3,
+    "e_maxrows": 1,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 746.113455319934,
+      "save": 0.0,
+      "job_total": 846.113455319934
+     },
+     {
+      "units": 3,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 1456.2266859537026
+     },
+     {
+      "units": 3,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 1456.2266859537026
+     },
+     {
+      "units": 6,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 2812.453371907405
+     },
+     {
+      "units": 12,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 5524.90674381481
+     },
+     {
+      "units": 18,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 8237.360115722215
+     },
+     {
+      "units": 24,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 10949.81348762962
+     },
+     {
+      "units": 36,
+      "per_print": 452.0755619845675,
+      "save": 0.3940927364850736,
+      "job_total": 16374.720231444431
+     }
+    ]
+   }
+  },
+  {
+   "name": "Square 20",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Square",
+    "W": 20,
+    "L": 20,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 248.61889000079907,
+    "build_price": 148.61889000079907,
+    "build_price_row": 71.72466000026736,
+    "setup_fee": 100.0,
+    "run_perprint": 148.61889000079907,
+    "run_total": 248.61889000079907,
+    "printing_1off": 125.72889000079908,
+    "media_unit": 16.666666666666664,
+    "cutting_price": 5.833333333333332,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 3,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 148.61889000079907,
+      "save": 0.0,
+      "job_total": 248.61889000079907
+     },
+     {
+      "units": 5,
+      "per_print": 71.72466000026736,
+      "save": 0.5173920354277863,
+      "job_total": 458.6233000013368
+     },
+     {
+      "units": 15,
+      "per_print": 68.138427000254,
+      "save": 0.541522433656397,
+      "job_total": 1122.0764050038101
+     },
+     {
+      "units": 30,
+      "per_print": 64.55219400024063,
+      "save": 0.5656528318850076,
+      "job_total": 2036.565820007219
+     },
+     {
+      "units": 60,
+      "per_print": 57.379728000213895,
+      "save": 0.6139136283422291,
+      "job_total": 3542.783680012834
+     },
+     {
+      "units": 90,
+      "per_print": 53.79349500020052,
+      "save": 0.6380440265708397,
+      "job_total": 4941.414550018047
+     },
+     {
+      "units": 120,
+      "per_print": 53.79349500020052,
+      "save": 0.6380440265708397,
+      "job_total": 6555.219400024062
+     },
+     {
+      "units": 180,
+      "per_print": 53.79349500020052,
+      "save": 0.6380440265708397,
+      "job_total": 9782.829100036093
+     }
+    ]
+   }
+  },
+  {
+   "name": "Borders 1/2/1/1",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 1,
+    "bord_b": 2,
+    "bord_l": 1,
+    "bord_r": 1,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 465.2845233353492,
+    "build_price": 365.2845233353492,
+    "build_price_row": 171.56204333400967,
+    "setup_fee": 100.0,
+    "run_perprint": 365.2845233353492,
+    "run_total": 465.2845233353492,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 30.25,
+    "cutting_price": 7.083333333333332,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 365.2845233353492,
+      "save": 0.0,
+      "job_total": 465.2845233353492
+     },
+     {
+      "units": 5,
+      "per_print": 171.56204333400967,
+      "save": 0.5303331174080232,
+      "job_total": 957.8102166700484
+     },
+     {
+      "units": 10,
+      "per_print": 162.98394116730918,
+      "save": 0.553816461537622,
+      "job_total": 1729.839411673092
+     },
+     {
+      "units": 20,
+      "per_print": 154.40583900060872,
+      "save": 0.5772998056672208,
+      "job_total": 3188.1167800121743
+     },
+     {
+      "units": 40,
+      "per_print": 137.24963466720774,
+      "save": 0.6242664939264185,
+      "job_total": 5589.9853866883095
+     },
+     {
+      "units": 60,
+      "per_print": 128.67153250050725,
+      "save": 0.6477498380560174,
+      "job_total": 7820.291950030435
+     },
+     {
+      "units": 80,
+      "per_print": 128.67153250050725,
+      "save": 0.6477498380560174,
+      "job_total": 10393.72260004058
+     },
+     {
+      "units": 120,
+      "per_print": 128.67153250050725,
+      "save": 0.6477498380560174,
+      "job_total": 15540.58390006087
+     }
+    ]
+   }
+  },
+  {
+   "name": "Small 6x6 (min order)",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 6,
+    "L": 6,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 158.72265666701435,
+    "build_price": 58.72265666701436,
+    "build_price_row": 16.46092229172213,
+    "setup_fee": 100.0,
+    "run_perprint": 58.72265666701436,
+    "run_total": 158.72265666701435,
+    "printing_1off": 53.33265666701436,
+    "media_unit": 1.5,
+    "cutting_price": 3.5,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 16,
+    "e_maxrows": 10,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 58.72265666701436,
+      "save": 0.0,
+      "job_total": 158.72265666701435
+     },
+     {
+      "units": 16,
+      "per_print": 16.46092229172213,
+      "save": 0.7196836242429654,
+      "job_total": 363.3747566675541
+     },
+     {
+      "units": 160,
+      "per_print": 15.637876177136024,
+      "save": 0.7336994430308171,
+      "job_total": 2602.060188341764
+     },
+     {
+      "units": 320,
+      "per_print": 14.814830062549918,
+      "save": 0.7477152618186689,
+      "job_total": 4840.745620015974
+     },
+     {
+      "units": 640,
+      "per_print": 13.168737833377705,
+      "save": 0.7757468993943724,
+      "job_total": 8527.992213361731
+     },
+     {
+      "units": 960,
+      "per_print": 12.345691718791599,
+      "save": 0.789762718182224,
+      "job_total": 11951.864050039934
+     },
+     {
+      "units": 1280,
+      "per_print": 12.345691718791599,
+      "save": 0.789762718182224,
+      "job_total": 15902.485400053247
+     },
+     {
+      "units": 1920,
+      "per_print": 12.345691718791599,
+      "save": 0.789762718182224,
+      "job_total": 23803.72810007987
+     }
+    ]
+   }
+  },
+  {
+   "name": "Large 60x90",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 60,
+    "L": 90,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Breathing Color Satin Canvas",
+    "preset": "Light",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 1949.5120000101485,
+    "build_price": 1849.5120000101485,
+    "build_price_row": 1342.0761666733065,
+    "setup_fee": 100.0,
+    "run_perprint": 1849.5120000101485,
+    "run_total": 1949.5120000101485,
+    "printing_1off": 1646.4750000101485,
+    "media_unit": 187.647,
+    "cutting_price": 15.0,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 1016.107500006048,
+    "brush_1off": 0.0,
+    "e_N": 2,
+    "e_maxrows": 0,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 1949.5120000101485
+     },
+     {
+      "units": 2,
+      "per_print": 1342.0761666733065,
+      "save": 0.2743620118896539,
+      "job_total": 2784.152333346613
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     },
+     {
+      "units": 0,
+      "per_print": 1849.5120000101485,
+      "save": 0.0,
+      "job_total": 100.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "Tiny 4x4 metal",
+   "cfg": {
+    "process": "Metal Print",
+    "shape": "Rectangle",
+    "W": 4,
+    "L": 4,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "DIBOND",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 150,
+    "build_price": 38.72777777789413,
+    "build_price_row": 24.947577777798845,
+    "setup_fee": 100.0,
+    "run_perprint": 38.72777777789413,
+    "run_total": 150,
+    "printing_1off": 17.060000000116354,
+    "media_unit": 1.5277777777777777,
+    "cutting_price": 19.75,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 21,
+    "e_maxrows": 13,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 38.72777777789413,
+      "save": 0.0,
+      "job_total": 138.72777777789412
+     },
+     {
+      "units": 21,
+      "per_print": 24.947577777798845,
+      "save": 0.3558221202136995,
+      "job_total": 623.8991333337757
+     },
+     {
+      "units": 273,
+      "per_print": 23.7001988889089,
+      "save": 0.38803101420301467,
+      "job_total": 6570.15429667213
+     },
+     {
+      "units": 546,
+      "per_print": 22.45282000001896,
+      "save": 0.4202399081923296,
+      "job_total": 12359.239720010351
+     },
+     {
+      "units": 1092,
+      "per_print": 19.95806222223908,
+      "save": 0.48465769617095955,
+      "job_total": 21894.203946685073
+     },
+     {
+      "units": 1638,
+      "per_print": 18.710683333349134,
+      "save": 0.5168665901602747,
+      "job_total": 30748.099300025882
+     },
+     {
+      "units": 2184,
+      "per_print": 18.710683333349134,
+      "save": 0.5168665901602747,
+      "job_total": 40964.13240003451
+     },
+     {
+      "units": 3276,
+      "per_print": 18.710683333349134,
+      "save": 0.5168665901602747,
+      "job_total": 61396.198600051765
+     }
+    ]
+   }
+  },
+  {
+   "name": "Custom Box",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "Custom Box",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 495.0854492612752,
+    "build_price": 395.0854492612752,
+    "build_price_row": 201.3629692599356,
+    "setup_fee": 100.0,
+    "run_perprint": 395.0854492612752,
+    "run_total": 495.0854492612752,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 35.467592592592595,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 395.0854492612752,
+      "save": 0.0,
+      "job_total": 495.0854492612752
+     },
+     {
+      "units": 5,
+      "per_print": 201.3629692599356,
+      "save": 0.4903305863669719,
+      "job_total": 1106.814846299678
+     },
+     {
+      "units": 10,
+      "per_print": 191.2948207969388,
+      "save": 0.5158140570486234,
+      "job_total": 2012.948207969388
+     },
+     {
+      "units": 20,
+      "per_print": 181.22667233394205,
+      "save": 0.5412975277302747,
+      "job_total": 3724.533446678841
+     },
+     {
+      "units": 40,
+      "per_print": 161.0903754079485,
+      "save": 0.5922644690935774,
+      "job_total": 6543.61501631794
+     },
+     {
+      "units": 60,
+      "per_print": 151.02222694495168,
+      "save": 0.617747939775229,
+      "job_total": 9161.3336166971
+     },
+     {
+      "units": 80,
+      "per_print": 151.02222694495168,
+      "save": 0.617747939775229,
+      "job_total": 12181.778155596134
+     },
+     {
+      "units": 120,
+      "per_print": 151.02222694495168,
+      "save": 0.617747939775229,
+      "job_total": 18222.6672333942
+     }
+    ]
+   }
+  },
+  {
+   "name": "Flat Pack",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "Flat Pack",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 486.5074862983122,
+    "build_price": 386.5074862983122,
+    "build_price_row": 192.78500629697263,
+    "setup_fee": 100.0,
+    "run_perprint": 386.5074862983122,
+    "run_total": 486.5074862983122,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 26.88962962962963,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 386.5074862983122,
+      "save": 0.0,
+      "job_total": 486.5074862983122
+     },
+     {
+      "units": 5,
+      "per_print": 192.78500629697263,
+      "save": 0.5012127497365515,
+      "job_total": 1063.9250314848632
+     },
+     {
+      "units": 10,
+      "per_print": 183.14575598212397,
+      "save": 0.526152112249724,
+      "job_total": 1931.4575598212398
+     },
+     {
+      "units": 20,
+      "per_print": 173.50650566727538,
+      "save": 0.5510914747628963,
+      "job_total": 3570.1301133455077
+     },
+     {
+      "units": 40,
+      "per_print": 154.2280050375781,
+      "save": 0.6009701997892412,
+      "job_total": 6269.120201503124
+     },
+     {
+      "units": 60,
+      "per_print": 144.58875472272948,
+      "save": 0.6259095623024136,
+      "job_total": 8775.325283363769
+     },
+     {
+      "units": 80,
+      "per_print": 144.58875472272948,
+      "save": 0.6259095623024136,
+      "job_total": 11667.100377818359
+     },
+     {
+      "units": 120,
+      "per_print": 144.58875472272948,
+      "save": 0.6259095623024136,
+      "job_total": 17450.650566727538
+     }
+    ]
+   }
+  },
+  {
+   "name": "Fulfill Pick up at studio",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Pick up at studio",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 302.03085666774507,
+    "build_price": 202.0308566677451,
+    "build_price_row": 94.89872666700433,
+    "setup_fee": 100.0,
+    "run_perprint": 202.0308566677451,
+    "run_total": 302.03085666774507,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 1.9500000000000002,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 202.0308566677451,
+      "save": 0.0,
+      "job_total": 302.03085666774507
+     },
+     {
+      "units": 5,
+      "per_print": 94.89872666700433,
+      "save": 0.5302760764754247,
+      "job_total": 574.4936333350216
+     },
+     {
+      "units": 10,
+      "per_print": 90.1537903336541,
+      "save": 0.5537622726516536,
+      "job_total": 1001.537903336541
+     },
+     {
+      "units": 20,
+      "per_print": 85.40885400030389,
+      "save": 0.5772484688278823,
+      "job_total": 1808.1770800060779
+     },
+     {
+      "units": 40,
+      "per_print": 75.91898133360347,
+      "save": 0.6242208611803397,
+      "job_total": 3136.759253344139
+     },
+     {
+      "units": 60,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 4370.4427000151945
+     },
+     {
+      "units": 80,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 5793.92360002026
+     },
+     {
+      "units": 120,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 8640.885400030389
+     }
+    ]
+   }
+  },
+  {
+   "name": "Fulfill Drop ship to buyers",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Drop ship to buyers",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 302.03085666774507,
+    "build_price": 202.0308566677451,
+    "build_price_row": 94.89872666700433,
+    "setup_fee": 100.0,
+    "run_perprint": 202.0308566677451,
+    "run_total": 302.03085666774507,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 1.9500000000000002,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 202.0308566677451,
+      "save": 0.0,
+      "job_total": 302.03085666774507
+     },
+     {
+      "units": 5,
+      "per_print": 94.89872666700433,
+      "save": 0.5302760764754247,
+      "job_total": 574.4936333350216
+     },
+     {
+      "units": 10,
+      "per_print": 90.1537903336541,
+      "save": 0.5537622726516536,
+      "job_total": 1001.537903336541
+     },
+     {
+      "units": 20,
+      "per_print": 85.40885400030389,
+      "save": 0.5772484688278823,
+      "job_total": 1808.1770800060779
+     },
+     {
+      "units": 40,
+      "per_print": 75.91898133360347,
+      "save": 0.6242208611803397,
+      "job_total": 3136.759253344139
+     },
+     {
+      "units": 60,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 4370.4427000151945
+     },
+     {
+      "units": 80,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 5793.92360002026
+     },
+     {
+      "units": 120,
+      "per_print": 71.17404500025324,
+      "save": 0.6477070573565685,
+      "job_total": 8640.885400030389
+     }
+    ]
+   }
+  },
+  {
+   "name": "Fulfill Artist sign & return",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Artist sign & return",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 303.20085666774514,
+    "build_price": 203.20085666774511,
+    "build_price_row": 96.06872666700433,
+    "setup_fee": 100.0,
+    "run_perprint": 203.20085666774511,
+    "run_total": 303.20085666774514,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 3.12,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 203.20085666774511,
+      "save": 0.0,
+      "job_total": 303.20085666774514
+     },
+     {
+      "units": 5,
+      "per_print": 96.06872666700433,
+      "save": 0.5272228265056635,
+      "job_total": 580.3436333350217
+     },
+     {
+      "units": 10,
+      "per_print": 91.26529033365411,
+      "save": 0.5508616851803804,
+      "job_total": 1012.652903336541
+     },
+     {
+      "units": 20,
+      "per_print": 86.4618540003039,
+      "save": 0.5745005438550972,
+      "job_total": 1829.237080006078
+     },
+     {
+      "units": 40,
+      "per_print": 76.85498133360346,
+      "save": 0.6217782612045308,
+      "job_total": 3174.1992533441385
+     },
+     {
+      "units": 60,
+      "per_print": 72.05154500025324,
+      "save": 0.6454171198792477,
+      "job_total": 4423.092700015194
+     },
+     {
+      "units": 80,
+      "per_print": 72.05154500025324,
+      "save": 0.6454171198792477,
+      "job_total": 5864.123600020259
+     },
+     {
+      "units": 120,
+      "per_print": 72.05154500025324,
+      "save": 0.6454171198792477,
+      "job_total": 8746.185400030388
+     }
+    ]
+   }
+  },
+  {
+   "name": "Add-on goods",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "Yes",
+    "gold": "Yes",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 300.4708566677451,
+    "build_price": 200.4708566677451,
+    "build_price_row": 93.33872666700432,
+    "setup_fee": 100.0,
+    "run_perprint": 200.4708566677451,
+    "run_total": 300.4708566677451,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 200.4708566677451,
+      "save": 0.0,
+      "job_total": 300.4708566677451
+     },
+     {
+      "units": 5,
+      "per_print": 93.33872666700432,
+      "save": 0.5344025150663103,
+      "job_total": 566.6936333350216
+     },
+     {
+      "units": 10,
+      "per_print": 88.6717903336541,
+      "save": 0.5576823893129947,
+      "job_total": 986.717903336541
+     },
+     {
+      "units": 20,
+      "per_print": 84.0048540003039,
+      "save": 0.5809622635596792,
+      "job_total": 1780.097080006078
+     },
+     {
+      "units": 40,
+      "per_print": 74.67098133360346,
+      "save": 0.6275220120530483,
+      "job_total": 3086.8392533441383
+     },
+     {
+      "units": 60,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 4300.242700015195
+     },
+     {
+      "units": 80,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 5700.32360002026
+     },
+     {
+      "units": 120,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 8500.48540003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "All services",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Flat",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "Yes",
+    "video": "Yes",
+    "copy": "Yes",
+    "arvr": "Yes",
+    "twin": "Yes",
+    "mktg": "Yes",
+    "rush": "No",
+    "run_size": 1
+   },
+   "expect": {
+    "grand_total_1pc": 1627.970856667745,
+    "build_price": 200.4708566677451,
+    "build_price_row": 93.33872666700432,
+    "setup_fee": 100.0,
+    "run_perprint": 200.4708566677451,
+    "run_total": 1627.970856667745,
+    "printing_1off": 168.41419000107845,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 1327.5,
+    "tex_1off": 0.0,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 200.4708566677451,
+      "save": 0.0,
+      "job_total": 1627.970856667745
+     },
+     {
+      "units": 5,
+      "per_print": 93.33872666700432,
+      "save": 0.5344025150663103,
+      "job_total": 1894.1936333350216
+     },
+     {
+      "units": 10,
+      "per_print": 88.6717903336541,
+      "save": 0.5576823893129947,
+      "job_total": 2314.217903336541
+     },
+     {
+      "units": 20,
+      "per_print": 84.0048540003039,
+      "save": 0.5809622635596792,
+      "job_total": 3107.5970800060777
+     },
+     {
+      "units": 40,
+      "per_print": 74.67098133360346,
+      "save": 0.6275220120530483,
+      "job_total": 4414.339253344138
+     },
+     {
+      "units": 60,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 5627.742700015195
+     },
+     {
+      "units": 80,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 7027.82360002026
+     },
+     {
+      "units": 120,
+      "per_print": 70.00404500025324,
+      "save": 0.6508018862997327,
+      "job_total": 9827.98540003039
+     }
+    ]
+   }
+  },
+  {
+   "name": "Rush run 25",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "Yes",
+    "run_size": 25
+   },
+   "expect": {
+    "grand_total_1pc": 919.2357133373652,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 141.01107016724154,
+    "run_total": 7250.553508362077,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Run 5",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 5
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 165.895376667343,
+    "run_total": 929.476883336715,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Run 10",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 10
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 157.60060783397583,
+    "run_total": 1676.0060783397582,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Run 25",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 25
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 141.01107016724154,
+    "run_total": 3625.2767541810385,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Run 60",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 60
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 124.42153250050724,
+    "run_total": 7565.291950030434,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Run 150",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 20,
+    "L": 30,
+    "bord_t": 0,
+    "bord_b": 0,
+    "bord_l": 0,
+    "bord_r": 0,
+    "media": "Aurora Linen Canvas",
+    "preset": "Medium",
+    "tex_mm": 0,
+    "brush": "No",
+    "varnish": "Matte",
+    "present": "Media only",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Bulk to artist",
+    "pack": "No package",
+    "nfc": "No",
+    "gold": "No",
+    "photo": "No",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "No",
+    "rush": "No",
+    "run_size": 150
+   },
+   "expect": {
+    "grand_total_1pc": 459.6178566686826,
+    "build_price": 359.6178566686826,
+    "build_price_row": 165.895376667343,
+    "setup_fee": 100.0,
+    "run_perprint": 124.42153250050724,
+    "run_total": 18763.229875076086,
+    "printing_1off": 327.5611900020159,
+    "media_unit": 25.0,
+    "cutting_price": 6.666666666666668,
+    "presentation_price": 0,
+    "package_price": 0,
+    "fulfill_price": 0.39,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 0.0,
+    "tex_1off": 159.14700000093742,
+    "brush_1off": 0.0,
+    "e_N": 5,
+    "e_maxrows": 2,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 359.6178566686826,
+      "save": 0.0,
+      "job_total": 459.6178566686826
+     },
+     {
+      "units": 5,
+      "per_print": 165.895376667343,
+      "save": 0.5386898242370008,
+      "job_total": 929.476883336715
+     },
+     {
+      "units": 10,
+      "per_print": 157.60060783397583,
+      "save": 0.5617553330251508,
+      "job_total": 1676.0060783397582
+     },
+     {
+      "units": 20,
+      "per_print": 149.3058390006087,
+      "save": 0.5848208418133007,
+      "job_total": 3086.116780012174
+     },
+     {
+      "units": 40,
+      "per_print": 132.71630133387438,
+      "save": 0.6309518593896006,
+      "job_total": 5408.652053354976
+     },
+     {
+      "units": 60,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 7565.291950030434
+     },
+     {
+      "units": 80,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 10053.722600040579
+     },
+     {
+      "units": 120,
+      "per_print": 124.42153250050724,
+      "save": 0.6540173681777506,
+      "job_total": 15030.583900060868
+     }
+    ]
+   }
+  },
+  {
+   "name": "Kitchen sink",
+   "cfg": {
+    "process": "Textured Reproductions",
+    "shape": "Rectangle",
+    "W": 30,
+    "L": 40,
+    "bord_t": 1,
+    "bord_b": 1,
+    "bord_l": 1,
+    "bord_r": 1,
+    "media": "Aurora Metallic Canvas",
+    "preset": "Heavy Impasto",
+    "tex_mm": 0,
+    "brush": "Yes",
+    "varnish": "Matte",
+    "present": "Stretched",
+    "mountpanel": "MaxMetal ACM Panel",
+    "bartype": "Stretcher Bar Gallery 1.5in",
+    "edge": "Mirror",
+    "moulding": "Floater Black 1.5in",
+    "fulfill": "Drop ship to buyers",
+    "pack": "Custom Box",
+    "nfc": "Yes",
+    "gold": "Yes",
+    "photo": "Yes",
+    "video": "No",
+    "copy": "No",
+    "arvr": "No",
+    "twin": "No",
+    "mktg": "Yes",
+    "rush": "Yes",
+    "run_size": 40
+   },
+   "expect": {
+    "grand_total_1pc": 4921.772386910323,
+    "build_price": 1719.6361934551617,
+    "build_price_row": 1173.8731045624986,
+    "setup_fee": 100.0,
+    "run_perprint": 1173.8731045624986,
+    "run_total": 95392.3483649999,
+    "printing_1off": 1310.9984833412013,
+    "media_unit": 181.24233974358975,
+    "cutting_price": 8.666666666666668,
+    "presentation_price": 155.79166666666669,
+    "package_price": 60.98703703703703,
+    "fulfill_price": 1.9500000000000002,
+    "addons_pp_price": 0.0,
+    "addons_once_price": 641.25,
+    "tex_1off": 892.5619500052214,
+    "brush_1off": 116.21546666737709,
+    "e_N": 3,
+    "e_maxrows": 1,
+    "mount_added": "No",
+    "volume": [
+     {
+      "units": 1,
+      "per_print": 1719.6361934551617,
+      "save": 0.0,
+      "job_total": 2460.8861934551614
+     },
+     {
+      "units": 3,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 4262.869313687495
+     },
+     {
+      "units": 3,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 4262.869313687495
+     },
+     {
+      "units": 6,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 7784.488627374992
+     },
+     {
+      "units": 12,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 14827.727254749983
+     },
+     {
+      "units": 18,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 21870.965882124976
+     },
+     {
+      "units": 24,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 28914.204509499967
+     },
+     {
+      "units": 36,
+      "per_print": 1173.8731045624986,
+      "save": 0.31737125036668024,
+      "job_total": 43000.68176424995
+     }
+    ]
+   }
+  }
+ ]
+}
