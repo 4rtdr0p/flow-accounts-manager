@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 // newTestConfig returns a config with Mongo settings populated.
 func newTestConfig(uri string) *configs.Config {
 	return &configs.Config{
-		MongoURI:                            uri,
-		MongoDatabase:                       "payload",
+		MongoURI:                             uri,
+		MongoDatabase:                        "payload",
 		MongoPricingConfigurationsCollection: "pricing-configurations",
-		MongoConnectTimeout:                 2 * time.Second,
+		MongoConnectTimeout:                  2 * time.Second,
 	}
 }
 
@@ -100,13 +101,14 @@ func TestPricingStoreTestQuery(t *testing.T) {
 func TestPricingStoreGetActive(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
-	mt.Run("returns active config", func(mt *mtest.T) {
+	mt.Run("returns active config with full data", func(mt *mtest.T) {
 		doc := bson.D{
 			{Key: "_id", Value: "cfg-1"},
 			{Key: "domain", Value: "studio-printing"},
 			{Key: "status", Value: "active"},
 			{Key: "effectiveFrom", Value: time.Now().Add(-time.Hour)},
 			{Key: "updatedAt", Value: time.Now()},
+			{Key: "paper_price", Value: 1.25},
 		}
 		mt.AddMockResponses(mtest.CreateCursorResponse(1, "payload.pricing-configurations", mtest.FirstBatch, doc))
 
@@ -127,13 +129,18 @@ func TestPricingStoreGetActive(t *testing.T) {
 		if got.Domain != "studio-printing" {
 			mt.Fatalf("expected domain studio-printing, got %s", got.Domain)
 		}
+		if got.Data == nil {
+			mt.Fatal("expected Data to hold the full document, got nil")
+		}
+		if price, ok := got.Data["paper_price"].(float64); !ok || price != 1.25 {
+			mt.Fatalf("expected paper_price 1.25 in Data, got %#v", got.Data["paper_price"])
+		}
 	})
 
 	mt.Run("returns error when no active config", func(mt *mtest.T) {
-		mt.AddMockResponses(mtest.CreateCommandErrorResponse(mtest.CommandError{
-			Code:    66,
-			Message: "no documents in result",
-		}))
+		// A real server signals a no-match FindOne with an empty cursor, which
+		// the driver translates to mongo.ErrNoDocuments.
+		mt.AddMockResponses(mtest.CreateCursorResponse(0, "payload.pricing-configurations", mtest.FirstBatch))
 
 		client := &Client{
 			client: mt.Client,
@@ -142,8 +149,8 @@ func TestPricingStoreGetActive(t *testing.T) {
 		cfg := newTestConfig("mongodb://mock")
 		s := NewPricingStore(client, cfg)
 
-		if _, err := s.GetActive(context.Background()); err == nil {
-			mt.Fatal("expected error when no active config, got nil")
+		if _, err := s.GetActive(context.Background()); !errors.Is(err, ErrNoActivePricing) {
+			mt.Fatalf("expected ErrNoActivePricing, got %v", err)
 		}
 	})
 }

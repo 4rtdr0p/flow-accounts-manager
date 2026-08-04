@@ -2,21 +2,32 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// PricingConfiguration is the minimal read-only shape of a document in the
-// pricing-configurations collection. Only the fields needed for the test query
-// and for the downstream pricing issues are mapped; unknown fields are ignored.
+// ErrNoActivePricing is returned when no row in pricing-configurations matches
+// the active Studio printing filter (domain studio-printing, status active,
+// effectiveFrom <= now).
+var ErrNoActivePricing = errors.New("no active pricing configuration")
+
+// PricingConfiguration is the read-only shape of a document in the
+// pricing-configurations collection. The metadata fields used by the active-row
+// filter are typed; Data carries the remaining fields (rates, tiers, addons,
+// ...) of the document so pricing endpoints can return the full configuration.
 type PricingConfiguration struct {
-	Domain        string    `bson:"domain"`
-	Status        string    `bson:"status"`
-	EffectiveFrom time.Time `bson:"effectiveFrom"`
-	UpdatedAt     time.Time `bson:"updatedAt"`
+	Domain        string    `bson:"domain" json:"domain"`
+	Status        string    `bson:"status" json:"status"`
+	EffectiveFrom time.Time `bson:"effectiveFrom" json:"effectiveFrom"`
+	UpdatedAt     time.Time `bson:"updatedAt" json:"updatedAt"`
+	// Data holds the pricing fields of the document beyond the typed metadata
+	// above. It is nil when the document carries only the metadata fields.
+	Data map[string]any `bson:"-" json:"data,omitempty"`
 }
 
 // PricingStore provides read-only access to pricing data in Mongo.
@@ -71,10 +82,33 @@ func (s *PricingStore) GetActive(ctx context.Context) (*PricingConfiguration, er
 		"effectiveFrom": bson.M{"$lte": time.Now()},
 	}
 
-	var cfg PricingConfiguration
-	err := s.client.Collection(s.coll).FindOne(ctx, filter).Decode(&cfg)
+	// Decode the raw document first so both the typed metadata fields and the
+	// full document (Data) can be populated from a single query.
+	var raw bson.Raw
+	err := s.client.Collection(s.coll).FindOne(ctx, filter).Decode(&raw)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNoActivePricing
+		}
 		return nil, fmt.Errorf("find active pricing-configuration: %w", err)
 	}
+
+	var cfg PricingConfiguration
+	if err := bson.Unmarshal(raw, &cfg); err != nil {
+		return nil, fmt.Errorf("decode active pricing-configuration: %w", err)
+	}
+
+	// Preserve the full document so pricing endpoints can return the complete
+	// active configuration. The metadata keys are already typed on the struct
+	// and are removed from Data to avoid duplication.
+	var full bson.M
+	if err := bson.Unmarshal(raw, &full); err != nil {
+		return nil, fmt.Errorf("decode active pricing-configuration data: %w", err)
+	}
+	for _, key := range []string{"_id", "domain", "status", "effectiveFrom", "updatedAt"} {
+		delete(full, key)
+	}
+	cfg.Data = full
+
 	return &cfg, nil
 }
