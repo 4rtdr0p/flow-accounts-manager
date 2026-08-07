@@ -1512,6 +1512,76 @@ paths:
             text/plain:
               schema:
                 type: string
+  /stock-requests:create:
+    post:
+      summary: Create a studio stock request and record the production charge.
+      description: Creates a studio stock request. Idempotent per Stripe payment intent; a duplicate payment intent returns 409 and does not create a duplicate audit record.
+      operationId: createStockRequest
+      x-required-scopes:
+        - studio.charge.create
+      tags:
+        - Studio
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                quoteId:
+                  type: string
+                amountCents:
+                  type: integer
+                currency:
+                  type: string
+                stripePaymentIntentId:
+                  type: string
+                pricingHash:
+                  type: string
+                engineVersion:
+                  type: string
+                metadata:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Bad Request
+        '409':
+          description: Conflict - charge already recorded for this payment intent
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
+  /studio/charges:
+    get:
+      summary: List studio production charges for a user.
+      description: Returns the audit records of studio production charges for the given user, most recent first.
+      operationId: listStudioCharges
+      x-required-scopes:
+        - studio.charge.read
+      tags:
+        - Studio
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '400':
+          description: Bad Request
 
 components:
   securitySchemes:

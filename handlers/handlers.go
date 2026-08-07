@@ -26,6 +26,7 @@ func NewAuthRule(method string, pathTemplate string, requiredScope string) AuthR
 
 var EmptyBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("empty body")}
 var InvalidBodyError = &errors.RequestError{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("invalid body")}
+var errMissingUserID = fmt.Errorf("missing userId query parameter")
 
 func UseCors(h http.Handler) http.Handler {
 	return gorilla.CORS(
