@@ -41,6 +41,13 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	pricingHandler := pricing.NewHandler(pricingSvc)
 	router.Handle("/studio/pricing/active", pricingHandler.GetActive()).Methods(http.MethodGet)
 
+	// Studio quotes: compute a price snapshot from the active rates (#69) using
+	// the ported engine (#68). Returns the price plus a hash proving which rates
+	// and engine version were used.
+	quoteSvc := pricing.NewQuoteService(pricingSvc)
+	quoteHandler := pricing.NewQuoteHandler(quoteSvc)
+	router.Handle("/studio/quotes:price", quoteHandler.Quote()).Methods(http.MethodPost)
+
 	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)
 	router.Handle("/accounts/{artistAddress}/artdrop/artist-direct/setup", h.SetupArtistDirect()).Methods(http.MethodPost)
