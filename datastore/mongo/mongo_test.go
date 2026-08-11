@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 // newTestConfig returns a config with Mongo settings populated.
 func newTestConfig(uri string) *configs.Config {
 	return &configs.Config{
-		MongoURI:                            uri,
-		MongoDatabase:                       "payload",
+		MongoURI:                             uri,
+		MongoDatabase:                        "payload",
 		MongoPricingConfigurationsCollection: "pricing-configurations",
-		MongoConnectTimeout:                 2 * time.Second,
+		MongoConnectTimeout:                  2 * time.Second,
 	}
 }
 
@@ -100,13 +101,14 @@ func TestPricingStoreTestQuery(t *testing.T) {
 func TestPricingStoreGetActive(t *testing.T) {
 	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
 
-	mt.Run("returns active config", func(mt *mtest.T) {
+	mt.Run("returns active config with full data", func(mt *mtest.T) {
 		doc := bson.D{
 			{Key: "_id", Value: "cfg-1"},
 			{Key: "domain", Value: "studio-printing"},
 			{Key: "status", Value: "active"},
 			{Key: "effectiveFrom", Value: time.Now().Add(-time.Hour)},
 			{Key: "updatedAt", Value: time.Now()},
+			{Key: "paper_price", Value: 1.25},
 		}
 		mt.AddMockResponses(mtest.CreateCursorResponse(1, "payload.pricing-configurations", mtest.FirstBatch, doc))
 
@@ -127,13 +129,19 @@ func TestPricingStoreGetActive(t *testing.T) {
 		if got.Domain != "studio-printing" {
 			mt.Fatalf("expected domain studio-printing, got %s", got.Domain)
 		}
+		if got.Data == nil {
+			mt.Fatal("expected Data to hold the full document, got nil")
+		}
+		if price, ok := got.Data["paper_price"].(float64); !ok || price != 1.25 {
+			mt.Fatalf("expected paper_price 1.25 in Data, got %#v", got.Data["paper_price"])
+		}
+		assertFindSortsByEffectiveFromDesc(mt)
 	})
 
 	mt.Run("returns error when no active config", func(mt *mtest.T) {
-		mt.AddMockResponses(mtest.CreateCommandErrorResponse(mtest.CommandError{
-			Code:    66,
-			Message: "no documents in result",
-		}))
+		// A real server signals a no-match FindOne with an empty cursor, which
+		// the driver translates to mongo.ErrNoDocuments.
+		mt.AddMockResponses(mtest.CreateCursorResponse(0, "payload.pricing-configurations", mtest.FirstBatch))
 
 		client := &Client{
 			client: mt.Client,
@@ -142,8 +150,72 @@ func TestPricingStoreGetActive(t *testing.T) {
 		cfg := newTestConfig("mongodb://mock")
 		s := NewPricingStore(client, cfg)
 
-		if _, err := s.GetActive(context.Background()); err == nil {
-			mt.Fatal("expected error when no active config, got nil")
+		if _, err := s.GetActive(context.Background()); !errors.Is(err, ErrNoActivePricing) {
+			mt.Fatalf("expected ErrNoActivePricing, got %v", err)
 		}
 	})
+}
+
+func TestPricingStoreGetActiveUpdatedAt(t *testing.T) {
+	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+
+	mt.Run("returns updatedAt via projection", func(mt *mtest.T) {
+		// BSON stores dates as millisecond precision, so the expected value is
+		// truncated to survive the mock round-trip.
+		updated := time.Now().UTC().Truncate(time.Millisecond)
+		doc := bson.D{
+			{Key: "updatedAt", Value: updated},
+		}
+		mt.AddMockResponses(mtest.CreateCursorResponse(1, "payload.pricing-configurations", mtest.FirstBatch, doc))
+
+		client := &Client{
+			client: mt.Client,
+			db:     mt.Client.Database("payload"),
+		}
+		cfg := newTestConfig("mongodb://mock")
+		s := NewPricingStore(client, cfg)
+
+		got, err := s.GetActiveUpdatedAt(context.Background())
+		if err != nil {
+			mt.Fatalf("unexpected error: %v", err)
+		}
+		if !got.Equal(updated) {
+			mt.Fatalf("expected updatedAt %v, got %v", updated, got)
+		}
+		assertFindSortsByEffectiveFromDesc(mt)
+	})
+
+	mt.Run("returns ErrNoActivePricing when no active config", func(mt *mtest.T) {
+		mt.AddMockResponses(mtest.CreateCursorResponse(0, "payload.pricing-configurations", mtest.FirstBatch))
+
+		client := &Client{
+			client: mt.Client,
+			db:     mt.Client.Database("payload"),
+		}
+		cfg := newTestConfig("mongodb://mock")
+		s := NewPricingStore(client, cfg)
+
+		if _, err := s.GetActiveUpdatedAt(context.Background()); !errors.Is(err, ErrNoActivePricing) {
+			mt.Fatalf("expected ErrNoActivePricing, got %v", err)
+		}
+	})
+}
+
+func assertFindSortsByEffectiveFromDesc(t *mtest.T) {
+	t.Helper()
+
+	event := t.GetStartedEvent()
+	if event == nil {
+		t.Fatal("expected a Mongo command event")
+	}
+
+	sort, ok := event.Command.Lookup("sort").DocumentOK()
+	if !ok {
+		t.Fatalf("expected find command to include sort, got %s", event.Command)
+	}
+
+	effectiveFrom := sort.Lookup("effectiveFrom")
+	if got := effectiveFrom.Int32(); got != -1 {
+		t.Fatalf("expected sort.effectiveFrom -1, got %d in command %s", got, event.Command)
+	}
 }

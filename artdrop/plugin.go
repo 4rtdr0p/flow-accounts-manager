@@ -2,7 +2,10 @@ package artdrop
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/pricing"
+	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/gorilla/mux"
 )
@@ -25,6 +28,18 @@ func (p *Plugin) Name() string {
 // RegisterRoutes adds the artdrop plugin routes to the API router.
 func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	h := NewHandler(p.svc)
+
+	// Studio pricing: expose the active pricing-configurations row from Mongo
+	// behind an in-memory cache invalidated when the active row's updatedAt
+	// changes. When Mongo is not configured the store is nil and the endpoint
+	// reports studio pricing as disabled (503).
+	var pricingCacheTTL time.Duration
+	if deps.Config != nil {
+		pricingCacheTTL = deps.Config.StudioPricingCacheTTL
+	}
+	pricingSvc := pricing.NewActiveService(datastoremongo.NewPricingStore(deps.Mongo, deps.Config), pricingCacheTTL)
+	pricingHandler := pricing.NewHandler(pricingSvc)
+	router.Handle("/studio/pricing/active", pricingHandler.GetActive()).Methods(http.MethodGet)
 
 	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)

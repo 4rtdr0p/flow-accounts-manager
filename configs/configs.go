@@ -193,6 +193,10 @@ type Config struct {
 	MongoPricingConfigurationsCollection string `env:"MONGO_PRICING_CONFIGURATIONS_COLLECTION" envDefault:"pricing-configurations"`
 	// MongoConnectTimeout is the timeout for establishing the Mongo connection.
 	MongoConnectTimeout time.Duration `env:"MONGO_CONNECT_TIMEOUT" envDefault:"10s"`
+	// StudioPricingCacheTTL is how long the in-memory cache of the active
+	// pricing configuration is served before Mongo is re-checked for an
+	// updatedAt change. A non-positive value falls back to the service default.
+	StudioPricingCacheTTL time.Duration `env:"STUDIO_PRICING_CACHE_TTL" envDefault:"60s"`
 }
 
 // Parse parses environment variables and flags to a valid Config.

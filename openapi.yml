@@ -1028,6 +1028,25 @@ paths:
       responses:
         '200':
           description: OK
+  '/studio/pricing/active':
+    get:
+      summary: Get active studio pricing configuration
+      description: >-
+        Returns the active studio-printing pricing configuration (domain
+        studio-printing, status active, effectiveFrom <= now) served from an
+        in-memory cache invalidated when the active row's updatedAt changes.
+      operationId: getActiveStudioPricing
+      x-required-scopes:
+        - pricing.read
+      tags:
+        - Studio Pricing
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: No active studio pricing configuration
+        '503':
+          description: Studio pricing is disabled (Mongo not configured)
   '/accounts/{address}/artdrop/is-artist':
     get:
       summary: Check if address is an ArtDrop artist
