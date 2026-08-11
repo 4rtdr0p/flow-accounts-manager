@@ -135,6 +135,7 @@ func TestPricingStoreGetActive(t *testing.T) {
 		if price, ok := got.Data["paper_price"].(float64); !ok || price != 1.25 {
 			mt.Fatalf("expected paper_price 1.25 in Data, got %#v", got.Data["paper_price"])
 		}
+		assertFindSortsByEffectiveFromDesc(mt)
 	})
 
 	mt.Run("returns error when no active config", func(mt *mtest.T) {
@@ -181,6 +182,7 @@ func TestPricingStoreGetActiveUpdatedAt(t *testing.T) {
 		if !got.Equal(updated) {
 			mt.Fatalf("expected updatedAt %v, got %v", updated, got)
 		}
+		assertFindSortsByEffectiveFromDesc(mt)
 	})
 
 	mt.Run("returns ErrNoActivePricing when no active config", func(mt *mtest.T) {
@@ -197,4 +199,23 @@ func TestPricingStoreGetActiveUpdatedAt(t *testing.T) {
 			mt.Fatalf("expected ErrNoActivePricing, got %v", err)
 		}
 	})
+}
+
+func assertFindSortsByEffectiveFromDesc(t *mtest.T) {
+	t.Helper()
+
+	event := t.GetStartedEvent()
+	if event == nil {
+		t.Fatal("expected a Mongo command event")
+	}
+
+	sort, ok := event.Command.Lookup("sort").DocumentOK()
+	if !ok {
+		t.Fatalf("expected find command to include sort, got %s", event.Command)
+	}
+
+	effectiveFrom := sort.Lookup("effectiveFrom")
+	if got := effectiveFrom.Int32(); got != -1 {
+		t.Fatalf("expected sort.effectiveFrom -1, got %d in command %s", got, event.Command)
+	}
 }

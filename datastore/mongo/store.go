@@ -86,7 +86,8 @@ func (s *PricingStore) GetActive(ctx context.Context) (*PricingConfiguration, er
 	// Decode the raw document first so both the typed metadata fields and the
 	// full document (Data) can be populated from a single query.
 	var raw bson.Raw
-	err := s.client.Collection(s.coll).FindOne(ctx, filter).Decode(&raw)
+	opts := options.FindOne().SetSort(bson.D{{Key: "effectiveFrom", Value: -1}})
+	err := s.client.Collection(s.coll).FindOne(ctx, filter, opts).Decode(&raw)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrNoActivePricing
@@ -132,7 +133,9 @@ func (s *PricingStore) GetActiveUpdatedAt(ctx context.Context) (time.Time, error
 	var result struct {
 		UpdatedAt time.Time `bson:"updatedAt"`
 	}
-	opts := options.FindOne().SetProjection(bson.M{"updatedAt": 1})
+	opts := options.FindOne().
+		SetProjection(bson.M{"updatedAt": 1}).
+		SetSort(bson.D{{Key: "effectiveFrom", Value: -1}})
 	err := s.client.Collection(s.coll).FindOne(ctx, filter, opts).Decode(&result)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
