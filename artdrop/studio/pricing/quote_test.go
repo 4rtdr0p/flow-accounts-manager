@@ -218,3 +218,47 @@ func TestQuoteServiceRejectsInvalidConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestQuoteServiceFromMapMatchesSpreadsheetGroundTruth exercises the new
+// LoadDataFromMap Mongo->engine bridge end-to-end (not LoadData + DefaultData,
+// which is what pricing_parity_test.go covers). The Config matches the
+// "spreadsheet ground truth" entry in testdata/fixtures.json (Metal Print,
+// 20x30, run_size=10) and asserts GrandTotal1PC == 250.0616296302498 within
+// centTolerance -- the same tolerance used by pricing_parity_test.go.
+// This is the single test that catches subtle map->Data bugs in from_map.go
+// (key swaps, unit-conversion mistakes, ordering bugs) that LoadData() can't
+// catch because the parity suite never goes through LoadDataFromMap.
+func TestQuoteServiceFromMapMatchesSpreadsheetGroundTruth(t *testing.T) {
+	reader := &fakeReader{cfgs: []*datastoremongo.PricingConfiguration{
+		quoteActiveConfig(time.Now(), mongoDataFromVariables(t)),
+	}}
+	active := NewActiveService(reader, time.Minute)
+	svc := NewQuoteService(active)
+
+	cfg := Config{
+		Process:    "Metal Print",
+		Shape:      "Rectangle",
+		W:          20,
+		L:          30,
+		Matcat:     "Canvas",
+		Media:      "Aurora Linen Canvas",
+		Preset:     "Flat",
+		Varnish:    "Matte",
+		Present:    "Media only",
+		MountPanel: "MaxMetal ACM Panel",
+		BarType:    "Stretcher Bar Gallery 1.5in",
+		Edge:       "Mirror",
+		Moulding:   "Floater Black 1.5in",
+		Fulfill:    "Bulk to artist",
+		Pack:       "Flat Pack",
+		Rush:       "No",
+		RunSize:    10,
+	}
+
+	res, err := svc.Quote(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Quote returned error: %v", err)
+	}
+
+	money(t, "grand_total_1pc", res.GrandTotal1PC, 250.0616296302498)
+}
