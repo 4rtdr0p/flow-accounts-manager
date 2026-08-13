@@ -219,3 +219,53 @@ func assertFindSortsByEffectiveFromDesc(t *mtest.T) {
 		t.Fatalf("expected sort.effectiveFrom -1, got %d in command %s", got, event.Command)
 	}
 }
+
+// TestNormalizeBSONDataProducesPlainGoTypes reproduces the type-mismatch bug
+// found live against a real Mongo-backed QuoteService. The mongo driver
+// decodes nested objects as primitive.M (a named type distinct from
+// map[string]interface{} even though the same underlying type), arrays as
+// primitive.A, and integers as int32/int64. The pricing helpers
+// (object/array/num in pricing.go) and normalizeMongoData (in from_map.go,
+// added in PR #79) type-switch on plain Go types only, so a raw primitive.M
+// would have silently degraded to zeros (except for the loud ink.type check
+// in normalizeMongoData). NormalizeBSONData flattens this to genuine plain
+// Go types via a json.Marshal / json.Unmarshal round-trip.
+func TestNormalizeBSONDataProducesPlainGoTypes(t *testing.T) {
+	raw := bson.M{
+		"obj":   bson.M{"markup": int32(2)},
+		"arr":   bson.A{int32(1), int32(2), int32(3)},
+		"plain": int32(42),
+	}
+
+	got, err := NormalizeBSONData(raw)
+	if err != nil {
+		t.Fatalf("NormalizeBSONData: %v", err)
+	}
+
+	// Top-level type must be map[string]any (the named type bson.M becomes the
+	// underlying map type via JSON round-trip).
+	if _, ok := got["obj"].(map[string]any); !ok {
+		t.Fatalf("got[obj] type = %T, want map[string]any", got["obj"])
+	}
+
+	// Nested int32 → float64 (pricing.go's num() helper returns float64).
+	nestedMap, ok := got["obj"].(map[string]any)
+	if !ok {
+		t.Fatalf("got[obj] not map[string]any")
+	}
+	v, ok := nestedMap["markup"].(float64)
+	if !ok || v != 2 {
+		t.Fatalf("got[obj][markup] = %v (%T), want float64 2", nestedMap["markup"], nestedMap["markup"])
+	}
+
+	// primitive.A → []interface{} (NOT primitive.A; pricing.go's array()
+	// helper only matches []interface{}).
+	if _, ok := got["arr"].([]interface{}); !ok {
+		t.Fatalf("got[arr] type = %T, want []interface{}", got["arr"])
+	}
+
+	// Plain int32 → float64 (matching pricing.go's num() float64-only contract).
+	if v, ok := got["plain"].(float64); !ok || v != 42 {
+		t.Fatalf("got[plain] = %v (%T), want float64 42", got["plain"], got["plain"])
+	}
+}
