@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -39,12 +40,38 @@ func NewQuoteService(active *ActiveService) *QuoteService {
 	return &QuoteService{active: active}
 }
 
+// ErrInvalidQuoteConfig is returned by QuoteService.Quote when the supplied
+// Studio config fails validation (negative or zero dimensions, non-positive
+// run_size, or negative borders). QuoteHandler maps this to HTTP 400.
+var ErrInvalidQuoteConfig = errors.New("invalid quote config")
+
+func validateQuoteConfig(cfg Config) error {
+	if cfg.RunSize <= 0 {
+		return fmt.Errorf("%w: run_size must be > 0 (got %d)", ErrInvalidQuoteConfig, cfg.RunSize)
+	}
+	if cfg.W <= 0 {
+		return fmt.Errorf("%w: W must be > 0 (got %g)", ErrInvalidQuoteConfig, cfg.W)
+	}
+	if cfg.L <= 0 {
+		return fmt.Errorf("%w: L must be > 0 (got %g)", ErrInvalidQuoteConfig, cfg.L)
+	}
+	if cfg.BordT < 0 || cfg.BordB < 0 || cfg.BordL < 0 || cfg.BordR < 0 {
+		return fmt.Errorf("%w: borders must be >= 0 (got bord_t=%g bord_b=%g bord_l=%g bord_r=%g)",
+			ErrInvalidQuoteConfig, cfg.BordT, cfg.BordB, cfg.BordL, cfg.BordR)
+	}
+	return nil
+}
+
 // Quote computes the price for the given Studio Wizard config using the active
 // pricing configuration. It returns the price snapshot plus a deterministic
 // hash over the active rates and the engine version.
 func (s *QuoteService) Quote(ctx context.Context, cfg Config) (QuoteResult, error) {
 	if s.active == nil {
 		return QuoteResult{}, ErrPricingDisabled
+	}
+
+	if err := validateQuoteConfig(cfg); err != nil {
+		return QuoteResult{}, err
 	}
 
 	active, err := s.active.Get(ctx)

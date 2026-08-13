@@ -40,6 +40,11 @@ func (h *QuoteHandler) QuoteFunc(rw http.ResponseWriter, r *http.Request) {
 	result, err := h.svc.Quote(r.Context(), cfg)
 	if err != nil {
 		switch {
+		case stdErrs.Is(err, ErrInvalidQuoteConfig):
+			handlers.HandleError(rw, r, &errors.RequestError{
+				StatusCode: http.StatusBadRequest,
+				Err:        err,
+			})
 		case stdErrs.Is(err, ErrPricingDisabled):
 			handlers.HandleError(rw, r, &errors.RequestError{
 				StatusCode: http.StatusServiceUnavailable,

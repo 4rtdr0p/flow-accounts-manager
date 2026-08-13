@@ -3,6 +3,7 @@ package pricing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -125,7 +126,12 @@ func TestQuoteServiceReturnsErrNoActivePricing(t *testing.T) {
 	active := NewActiveService(reader, time.Minute)
 	svc := NewQuoteService(active)
 
-	_, err := svc.Quote(context.Background(), Config{})
+	_, err := svc.Quote(context.Background(), Config{
+		Process: "Metal Print",
+		W:       20,
+		L:       30,
+		RunSize: 10,
+	})
 	if err != datastoremongo.ErrNoActivePricing {
 		t.Fatalf("expected ErrNoActivePricing, got %v", err)
 	}
@@ -139,8 +145,76 @@ func TestQuoteServiceRejectsInvalidData(t *testing.T) {
 	active := NewActiveService(reader, time.Minute)
 	svc := NewQuoteService(active)
 
-	_, err := svc.Quote(context.Background(), Config{})
+	_, err := svc.Quote(context.Background(), Config{
+		Process: "Metal Print",
+		W:       20,
+		L:       30,
+		RunSize: 10,
+	})
 	if err == nil {
 		t.Fatal("expected error for invalid pricing data")
+	}
+}
+
+func TestQuoteServiceRejectsInvalidConfig(t *testing.T) {
+	reader := &fakeReader{cfgs: []*datastoremongo.PricingConfiguration{
+		quoteActiveConfig(time.Now(), mongoDataFromVariables(t)),
+	}}
+	active := NewActiveService(reader, time.Minute)
+	svc := NewQuoteService(active)
+
+	valid := Config{
+		Process:    "Metal Print",
+		Shape:      "Rectangle",
+		W:          20,
+		L:          30,
+		Matcat:     "Canvas",
+		Media:      "Aurora Linen Canvas",
+		Preset:     "Flat",
+		Varnish:    "Matte",
+		Present:    "Media only",
+		MountPanel: "MaxMetal ACM Panel",
+		BarType:    "Stretcher Bar Gallery 1.5in",
+		Edge:       "Mirror",
+		Moulding:   "Floater Black 1.5in",
+		Fulfill:    "Bulk to artist",
+		Pack:       "Flat Pack",
+		Rush:       "No",
+		RunSize:    10,
+	}
+
+	tests := []struct {
+		name string
+		mod  func(c *Config)
+	}{
+		{"run_size=0", func(c *Config) { c.RunSize = 0 }},
+		{"run_size=-5", func(c *Config) { c.RunSize = -5 }},
+		{"W=-10", func(c *Config) { c.W = -10 }},
+		{"L=-10", func(c *Config) { c.L = -10 }},
+		{"BordT=-1", func(c *Config) { c.BordT = -1 }},
+		{"BordB=-1", func(c *Config) { c.BordB = -1 }},
+		{"BordL=-1", func(c *Config) { c.BordL = -1 }},
+		{"BordR=-1", func(c *Config) { c.BordR = -1 }},
+		{"baseline (valid) still succeeds", func(c *Config) {}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := valid
+			tc.mod(&c)
+			_, err := svc.Quote(context.Background(), c)
+			if tc.name == "baseline (valid) still succeeds" {
+				if err != nil {
+					t.Fatalf("expected no error for valid baseline, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected ErrInvalidQuoteConfig, got nil")
+			}
+			if !errors.Is(err, ErrInvalidQuoteConfig) {
+				t.Fatalf("expected error wrapping ErrInvalidQuoteConfig, got %v", err)
+			}
+		})
 	}
 }

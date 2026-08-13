@@ -62,3 +62,24 @@ func TestGetActiveHandlerInternalError(t *testing.T) {
 		t.Fatalf("expected generic message in body, got %s", rr.Body.String())
 	}
 }
+
+func TestQuoteHandlerRejectsInvalidConfig(t *testing.T) {
+	reader := &fakeReader{cfgs: []*datastoremongo.PricingConfiguration{
+		quoteActiveConfig(time.Now(), mongoDataFromVariables(t)),
+	}}
+	active := NewActiveService(reader, time.Minute)
+	svc := NewQuoteService(active)
+	handler := NewQuoteHandler(svc)
+
+	body := strings.NewReader(`{"process":"Metal Print","W":-10,"L":30,"run_size":10}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/studio/quotes:price", body)
+	rr := httptest.NewRecorder()
+	handler.Quote().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "W must be > 0") {
+		t.Fatalf("expected validation message in body, got %s", rr.Body.String())
+	}
+}
