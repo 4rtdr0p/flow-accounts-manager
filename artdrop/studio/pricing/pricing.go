@@ -468,7 +468,7 @@ func geometry(d Data, cfg Config) Geometry {
 	}
 	eMaxRows := 1
 	if rowLen+bedGap != 0 {
-		eMaxRows = int(math.Trunc((bedL + bedGap) / (rowLen + bedGap)))
+		eMaxRows = max(int(math.Trunc((bedL + bedGap) / (rowLen + bedGap))), 1)
 	}
 
 	border := n(d.rpk, "pk_pack_border")
