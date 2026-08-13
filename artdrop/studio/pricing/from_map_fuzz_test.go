@@ -13,10 +13,11 @@ import (
 // test. It only checks that the chain composes safely; the full Tier A
 // invariant list already lives in FuzzCompute in pricing_fuzz_test.go.
 //
-// Seeds: the canonical Mongo-shaped variables map (loaded via the
-// embedded defaultVariablesJSON since mongoDataFromVariables(t) requires
-// *testing.T) plus explicit variants with each required key deleted
-// and a couple of value mutations. Non-parseable bytes are skipped.
+// Seeds: the canonical Mongo-shaped variables map (loaded via the embedded
+// defaultVariablesJSON and translated to the Payload CMS key names that
+// LoadDataFromMap expects, since mongoDataFromVariables(t) requires
+// *testing.T) plus explicit variants with each required key deleted and a
+// couple of value mutations. Non-parseable bytes are skipped.
 // LoadDataFromMap returning a non-nil error is treated as a legitimate
 // outcome (e.g. missing required key) and aborts the iteration with no
 // further assertions.
@@ -25,19 +26,23 @@ func FuzzLoadDataFromMap(f *testing.F) {
 	if err := json.Unmarshal(defaultVariablesJSON, &variables); err != nil {
 		f.Fatalf("unmarshal defaultVariablesJSON: %v", err)
 	}
-	canonical, err := json.Marshal(variables)
+	// Translate the internal engine key names (rates_printing, ...) to the
+	// Payload CMS key names (printing, ...) that LoadDataFromMap expects, and
+	// nest ink_markup under ink.markup.
+	mongo := internalToMongoKeys(variables)
+	canonical, err := json.Marshal(mongo)
 	if err != nil {
 		f.Fatalf("marshal canonical seed: %v", err)
 	}
 	f.Add(canonical)
 
 	for _, key := range []string{
-		"rates_printing", "rates_presentation", "rates_cutting",
-		"rates_fulfillment", "rates_package", "ink_markup",
-		"labor", "recipe", "setups",
+		"printing", "presentation", "cutting",
+		"fulfillment", "package", "ink",
+		"labor", "recipes", "processSetups",
 	} {
-		m := make(map[string]any, len(variables))
-		for k, v := range variables {
+		m := make(map[string]any, len(mongo))
+		for k, v := range mongo {
 			if k == key {
 				continue
 			}
@@ -54,10 +59,10 @@ func FuzzLoadDataFromMap(f *testing.F) {
 		name string
 		path []string
 	}{
-		{"rates_printing.bed_gap=0", []string{"rates_printing", "bed_gap"}},
-		{"rates_printing.min_order=0", []string{"rates_printing", "min_order"}},
+		{"printing.bed_gap=0", []string{"printing", "bed_gap"}},
+		{"printing.min_order=0", []string{"printing", "min_order"}},
 	} {
-		m := deepCloneMap(variables)
+		m := deepCloneMap(mongo)
 		cur := m
 		for i, p := range mutation.path {
 			if i == len(mutation.path)-1 {
@@ -128,6 +133,38 @@ func deepCloneMap(m map[string]any) map[string]any {
 		} else {
 			out[k] = v
 		}
+	}
+	return out
+}
+
+// internalToMongoKeys translates a variables.json-shaped map (internal engine
+// key names: rates_printing, ..., ink_markup, recipe, setups) into the Payload
+// CMS key names that LoadDataFromMap expects (printing, ..., ink.markup,
+// recipes, processSetups). It is the inverse of normalizeMongoData and is used
+// to build fuzz seeds that match the real Mongo schema.
+func internalToMongoKeys(m map[string]any) map[string]any {
+	// Inverse of mongoKeyAliases.
+	aliases := map[string]string{
+		"rates_printing":     "printing",
+		"rates_presentation": "presentation",
+		"rates_cutting":      "cutting",
+		"rates_fulfillment":  "fulfillment",
+		"rates_package":      "package",
+		"recipe":             "recipes",
+		"setups":             "processSetups",
+		"labor":              "labor",
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if k == "ink_markup" {
+			out["ink"] = map[string]any{"markup": v}
+			continue
+		}
+		if alias, ok := aliases[k]; ok {
+			out[alias] = v
+			continue
+		}
+		out[k] = v
 	}
 	return out
 }
