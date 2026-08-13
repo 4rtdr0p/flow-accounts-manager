@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,15 +12,44 @@ import (
 )
 
 // mongoDataFromVariables builds a Mongo-style flat Data map from the embedded
-// variables.json. This mirrors what PricingStore.GetActive produces: the rates
-// as top-level keys of the document.
+// variables.json, using the real Payload CMS key names that PricingStore
+// GetActive produces (printing, presentation, ..., recipes, processSetups) and
+// the nested ink.markup. This mirrors the actual pricing-configurations
+// document in Mongo (issue #78).
 func mongoDataFromVariables(t *testing.T) map[string]any {
 	t.Helper()
 	var variables map[string]any
 	if err := json.Unmarshal(defaultVariablesJSON, &variables); err != nil {
 		t.Fatalf("unmarshal variables.json: %v", err)
 	}
-	return variables
+
+	// Translate the internal engine key names back to the Payload CMS key
+	// names that LoadDataFromMap expects (the inverse of mongoKeyAliases),
+	// and nest ink_markup under ink.markup.
+	aliases := map[string]string{
+		"rates_printing":     "printing",
+		"rates_presentation": "presentation",
+		"rates_cutting":      "cutting",
+		"rates_fulfillment":  "fulfillment",
+		"rates_package":      "package",
+		"recipe":             "recipes",
+		"setups":             "processSetups",
+		"labor":              "labor",
+	}
+
+	mongo := make(map[string]any, len(variables))
+	for k, v := range variables {
+		if k == "ink_markup" {
+			mongo["ink"] = map[string]any{"markup": v}
+			continue
+		}
+		if alias, ok := aliases[k]; ok {
+			mongo[alias] = v
+			continue
+		}
+		mongo[k] = v
+	}
+	return mongo
 }
 
 func quoteActiveConfig(updatedAt time.Time, data map[string]any) *datastoremongo.PricingConfiguration {
@@ -100,8 +130,9 @@ func TestQuoteHashChangesWhenRatesChange(t *testing.T) {
 		t.Fatalf("quoteHash returned error: %v", err)
 	}
 
-	// Mutate a rate and confirm the hash changes.
-	rates := data["rates_printing"].(map[string]any)
+	// Mutate a rate and confirm the hash changes. data is Mongo-shaped, so the
+	// rate category is keyed by the Payload CMS name "printing".
+	rates := data["printing"].(map[string]any)
 	rates["mach_cmin"] = 9.999
 
 	changed, err := quoteHash(data)
@@ -261,4 +292,92 @@ func TestQuoteServiceFromMapMatchesSpreadsheetGroundTruth(t *testing.T) {
 	}
 
 	money(t, "grand_total_1pc", res.GrandTotal1PC, 250.0616296302498)
+}
+
+// TestNormalizeMongoData verifies the Payload CMS -> internal engine key
+// translation and the ink.markup unwrap that LoadDataFromMap relies on (issue
+// #78). It asserts that a Mongo-shaped map (printing, ..., ink.markup, recipes,
+// processSetups) normalizes to the internal engine key names (rates_printing,
+// ..., ink_markup, recipe, setups) that LoadData reads from variables.json.
+func TestNormalizeMongoData(t *testing.T) {
+	mongo := mongoDataFromVariables(t)
+
+	normalized, err := normalizeMongoData(mongo)
+	if err != nil {
+		t.Fatalf("normalizeMongoData returned error: %v", err)
+	}
+
+	// The internal engine keys must be present after translation.
+	for _, internal := range []string{
+		"rates_printing", "rates_presentation", "rates_cutting",
+		"rates_fulfillment", "rates_package", "ink_markup",
+		"labor", "recipe", "setups",
+	} {
+		if _, ok := normalized[internal]; !ok {
+			t.Errorf("normalized map missing internal key %q", internal)
+		}
+	}
+
+	// ink.markup must be unwrapped to the flat ink_markup number.
+	inkMk, ok := normalized["ink_markup"]
+	if !ok {
+		t.Fatal("normalized map missing ink_markup")
+	}
+	if _, isNum := inkMk.(float64); !isNum {
+		t.Errorf("ink_markup should be a flat number, got %T", inkMk)
+	}
+
+	// The Payload CMS keys must no longer be present (they were translated).
+	for _, cms := range []string{
+		"printing", "presentation", "cutting", "fulfillment",
+		"package", "ink", "recipes", "processSetups",
+	} {
+		if _, ok := normalized[cms]; ok {
+			t.Errorf("normalized map still contains Payload CMS key %q", cms)
+		}
+	}
+}
+
+// TestNormalizeMongoDataMissingKey verifies that normalizeMongoData rejects a
+// Mongo map that is missing any required Payload CMS key, naming the missing
+// key in the error.
+func TestNormalizeMongoDataMissingKey(t *testing.T) {
+	mongo := mongoDataFromVariables(t)
+
+	for _, missing := range []string{
+		"printing", "presentation", "cutting", "fulfillment",
+		"package", "ink", "labor", "recipes", "processSetups",
+	} {
+		t.Run(missing, func(t *testing.T) {
+			m := make(map[string]any, len(mongo))
+			for k, v := range mongo {
+				if k == missing {
+					continue
+				}
+				m[k] = v
+			}
+			_, err := normalizeMongoData(m)
+			if err == nil {
+				t.Fatalf("expected error when %q is missing", missing)
+			}
+			if !strings.Contains(err.Error(), missing) {
+				t.Errorf("error %q should name the missing key %q", err, missing)
+			}
+		})
+	}
+}
+
+// TestNormalizeMongoDataInkNotObject verifies that an ink key that is not an
+// object (e.g. a flat number) is rejected with a clear error.
+func TestNormalizeMongoDataInkNotObject(t *testing.T) {
+	mongo := mongoDataFromVariables(t)
+	mongo["ink"] = 2.0
+
+	_, err := normalizeMongoData(mongo)
+	if err == nil {
+		t.Fatal("expected error when ink is not an object")
+	}
+	if !strings.Contains(err.Error(), "ink") {
+		t.Errorf("error %q should mention ink", err)
+	}
 }
