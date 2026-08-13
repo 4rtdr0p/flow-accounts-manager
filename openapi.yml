@@ -1028,6 +1028,58 @@ paths:
       responses:
         '200':
           description: OK
+  '/studio/pricing/active':
+    get:
+      summary: Get active studio pricing configuration
+      description: >-
+        Returns the active studio-printing pricing configuration (domain
+        studio-printing, status active, effectiveFrom <= now) served from an
+        in-memory cache invalidated when the active row's updatedAt changes.
+      operationId: getActiveStudioPricing
+      x-required-scopes:
+        - pricing.read
+      tags:
+        - Studio Pricing
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: No active studio pricing configuration
+        '503':
+          description: Studio pricing is disabled (Mongo not configured)
+  '/studio/quotes:price':
+    post:
+      summary: Compute a studio quote price
+      description: >-
+        Computes a price snapshot for a Studio Wizard config (paper, size,
+        quantity, options - same shape as computeStudioQuotePricing in Next.js)
+        using the active pricing rates from Mongo and the ported pricing engine.
+        Returns the price snapshot plus a hash proving which rates and engine
+        version were used.
+      operationId: computeStudioQuotePrice
+      x-required-scopes:
+        - pricing.read
+      tags:
+        - Studio Pricing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudioQuoteConfig'
+      responses:
+        '200':
+          description: Price snapshot with proof hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudioQuoteResult'
+        '400':
+          description: Invalid quote config
+        '404':
+          description: No active studio pricing configuration
+        '503':
+          description: Studio pricing is disabled (Mongo not configured)
   '/accounts/{address}/artdrop/is-artist':
     get:
       summary: Check if address is an ArtDrop artist
@@ -1590,6 +1642,115 @@ components:
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    StudioQuoteConfig:
+      type: object
+      description: >-
+        The Studio Wizard config used to compute a quote. Same shape as
+        computeStudioQuotePricing in Next.js.
+      properties:
+        process:
+          type: string
+        shape:
+          type: string
+        W:
+          type: number
+        L:
+          type: number
+        bord_t:
+          type: number
+        bord_b:
+          type: number
+        bord_l:
+          type: number
+        bord_r:
+          type: number
+        matcat:
+          type: string
+        media:
+          type: string
+        preset:
+          type: string
+        tex_mm:
+          type: number
+        brush:
+          type: string
+        varnish:
+          type: string
+        present:
+          type: string
+        mountpanel:
+          type: string
+        bartype:
+          type: string
+        edge:
+          type: string
+        moulding:
+          type: string
+        fulfill:
+          type: string
+        pack:
+          type: string
+        nfc:
+          type: string
+        gold:
+          type: string
+        photo:
+          type: string
+        video:
+          type: string
+        copy:
+          type: string
+        arvr:
+          type: string
+        twin:
+          type: string
+        mktg:
+          type: string
+        rush:
+          type: string
+        run_size:
+          type: integer
+    StudioQuoteResult:
+      type: object
+      description: >-
+        The price snapshot returned by POST /studio/quotes:price. Includes the
+        computed result plus a hash proving which rates and engine version were
+        used.
+      properties:
+        hash:
+          type: string
+          description: SHA-256 over the active rates and engine version.
+        engine_version:
+          type: string
+          description: Version of the ported pricing engine used.
+        rates_updated_at:
+          type: string
+          format: date-time
+          description: updatedAt of the active pricing configuration used.
+        grand_total_1pc:
+          type: number
+        build_price:
+          type: number
+        build_price_row:
+          type: number
+        setup_fee:
+          type: number
+        run_size:
+          type: integer
+        run_perprint:
+          type: number
+        run_total:
+          type: number
+        cost_piece:
+          type: number
+        job_revenue:
+          type: number
+        job_cost:
+          type: number
+        job_profit:
+          type: number
+        job_margin:
+          type: number
     protocolTransferRequest:
       type: object
       required:
