@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -110,9 +111,50 @@ func (s *PricingStore) GetActive(ctx context.Context) (*PricingConfiguration, er
 	for _, key := range []string{"_id", "domain", "status", "effectiveFrom", "updatedAt"} {
 		delete(full, key)
 	}
-	cfg.Data = full
+	// The Mongo driver decodes embedded objects as primitive.M (a named type
+	// distinct from map[string]interface{} even though the same underlying type),
+	// arrays as primitive.A, and numbers as int32/int64 depending on the source
+	// document. The downstream pricing helpers (object/array/num in pricing.go)
+	// and normalizeMongoData (in from_map.go, added in PR #79) type-switch on
+	// plain Go types only, so passing primitive.M/primitive.A/int32 through
+	// would silently degrade to zeros (except the ink.type check in
+	// normalizeMongoData, which fails loudly first). Normalize to genuine
+	// map[string]interface{} / []interface{} / float64 / string here.
+	normalized, err := NormalizeBSONData(full)
+	if err != nil {
+		return nil, fmt.Errorf("normalize bson data: %w", err)
+	}
+	cfg.Data = normalized
 
 	return &cfg, nil
+}
+
+// NormalizeBSONData converts a bson.M (the data portion of a pricing-
+// configuration document) into plain JSON-compatible Go types so downstream
+// code receives genuine map[string]any / []interface{} / float64 / string
+// values regardless of which BSON named types the mongo driver produced.
+//
+// The conversion is done via json.Marshal + json.Unmarshal round-trip which is
+// sufficient: every BSON scalar type we use (string, int32, int64, float64,
+// bool) encodes to a JSON value that decodes back to the plain Go type the
+// pricing helpers expect (string stays string, all numbers become float64,
+// bool stays bool). Nested documents and arrays recursively yield plain map/
+// slice types.
+//
+// Exported so the pricing package (which already imports datastore/mongo for
+// other reasons) can unit-test that primitive.BSON-shaped data round-trips
+// through NormalizeBSONData and then feeds LoadDataFromMap and Compute
+// without errors or silent degradation to zeros.
+func NormalizeBSONData(full bson.M) (map[string]any, error) {
+	data, err := json.Marshal(full)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bson data for normalization: %w", err)
+	}
+	var normalized map[string]any
+	if err := json.Unmarshal(data, &normalized); err != nil {
+		return nil, fmt.Errorf("unmarshal normalized bson data: %w", err)
+	}
+	return normalized, nil
 }
 
 // GetActiveUpdatedAt returns the updatedAt of the active Studio printing
