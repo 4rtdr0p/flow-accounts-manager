@@ -457,13 +457,19 @@ func geometry(d Data, cfg Config) Geometry {
 	}
 
 	bedW, bedL, bedGap, bedMaxW := n(d.rp, "bed_w"), n(d.rp, "bed_l"), n(d.rp, "bed_gap"), n(d.rp, "bed_maxw")
-	eN := max(int(math.Trunc((bedW+bedGap)/(printW+bedGap))), 1)
+	eN := 1
+	if printW+bedGap != 0 {
+		eN = max(int(math.Trunc((bedW+bedGap)/(printW+bedGap))), 1)
+	}
 	eRowW := math.Min(bedMaxW, float64(xround(float64(eN)*printW+float64(eN-1)*bedGap)))
 	rowLen := printL
 	if circle {
 		rowLen = printW
 	}
-	eMaxRows := int(math.Trunc((bedL + bedGap) / (rowLen + bedGap)))
+	eMaxRows := 1
+	if rowLen+bedGap != 0 {
+		eMaxRows = int(math.Trunc((bedL + bedGap) / (rowLen + bedGap)))
+	}
 
 	border := n(d.rpk, "pk_pack_border")
 	if cfg.Pack == "Custom Box" {
