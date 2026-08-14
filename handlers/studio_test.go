@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -37,6 +38,25 @@ func (m *mockStudioService) RecordProductionCharge(in studio.CreateProductionCha
 	return c, nil
 }
 
+func (m *mockStudioService) CreateStockRequestCharge(ctx context.Context, in studio.CreateStockRequestChargeInput) (*studio.ProductionCharge, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	c := &studio.ProductionCharge{
+		ID:                  uint(len(m.charges) + 1),
+		UserID:              in.UserID,
+		QuoteID:             in.QuoteID,
+		AmountCents:         2500,
+		Currency:            "usd",
+		StripePaymentIntent: "pi_123",
+		PricingHash:         "hash-abc",
+		EngineVersion:       "v1",
+		Metadata:            in.Metadata,
+	}
+	m.charges = append(m.charges, *c)
+	return c, nil
+}
+
 func (m *mockStudioService) ListProductionChargesByUser(userID string) ([]studio.ProductionCharge, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -57,7 +77,7 @@ func newStudioHandler(svc studio.Service) *Studio {
 func TestCreateStockRequestHappyPath(t *testing.T) {
 	h := newStudioHandler(&mockStudioService{})
 
-	body := `{"userId":"user-1","quoteId":"quote-1","amountCents":2500,"currency":"usd","stripePaymentIntentId":"pi_123","pricingHash":"hash-abc","engineVersion":"v1"}`
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123","paymentMethodId":"pm_123"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 
@@ -79,7 +99,7 @@ func TestCreateStockRequestHappyPath(t *testing.T) {
 func TestCreateStockRequestConflictOnDuplicate(t *testing.T) {
 	h := newStudioHandler(&mockStudioService{err: studio.ErrChargeAlreadyRecorded})
 
-	body := `{"userId":"user-1","quoteId":"quote-1","amountCents":2500,"stripePaymentIntentId":"pi_123"}`
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 

@@ -7,7 +7,11 @@
 // go back to Mongo.
 package m20260807
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 const ID = "20260807"
 
@@ -24,7 +28,7 @@ type StudioProductionCharge struct {
 	PricingHash         string  `gorm:"column:pricing_hash"`
 	EngineVersion       string  `gorm:"column:engine_version"`
 	Metadata            string  `gorm:"column:metadata;type:text"`
-	CreatedAt           *string `gorm:"column:created_at"`
+	CreatedAt           time.Time `gorm:"column:created_at"`
 }
 
 func (StudioProductionCharge) TableName() string {

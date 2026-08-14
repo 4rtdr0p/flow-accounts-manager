@@ -1567,7 +1567,15 @@ paths:
   /stock-requests:create:
     post:
       summary: Create a studio stock request and record the production charge.
-      description: Creates a studio stock request. Idempotent per Stripe payment intent; a duplicate payment intent returns 409 and does not create a duplicate audit record.
+      description: >-
+        Creates a studio stock request and settles the production charge
+        server-side. The server reads the quote's config snapshot from Mongo,
+        recomputes the exact price with the active pricing rates, creates and
+        confirms a Stripe PaymentIntent, and persists the audit record with the
+        server-computed amount, hash and engine version. No amount, hash or
+        engine version is trusted from the client. Idempotent per Stripe
+        payment intent; a duplicate returns 409 and does not create a duplicate
+        audit record.
       operationId: createStockRequest
       x-required-scopes:
         - studio.charge.create
@@ -1578,20 +1586,22 @@ paths:
           application/json:
             schema:
               type: object
+              required:
+                - userId
+                - quoteId
+                - quantityRequested
+                - stripeCustomerId
               properties:
                 userId:
                   type: string
                 quoteId:
                   type: string
-                amountCents:
+                quantityRequested:
                   type: integer
-                currency:
+                  minimum: 1
+                stripeCustomerId:
                   type: string
-                stripePaymentIntentId:
-                  type: string
-                pricingHash:
-                  type: string
-                engineVersion:
+                paymentMethodId:
                   type: string
                 metadata:
                   type: string
@@ -1604,8 +1614,12 @@ paths:
                 type: object
         '400':
           description: Bad Request
+        '404':
+          description: Not Found - studio quote does not exist
         '409':
           description: Conflict - charge already recorded for this payment intent
+        '503':
+          description: Service Unavailable - pricing or Stripe is disabled
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
   /studio/charges:

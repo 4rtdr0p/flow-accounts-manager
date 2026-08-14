@@ -41,3 +41,17 @@ type CreateProductionChargeInput struct {
 	EngineVersion       string
 	Metadata            string
 }
+
+// CreateStockRequestChargeInput is the data needed to charge a Studio stock
+// request. The server recomputes the exact price from the quote's config
+// snapshot and the active pricing rates at charge time; the client only
+// identifies the user, the quote and the quantity, plus the Stripe payment
+// details. No amount, hash or engine version is trusted from the client.
+type CreateStockRequestChargeInput struct {
+	UserID          string
+	QuoteID         string
+	Quantity        int
+	StripeCustomerID string
+	PaymentMethodID string
+	Metadata        string
+}

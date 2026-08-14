@@ -16,10 +16,11 @@ func NewStudio(service studio.Service) *Studio {
 	return &Studio{service}
 }
 
-// CreateStockRequest handles POST /v1/stock-requests:create. It records a
-// production charge in the audit table. The actual price is computed by the
-// pricing engine (#70) at charge time; this handler persists the resulting
-// amount and its pricing hash.
+// CreateStockRequest handles POST /v1/stock-requests:create. It charges a
+// Studio stock request end-to-end: the server reads the quote's config
+// snapshot from Mongo, recomputes the exact price with the active pricing
+// rates, creates and confirms a Stripe PaymentIntent, and persists the audit
+// record. The amount is never trusted from the client.
 func (s *Studio) CreateStockRequest() http.Handler {
 	return http.HandlerFunc(s.CreateStockRequestFunc)
 }
