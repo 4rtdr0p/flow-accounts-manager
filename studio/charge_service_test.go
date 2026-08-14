@@ -208,9 +208,29 @@ func TestCreateStockRequestChargeForeignQuote(t *testing.T) {
 	}
 }
 
+func TestCreateStockRequestChargeOwnerlessQuote(t *testing.T) {
+	// A quote without a resolvable owner must be rejected as not found (404)
+	// and Stripe must never be called.
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{
+		ID:     "quote-1",
+		UserID: "",
+		Config: validQuoteConfig(),
+	}}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, &mockPriceEngine{amountCents: 2500}, charge)
+
+	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
+	if !errors.Is(err, ErrQuoteNotFound) {
+		t.Fatalf("expected ErrQuoteNotFound for ownerless quote, got %v", err)
+	}
+	if charge.lastIn.AmountCents != 0 {
+		t.Fatalf("expected Stripe NOT to be called for an ownerless quote, but it was")
+	}
+}
+
 func TestCreateStockRequestChargePricingDisabled(t *testing.T) {
 	// nil engine -> pricing disabled.
-	svc := newChargeTestService(t, &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}, nil, &mockChargeClient{})
+	svc := newChargeTestService(t, &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}, nil, &mockChargeClient{})
 
 	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
 	if !errors.Is(err, ErrPricingDisabled) {
@@ -220,7 +240,7 @@ func TestCreateStockRequestChargePricingDisabled(t *testing.T) {
 
 func TestCreateStockRequestChargeStripeDisabled(t *testing.T) {
 	svc := newChargeTestService(t,
-		&mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}},
+		&mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}},
 		&mockPriceEngine{amountCents: 2500},
 		nil, // nil charge client -> stripe disabled
 	)
@@ -235,6 +255,7 @@ func TestCreateStockRequestChargeInvalidQuoteConfig(t *testing.T) {
 	// A wizard config missing the required sizeInches must fail translation.
 	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{
 		ID:     "quote-1",
+		UserID: "user-1",
 		Config: map[string]any{"application": "textured"},
 	}}
 	svc := newChargeTestService(t, quotes, &mockPriceEngine{}, &mockChargeClient{})
@@ -245,7 +266,7 @@ func TestCreateStockRequestChargeInvalidQuoteConfig(t *testing.T) {
 }
 
 func TestCreateStockRequestChargeEngineError(t *testing.T) {
-	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
 	engine := &mockPriceEngine{err: errors.New("engine boom")}
 	svc := newChargeTestService(t, quotes, engine, &mockChargeClient{})
 
@@ -255,7 +276,7 @@ func TestCreateStockRequestChargeEngineError(t *testing.T) {
 }
 
 func TestCreateStockRequestChargeStripeError(t *testing.T) {
-	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
 	engine := &mockPriceEngine{amountCents: 2500}
 	charge := &mockChargeClient{err: errors.New("stripe boom")}
 	svc := newChargeTestService(t, quotes, engine, charge)
@@ -269,7 +290,7 @@ func TestCreateStockRequestChargeStripeError(t *testing.T) {
 // layer's idempotency guard: replaying the same logical purchase (same Stripe
 // payment intent) must not create a duplicate audit row.
 func TestCreateStockRequestChargeIdempotentByPaymentIntent(t *testing.T) {
-	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
 	engine := &mockPriceEngine{amountCents: 2500}
 	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
 
@@ -300,7 +321,7 @@ func TestCreateStockRequestChargeIdempotentByPaymentIntent(t *testing.T) {
 // Stripe, which returns a different PaymentIntent, so a new audit row is
 // created.
 func TestCreateStockRequestChargeNewIdempotencyKeyAllowsNewPurchase(t *testing.T) {
-	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
 	engine := &mockPriceEngine{amountCents: 2500}
 	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
 

@@ -1573,9 +1573,9 @@ paths:
         recomputes the exact price with the active pricing rates, creates and
         confirms a Stripe PaymentIntent, and persists the audit record with the
         server-computed amount, hash and engine version. No amount, hash or
-        engine version is trusted from the client. Idempotent per Stripe
-        payment intent; a duplicate returns 409 and does not create a duplicate
-        audit record.
+        engine version is trusted from the client. Retries are governed by the
+        `Idempotency-Key` header, which is propagated to Stripe; replays return
+        the stored result, while a conflicting duplicate attempt returns 409.
       operationId: createStockRequest
       x-required-scopes:
         - studio.charge.create
@@ -1615,9 +1615,9 @@ paths:
         '400':
           description: Bad Request
         '404':
-          description: Not Found - studio quote does not exist
+          description: Not Found - studio quote does not exist or does not belong to the user
         '409':
-          description: Conflict - charge already recorded for this payment intent
+          description: Conflict - duplicate attempt for the same Idempotency-Key or already-recorded charge
         '503':
           description: Service Unavailable - pricing or Stripe is disabled
       parameters:
