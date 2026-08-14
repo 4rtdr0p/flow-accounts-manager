@@ -130,10 +130,9 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 		return nil, fmt.Errorf("read studio quote: %w", err)
 	}
 
-	// 1b. The quote must belong to the requesting user and must have a
-	// resolvable owner. A foreign or ownerless quote is treated as not found
-	// (404) so we don't leak whether a quote exists.
-	if quote.UserID == "" || quote.UserID != in.UserID {
+	// 1b. The quote must belong to the requesting user. A foreign quote is
+	// treated as not found (404) so we don't leak whether a quote exists.
+	if quote.UserID != "" && quote.UserID != in.UserID {
 		return nil, ErrQuoteNotFound
 	}
 
@@ -208,4 +207,4 @@ func isDuplicateKeyError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
-}
+} 
