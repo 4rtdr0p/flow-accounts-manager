@@ -43,13 +43,17 @@ func (m *mockPriceEngine) Quote(ctx context.Context, config map[string]any, runS
 	return m.amountCents, m.pricingHash, m.engineVersion, nil
 }
 
-// mockChargeClient is a scripted ChargeClient for tests.
+// mockChargeClient is a scripted ChargeClient for tests. It records the last
+// StripeChargeInput it received so tests can assert the Idempotency-Key is
+// propagated from the request to Stripe.
 type mockChargeClient struct {
 	intent *StripePaymentIntent
 	err    error
+	lastIn StripeChargeInput
 }
 
 func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in StripeChargeInput) (*StripePaymentIntent, error) {
+	m.lastIn = in
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -81,19 +85,31 @@ func validChargeInput() CreateStockRequestChargeInput {
 		Quantity:         10,
 		StripeCustomerID: "cus_123",
 		PaymentMethodID:  "pm_123",
+		IdempotencyKey:   "idem-1",
 	}
 }
 
+// validQuoteConfig returns a wizard-shaped StudioQuote.config snapshot, i.e.
+// the shape produced by the Payload Studio wizard (application, shape,
+// sizeInches, materialFamily, mediaKey, texture, presentation, addons, ...).
+// The pricing adapter (artdrop/studio/pricing) translates this into the engine
+// Config at charge time.
 func validQuoteConfig() map[string]any {
 	return map[string]any{
-		"process": "print",
-		"W":       float64(40),
-		"L":       float64(60),
-		"bord_t":  float64(0),
-		"bord_b":  float64(0),
-		"bord_l":  float64(0),
-		"bord_r":  float64(0),
-		"run_size": float64(10),
+		"application":    "textured",
+		"processKey":     "textured-reproductions",
+		"shape":          "rect",
+		"sizeInches":     []any{float64(40), float64(60)},
+		"materialFamily": "paper",
+		"mediaKey":       "archival-paper",
+		"texture":        "flat",
+		"presentation":   "rolled",
+		"addons": map[string]any{
+			"packaging": "none",
+			"nfc":       "no",
+		},
+		"rush":          "no",
+		"volumeTierQty": float64(10),
 	}
 }
 
@@ -127,6 +143,15 @@ func TestCreateStockRequestChargeHappyPath(t *testing.T) {
 	if got.QuoteID != "quote-1" {
 		t.Fatalf("expected quote id quote-1, got %s", got.QuoteID)
 	}
+	// The request's Idempotency-Key must be propagated to Stripe.
+	if charge.lastIn.IdempotencyKey != "idem-1" {
+		t.Fatalf("expected idempotency key idem-1 propagated to Stripe, got %q", charge.lastIn.IdempotencyKey)
+	}
+	// The engine must receive the wizard-shaped config and the requested
+	// quantity as the run size.
+	if charge.lastIn.AmountCents != 2500 {
+		t.Fatalf("expected Stripe amount 2500 cents, got %d", charge.lastIn.AmountCents)
+	}
 }
 
 func TestCreateStockRequestChargeValidation(t *testing.T) {
@@ -139,6 +164,7 @@ func TestCreateStockRequestChargeValidation(t *testing.T) {
 		{"zero quantity", func(in *CreateStockRequestChargeInput) { in.Quantity = 0 }},
 		{"negative quantity", func(in *CreateStockRequestChargeInput) { in.Quantity = -1 }},
 		{"missing stripe customer id", func(in *CreateStockRequestChargeInput) { in.StripeCustomerID = "" }},
+		{"missing idempotency key", func(in *CreateStockRequestChargeInput) { in.IdempotencyKey = "" }},
 	}
 
 	for _, tt := range tests {
@@ -159,6 +185,26 @@ func TestCreateStockRequestChargeQuoteNotFound(t *testing.T) {
 	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
 	if !errors.Is(err, ErrQuoteNotFound) {
 		t.Fatalf("expected ErrQuoteNotFound, got %v", err)
+	}
+}
+
+func TestCreateStockRequestChargeForeignQuote(t *testing.T) {
+	// The quote belongs to a different user. Charging it must be rejected as
+	// not found (404) and Stripe must never be called.
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{
+		ID:     "quote-1",
+		UserID: "user-2",
+		Config: validQuoteConfig(),
+	}}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, &mockPriceEngine{amountCents: 2500}, charge)
+
+	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
+	if !errors.Is(err, ErrQuoteNotFound) {
+		t.Fatalf("expected ErrQuoteNotFound for foreign quote, got %v", err)
+	}
+	if charge.lastIn.AmountCents != 0 {
+		t.Fatalf("expected Stripe NOT to be called for a foreign quote, but it was")
 	}
 }
 
@@ -186,10 +232,10 @@ func TestCreateStockRequestChargeStripeDisabled(t *testing.T) {
 }
 
 func TestCreateStockRequestChargeInvalidQuoteConfig(t *testing.T) {
-	// A config missing required numeric fields (W) must fail translation.
+	// A wizard config missing the required sizeInches must fail translation.
 	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{
 		ID:     "quote-1",
-		Config: map[string]any{"process": "print"},
+		Config: map[string]any{"application": "textured"},
 	}}
 	svc := newChargeTestService(t, quotes, &mockPriceEngine{}, &mockChargeClient{})
 
@@ -219,6 +265,9 @@ func TestCreateStockRequestChargeStripeError(t *testing.T) {
 	}
 }
 
+// TestCreateStockRequestChargeIdempotentByPaymentIntent verifies the audit
+// layer's idempotency guard: replaying the same logical purchase (same Stripe
+// payment intent) must not create a duplicate audit row.
 func TestCreateStockRequestChargeIdempotentByPaymentIntent(t *testing.T) {
 	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
 	engine := &mockPriceEngine{amountCents: 2500}
@@ -229,9 +278,9 @@ func TestCreateStockRequestChargeIdempotentByPaymentIntent(t *testing.T) {
 	if _, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput()); err != nil {
 		t.Fatalf("unexpected error on first charge: %v", err)
 	}
-	// A retry with the same quote/user must not create a duplicate audit row:
-	// the audit layer's idempotency guard reports the charge as already
-	// recorded.
+	// A retry that maps to the same Stripe payment intent must not create a
+	// duplicate audit row: the audit layer's idempotency guard reports the
+	// charge as already recorded.
 	if _, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput()); !errors.Is(err, ErrChargeAlreadyRecorded) {
 		t.Fatalf("expected ErrChargeAlreadyRecorded on retry, got %v", err)
 	}
@@ -242,5 +291,39 @@ func TestCreateStockRequestChargeIdempotentByPaymentIntent(t *testing.T) {
 	}
 	if len(charges) != 1 {
 		t.Fatalf("expected exactly 1 charge after retry, got %d", len(charges))
+	}
+}
+
+// TestCreateStockRequestChargeNewIdempotencyKeyAllowsNewPurchase verifies that
+// a genuinely new purchase (a different Idempotency-Key) is allowed to charge
+// again, even for the same quote/user. The Idempotency-Key is propagated to
+// Stripe, which returns a different PaymentIntent, so a new audit row is
+// created.
+func TestCreateStockRequestChargeNewIdempotencyKeyAllowsNewPurchase(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	if _, err := svc.CreateStockRequestCharge(context.Background(), in); err != nil {
+		t.Fatalf("unexpected error on first charge: %v", err)
+	}
+
+	// A new purchase with a different Idempotency-Key must be allowed. The
+	// mock returns a fresh intent id so the audit row is not a duplicate.
+	charge.intent = &StripePaymentIntent{ID: "pi_456", Status: "succeeded"}
+	in.IdempotencyKey = "idem-2"
+	if _, err := svc.CreateStockRequestCharge(context.Background(), in); err != nil {
+		t.Fatalf("expected new purchase with different idempotency key to succeed, got %v", err)
+	}
+
+	charges, err := svc.ListProductionChargesByUser("user-1")
+	if err != nil {
+		t.Fatalf("unexpected error listing: %v", err)
+	}
+	if len(charges) != 2 {
+		t.Fatalf("expected exactly 2 charges after a new purchase, got %d", len(charges))
 	}
 }

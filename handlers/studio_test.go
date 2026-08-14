@@ -17,6 +17,7 @@ import (
 type mockStudioService struct {
 	charges []studio.ProductionCharge
 	err     error
+	lastIn  studio.CreateStockRequestChargeInput
 }
 
 func (m *mockStudioService) RecordProductionCharge(in studio.CreateProductionChargeInput) (*studio.ProductionCharge, error) {
@@ -39,6 +40,7 @@ func (m *mockStudioService) RecordProductionCharge(in studio.CreateProductionCha
 }
 
 func (m *mockStudioService) CreateStockRequestCharge(ctx context.Context, in studio.CreateStockRequestChargeInput) (*studio.ProductionCharge, error) {
+	m.lastIn = in
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -75,10 +77,12 @@ func newStudioHandler(svc studio.Service) *Studio {
 }
 
 func TestCreateStockRequestHappyPath(t *testing.T) {
-	h := newStudioHandler(&mockStudioService{})
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
 
 	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123","paymentMethodId":"pm_123"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
+	req.Header.Set("Idempotency-Key", "idem-abc")
 	rr := httptest.NewRecorder()
 
 	h.CreateStockRequest().ServeHTTP(rr, req)
@@ -93,6 +97,11 @@ func TestCreateStockRequestHappyPath(t *testing.T) {
 	}
 	if resp.StripePaymentIntent != "pi_123" {
 		t.Fatalf("expected payment intent pi_123, got %s", resp.StripePaymentIntent)
+	}
+	// The Idempotency-Key header must be propagated to the service so it can
+	// be forwarded to Stripe.
+	if svc.lastIn.IdempotencyKey != "idem-abc" {
+		t.Fatalf("expected Idempotency-Key idem-abc propagated to service, got %q", svc.lastIn.IdempotencyKey)
 	}
 }
 

@@ -41,6 +41,7 @@ func (s *Studio) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request)
 		Quantity:         req.QuantityRequested,
 		StripeCustomerID: req.StripeCustomerID,
 		PaymentMethodID:  req.PaymentMethodID,
+		IdempotencyKey:   r.Header.Get("Idempotency-Key"),
 		Metadata:         req.Metadata,
 	})
 	if err != nil {

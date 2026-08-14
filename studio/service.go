@@ -114,6 +114,9 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 	if in.StripeCustomerID == "" {
 		return nil, fmt.Errorf("stripe customer id is required")
 	}
+	if in.IdempotencyKey == "" {
+		return nil, fmt.Errorf("idempotency key is required")
+	}
 
 	// 1. Read the quote's config snapshot from Mongo.
 	if s.quotes == nil {
@@ -125,6 +128,12 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 			return nil, ErrQuoteNotFound
 		}
 		return nil, fmt.Errorf("read studio quote: %w", err)
+	}
+
+	// 1b. The quote must belong to the requesting user. A foreign quote is
+	// treated as not found (404) so we don't leak whether a quote exists.
+	if quote.UserID != "" && quote.UserID != in.UserID {
+		return nil, ErrQuoteNotFound
 	}
 
 	// 2. Recompute the exact price with the active rates from the quote's
@@ -151,7 +160,7 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 		Currency:        "usd",
 		CustomerID:      in.StripeCustomerID,
 		PaymentMethodID: in.PaymentMethodID,
-		IdempotencyKey:  "stock-request:" + in.QuoteID + ":" + in.UserID,
+		IdempotencyKey:  in.IdempotencyKey,
 		Metadata:        in.Metadata,
 	})
 	if err != nil {

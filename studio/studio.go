@@ -47,11 +47,17 @@ type CreateProductionChargeInput struct {
 // snapshot and the active pricing rates at charge time; the client only
 // identifies the user, the quote and the quantity, plus the Stripe payment
 // details. No amount, hash or engine version is trusted from the client.
+//
+// IdempotencyKey is the client-supplied Idempotency-Key header. It is
+// propagated to Stripe so that an HTTP replay of the same logical purchase
+// maps to the same PaymentIntent, while a genuinely new purchase (a new key)
+// is allowed to charge again.
 type CreateStockRequestChargeInput struct {
-	UserID          string
-	QuoteID         string
-	Quantity        int
+	UserID           string
+	QuoteID          string
+	Quantity         int
 	StripeCustomerID string
-	PaymentMethodID string
-	Metadata        string
+	PaymentMethodID  string
+	IdempotencyKey   string
+	Metadata         string
 }
