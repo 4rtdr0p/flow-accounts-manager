@@ -17,6 +17,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/pricing"
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
@@ -27,6 +28,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/keys/basic"
 	"github.com/flow-hydraulics/flow-wallet-api/ops"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
+	"github.com/flow-hydraulics/flow-wallet-api/studio"
 	"github.com/flow-hydraulics/flow-wallet-api/system"
 	"github.com/flow-hydraulics/flow-wallet-api/templates"
 	"github.com/flow-hydraulics/flow-wallet-api/tokens"
@@ -201,6 +203,16 @@ func runServer(cfg *configs.Config) {
 	accountService := accounts.NewService(cfg, accountStore, km, fc, wp, transactionService, templateService, accounts.WithTxRatelimiter(txRatelimiter))
 	tokenService := tokens.NewService(cfg, tokens.NewGormStore(db), km, fc, wp, transactionService, templateService, accountService)
 	opsService := ops.NewService(cfg, ops.NewGormStore(db), templateService, transactionService, tokenService)
+	// Studio production charge flow (#71): read the quote config snapshot from
+	// Mongo, recalculate the exact price with the pricing engine (#70), and
+	// settle the charge with Stripe. Each dependency degrades gracefully when
+	// its backing service is unconfigured (nil Mongo / empty Stripe key).
+	quoteStore := datastoremongo.NewQuoteStore(mongoClient, cfg)
+	activePricing := pricing.NewActiveService(datastoremongo.NewPricingStore(mongoClient, cfg), cfg.StudioPricingCacheTTL)
+	quoteService := pricing.NewQuoteService(activePricing)
+	chargeEngine := pricing.NewChargeEngine(quoteService)
+	stripeClient := studio.NewStripeClient(cfg.StripeSecretKey, "")
+	studioService := studio.NewChargeService(studio.NewGormStore(db), quoteStore, chargeEngine, stripeClient)
 
 	// Register a handler for account added events
 	accounts.AccountAdded.Register(&tokens.AccountAddedHandler{
@@ -224,6 +236,7 @@ func runServer(cfg *configs.Config) {
 	transactionHandler := handlers.NewTransactions(transactionService, accountService)
 	tokenHandler := handlers.NewTokens(tokenService)
 	opsHandler := handlers.NewOps(opsService)
+	studioHandler := handlers.NewStudio(studioService)
 
 	routerOptions := routeOptions{
 		DisableRawTransactions:   cfg.DisableRawTransactions,
@@ -249,6 +262,7 @@ func runServer(cfg *configs.Config) {
 		Transactions:   transactionHandler,
 		Tokens:         tokenHandler,
 		Ops:            opsHandler,
+		Studio:         studioHandler,
 		DebugURL:       "https://github.com/flow-hydraulics/flow-wallet-api",
 		DebugSHA:       sha1ver,
 		DebugBuildTime: buildTime,
@@ -449,6 +463,7 @@ type routeHandlers struct {
 	Transactions     *handlers.Transactions
 	Tokens           *handlers.Tokens
 	Ops              *handlers.Ops
+	Studio           *handlers.Studio
 	DebugURL         string
 	DebugSHA         string
 	DebugBuildTime   string
@@ -544,6 +559,11 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 
 	rv.Handle("/ops/missing-fungible-token-vaults/start", hs.Ops.InitMissingFungibleVaults()).Methods(http.MethodGet)
 	rv.Handle("/ops/missing-fungible-token-vaults/stats", hs.Ops.GetMissingFungibleVaults()).Methods(http.MethodGet)
+
+	// Studio production charge auditing. The create endpoint is idempotent per
+	// Stripe payment intent (see studio.Service.RecordProductionCharge).
+	rv.Handle("/stock-requests:create", hs.Studio.CreateStockRequest()).Methods(http.MethodPost)
+	rv.Handle("/studio/charges", hs.Studio.ListCharges()).Methods(http.MethodGet)
 
 	return r
 }
