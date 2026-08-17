@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	stdErrors "errors"
 	"net/http"
 
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
@@ -45,13 +46,15 @@ func (s *Studio) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request)
 		Metadata:         req.Metadata,
 	})
 	if err != nil {
-		switch err {
-		case studio.ErrChargeAlreadyRecorded:
+		switch {
+		case stdErrors.Is(err, studio.ErrChargeAlreadyRecorded):
 			handleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
-		case studio.ErrQuoteNotFound:
+		case stdErrors.Is(err, studio.ErrQuoteNotFound):
 			handleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
-		case studio.ErrPricingDisabled, studio.ErrStripeDisabled:
+		case stdErrors.Is(err, studio.ErrPricingDisabled), stdErrors.Is(err, studio.ErrStripeDisabled):
 			handleError(rw, r, &errors.RequestError{StatusCode: http.StatusServiceUnavailable, Err: err})
+		case stdErrors.Is(err, studio.ErrChargeRecordFailed):
+			handleError(rw, r, &errors.RequestError{StatusCode: http.StatusInternalServerError, Err: err})
 		default:
 			handleError(rw, r, err)
 		}

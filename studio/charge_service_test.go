@@ -63,6 +63,19 @@ func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in StripeCharge
 	return m.intent, nil
 }
 
+// mockStore is a scripted Store for simulating audit write failures.
+type mockStore struct {
+	createErr error
+}
+
+func (m *mockStore) CreateProductionCharge(charge *ProductionCharge) error {
+	return m.createErr
+}
+
+func (m *mockStore) ListProductionChargesByUser(userID string) ([]ProductionCharge, error) {
+	return nil, nil
+}
+
 // newChargeTestService builds a ServiceImpl wired with the given mocks and a
 // fresh in-memory DB.
 func newChargeTestService(t *testing.T, quotes QuoteReader, engine PriceEngine, charge ChargeClient) Service {
@@ -346,5 +359,27 @@ func TestCreateStockRequestChargeNewIdempotencyKeyAllowsNewPurchase(t *testing.T
 	}
 	if len(charges) != 2 {
 		t.Fatalf("expected exactly 2 charges after a new purchase, got %d", len(charges))
+	}
+}
+
+// A non-duplicate audit write failure must surface as ErrChargeRecordFailed,
+// never as the raw store error and never as ErrChargeAlreadyRecorded.
+func TestCreateStockRequestChargeRecordFailureIsNotLeakedAndNotDuplicate(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	store := &mockStore{createErr: errors.New("permission denied for table studio_production_charges (SQLSTATE 42501)")}
+
+	svc := NewChargeService(store, quotes, engine, charge)
+
+	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
+	if !errors.Is(err, ErrChargeRecordFailed) {
+		t.Fatalf("expected ErrChargeRecordFailed, got %v", err)
+	}
+	if strings.Contains(err.Error(), "SQLSTATE") || strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("raw store error must not be echoed to the caller, got %q", err.Error())
+	}
+	if errors.Is(err, ErrChargeAlreadyRecorded) {
+		t.Fatalf("a failed write must not be reported as ErrChargeAlreadyRecorded")
 	}
 }

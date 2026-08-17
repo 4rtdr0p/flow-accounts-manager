@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +26,11 @@ var ErrPricingDisabled = errors.New("studio pricing is disabled")
 
 // ErrStripeDisabled is returned when the Stripe client is not configured.
 var ErrStripeDisabled = errors.New("stripe is disabled")
+
+// ErrChargeRecordFailed is returned when the audit record could not be
+// persisted for a reason other than a duplicate payment intent. Callers must
+// map it to a 5xx so the idempotency middleware releases the key reservation.
+var ErrChargeRecordFailed = errors.New("failed to record charge")
 
 // Service lists all functionality provided by the studio service.
 type Service interface {
@@ -92,7 +98,13 @@ func (s *ServiceImpl) RecordProductionCharge(in CreateProductionChargeInput) (*P
 		if isDuplicateKeyError(err) {
 			return nil, ErrChargeAlreadyRecorded
 		}
-		return nil, fmt.Errorf("record production charge: %w", err)
+		log.WithFields(log.Fields{
+			"userId":              in.UserID,
+			"quoteId":             in.QuoteID,
+			"stripePaymentIntent": in.StripePaymentIntent,
+			"error":               err,
+		}).Error("failed to record production charge")
+		return nil, ErrChargeRecordFailed
 	}
 
 	return charge, nil

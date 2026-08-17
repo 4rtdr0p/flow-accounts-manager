@@ -119,6 +119,22 @@ func TestCreateStockRequestConflictOnDuplicate(t *testing.T) {
 	}
 }
 
+// A failed audit write after Stripe charged must respond 500, so the
+// idempotency middleware releases the key instead of caching the failure.
+func TestCreateStockRequestRecordFailureIsServerError(t *testing.T) {
+	h := newStudioHandler(&mockStudioService{err: studio.ErrChargeRecordFailed})
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestCreateStockRequestEmptyBody(t *testing.T) {
 	h := newStudioHandler(&mockStudioService{})
 
