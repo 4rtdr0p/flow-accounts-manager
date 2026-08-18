@@ -20,7 +20,11 @@ var ErrQuoteNotFound = errors.New("studio quote not found")
 // what the charge flow (#71) translates into a pricing.Config to recalculate
 // the exact price at charge time.
 type StudioQuote struct {
-	ID     string         `bson:"id" json:"id"`
+	// ID is the stable public token (publicToken) that Payload CMS assigns to
+	// a studio quote. Payload persists the quote with an ObjectId _id and no
+	// "id" field; the public token is the only stable, externally-addressable
+	// identity, so lookups key on it.
+	ID     string         `bson:"publicToken" json:"publicToken"`
 	UserID string         `bson:"userId" json:"userId"`
 	// Config holds the Studio Wizard config snapshot (process, W, L, borders,
 	// run_size, ...) as stored by Payload CMS. It is the input to the pricing
@@ -46,8 +50,8 @@ func NewQuoteStore(client *Client, cfg *configs.Config) *QuoteStore {
 	}
 }
 
-// GetByID returns the studio quote document matching the given quote id. It
-// returns ErrQuoteNotFound when no such quote exists.
+// GetByID returns the studio quote document matching the given public token
+// (publicToken). It returns ErrQuoteNotFound when no such quote exists.
 func (s *QuoteStore) GetByID(ctx context.Context, quoteID string) (*StudioQuote, error) {
 	if s == nil || s.client == nil {
 		return nil, fmt.Errorf("mongo client is not configured")
@@ -57,7 +61,7 @@ func (s *QuoteStore) GetByID(ctx context.Context, quoteID string) (*StudioQuote,
 	}
 
 	var raw bson.Raw
-	err := s.client.Collection(s.coll).FindOne(ctx, bson.M{"id": quoteID}).Decode(&raw)
+	err := s.client.Collection(s.coll).FindOne(ctx, bson.M{"publicToken": quoteID}).Decode(&raw)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrQuoteNotFound
