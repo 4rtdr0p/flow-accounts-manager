@@ -21,6 +21,17 @@ jobs:
           go-version: '1.24'
           # setup-go@v5 manages module/build caches natively; no manual cache step needed.
 
+      - name: Check formatting (gofmt)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo
+            echo "Run: gofmt -w <file>..."
+            exit 1
+          fi
+
       - name: Run unit tests
         run: |
           # Every package except the root module (`.`) and ./tests/... — both
