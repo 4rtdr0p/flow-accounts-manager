@@ -3,14 +3,19 @@ package artdrop
 import "github.com/flow-hydraulics/flow-wallet-api/transactions"
 
 // Transaction types used by the artdrop plugin.
+//
+// TxTypeRelease, TxTypeCancel and TxTypeRefund were removed along with
+// Service.Release/Cancel/Refund: the escrow-lifecycle redesign (2026-08)
+// deleted the underlying EscrowModule functions (releaseEscrow, cancel,
+// refund) entirely — release now happens automatically inside
+// activateChipAndSettle (or via the OperationalAdmin-only releaseOnTimeout,
+// which the wallet-api has no path to call), and buyer-initiated
+// cancel/refund no longer exist on-chain at all.
 const (
 	TxTypeSetup             transactions.Type = "ArtdropSetup"
 	TxTypeTransfer          transactions.Type = "ArtdropTransfer"
 	TxTypeCreateEscrow      transactions.Type = "ArtdropCreateEscrow"
 	TxTypeActivateChip      transactions.Type = "ArtdropActivateChip"
-	TxTypeRelease           transactions.Type = "ArtdropRelease"
-	TxTypeCancel            transactions.Type = "ArtdropCancel"
-	TxTypeRefund            transactions.Type = "ArtdropRefund"
 	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
 	TxTypeCreateEdition     transactions.Type = "ArtdropCreateEdition"
@@ -45,32 +50,41 @@ type CreateEditionRequest struct {
 }
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.
+//
+// LogicOwner (the EscrowModule capability owner) and VaultIdentifier (the
+// storage path escrow creation withdraws from) used to be client-supplied
+// here. Both are now server-controlled — LogicOwner comes from
+// Config.LogicOwner and VaultIdentifier is fixed to defaultVaultIdentifier
+// — and were removed outright rather than kept-but-ignored: this plugin has
+// no callers that predate the protocol's address migration to preserve
+// compatibility with.
 type CreateEscrowRequest struct {
-	LogicOwner      string  `json:"logic_owner"`
-	Buyer           string  `json:"buyer"`
-	Seller          string  `json:"seller"`
-	EditionId       uint64  `json:"edition_id"`
-	ChipId          string  `json:"chip_id"`
-	ChipPubKey      []byte  `json:"chip_pub_key"`
-	UnlockAt        float64 `json:"unlock_at"`
-	Nonce           uint64  `json:"nonce"`
-	Amount          float64 `json:"amount"`
-	VaultIdentifier string  `json:"vault_identifier"`
+	Buyer      string  `json:"buyer"`
+	Seller     string  `json:"seller"`
+	EditionId  uint64  `json:"edition_id"`
+	ChipId     string  `json:"chip_id"`
+	ChipPubKey []byte  `json:"chip_pub_key"`
+	UnlockAt   float64 `json:"unlock_at"`
+	Nonce      uint64  `json:"nonce"`
+	Amount     float64 `json:"amount"`
 }
 
-// ActivateChipRequest contains the parameters needed to activate a chip and settle an escrow.
+// ActivateChipRequest contains the parameters needed to activate a chip and
+// settle an escrow.
+//
+// LogicOwner was removed — see CreateEscrowRequest. CertificateId and
+// CertificateOwner were removed for the same reason as LogicOwner/
+// VaultIdentifier, but with a sharper edge: the escrow-lifecycle redesign
+// (2026-08) changed EscrowModule.activateChipAndSettle to derive both
+// values from the escrow's own on-chain state specifically because a
+// caller could previously pass arbitrary values here to steal a
+// certificate. Keeping the fields around — even ignored — would leave a
+// client-controlled input sitting on exactly the path that vulnerability
+// used, inviting it to get wired back in later.
 type ActivateChipRequest struct {
-	LogicOwner       string `json:"logic_owner"`
-	EscrowId         uint64 `json:"escrow_id"`
-	Challenge        string `json:"challenge"`
-	Signature        []byte `json:"signature"`
-	CertificateId    uint64 `json:"certificate_id"`
-	CertificateOwner string `json:"certificate_owner"`
-}
-
-// EscrowActionRequest is a reusable payload for release, cancel and refund actions.
-type EscrowActionRequest struct {
-	LogicOwner string `json:"logic_owner"`
+	EscrowId  uint64 `json:"escrow_id"`
+	Challenge string `json:"challenge"`
+	Signature []byte `json:"signature"`
 }
 
 // CertificateInfo represents a single certificate returned by the list endpoint.

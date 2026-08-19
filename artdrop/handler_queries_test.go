@@ -38,7 +38,7 @@ func TestListCertificatesHandlerReturnsOK(t *testing.T) {
 			}),
 		}),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -78,7 +78,7 @@ func TestGetCertificateDetailHandlerReturnsOK(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
 		})),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -110,7 +110,7 @@ func TestGetCertificateDetailHandlerReturnsNotFound(t *testing.T) {
 	// and the handler answers 404. This is the deliberate behavior change
 	// flagged in the commit message and the service doc-comment.
 	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -148,7 +148,7 @@ func TestGetCertificateDetailHandlerRejectsInvalidCertId(t *testing.T) {
 
 func TestGetCertificateDetailHandlerRejectsInvalidAddress(t *testing.T) {
 	txSvc := &queryTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -169,7 +169,7 @@ func TestGetCertificateDetailHandlerRejectsInvalidAddress(t *testing.T) {
 
 func TestGetCertificateDetailHandlerPropagatesScriptError(t *testing.T) {
 	txSvc := &queryTxService{err: errors.New("boom")}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -212,7 +212,7 @@ func TestGetCollectionLengthHandlerReturnsOK(t *testing.T) {
 			}),
 		}),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -235,7 +235,7 @@ func TestGetCollectionLengthHandlerReturnsZero(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{}),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -256,7 +256,7 @@ func TestGetCollectionLengthHandlerReturnsZero(t *testing.T) {
 
 func TestGetCollectionLengthHandlerRejectsInvalidAddress(t *testing.T) {
 	txSvc := &queryTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -276,7 +276,7 @@ func TestIsArtistHandlerReturnsTrue(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewBool(true),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -299,7 +299,7 @@ func TestIsArtistHandlerReturnsFalse(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewBool(false),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -320,7 +320,7 @@ func TestIsArtistHandlerReturnsFalse(t *testing.T) {
 
 func TestIsArtistHandlerRejectsInvalidAddress(t *testing.T) {
 	txSvc := &queryTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -336,16 +336,20 @@ func TestIsArtistHandlerRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
+// TestGetEscrowHandlerReturnsOK also covers the removal of the logic_owner
+// query param: it used to be required (validated, but never actually used
+// to build the script call — get_escrow_summary.cdc never took it as an
+// argument), and is gone now. This request carries no query string at all.
 func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt8(2),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42?logic_owner=0xf8d6e0586b0a20c7", nil)
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
 	req = mux.SetURLVars(req, map[string]string{
 		"address":  "0xf8d6e0586b0a20c7",
 		"escrowId": "42",
@@ -382,23 +386,6 @@ func TestGetEscrowHandlerRejectsInvalidEscrowId(t *testing.T) {
 	}
 }
 
-func TestGetEscrowHandlerRequiresLogicOwner(t *testing.T) {
-	handler := NewHandler(nil)
-
-	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
-	req = mux.SetURLVars(req, map[string]string{
-		"address":  "0xf8d6e0586b0a20c7",
-		"escrowId": "42",
-	})
-	rw := httptest.NewRecorder()
-
-	handler.GetEscrow().ServeHTTP(rw, req)
-
-	if rw.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400 for missing logic_owner, got %d: %s", rw.Code, rw.Body.String())
-	}
-}
-
 func TestGetOriginalSummaryHandlerReturnsOK(t *testing.T) {
 	displayName, err := cadence.NewString("Ariel Artist")
 	if err != nil {
@@ -416,7 +403,7 @@ func TestGetOriginalSummaryHandlerReturnsOK(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
 		})),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -457,7 +444,7 @@ func TestGetOriginalSummaryHandlerRejectsInvalidOriginalId(t *testing.T) {
 
 func TestGetOriginalSummaryHandlerReturnsNotFound(t *testing.T) {
 	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -480,7 +467,7 @@ func TestGetEditionIDsByOriginalHandlerReturnsOK(t *testing.T) {
 			cadence.NewUInt64(12),
 		}),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -517,7 +504,7 @@ func TestGetEditionIDsByOriginalHandlerReturnsEmptyArray(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{}),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -551,7 +538,7 @@ func TestGetEditionSummaryHandlerReturnsOK(t *testing.T) {
 			{Key: cadence.String("totalMinted"), Value: cadence.NewUInt64(9)},
 		})),
 	}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -595,7 +582,7 @@ func TestGetEditionSummaryHandlerRejectsInvalidEditionId(t *testing.T) {
 
 func TestGetEditionSummaryHandlerReturnsNotFound(t *testing.T) {
 	txSvc := &queryTxService{scriptResult: cadence.NewOptional(nil)}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))

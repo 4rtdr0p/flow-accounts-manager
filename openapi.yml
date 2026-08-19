@@ -823,39 +823,6 @@ paths:
       responses:
         '201':
           description: Created
-  '/accounts/{address}/artdrop/escrows/{escrowId}/release':
-    post:
-      summary: Release an ArtDrop escrow
-      operationId: releaseArtDropEscrow
-      x-required-scopes:
-        - account.transfer
-      tags:
-        - Account Transactions
-      responses:
-        '201':
-          description: Created
-  '/accounts/{address}/artdrop/escrows/{escrowId}/cancel':
-    post:
-      summary: Cancel an ArtDrop escrow
-      operationId: cancelArtDropEscrow
-      x-required-scopes:
-        - account.transfer
-      tags:
-        - Account Transactions
-      responses:
-        '201':
-          description: Created
-  '/accounts/{address}/artdrop/escrows/{escrowId}/refund':
-    post:
-      summary: Refund an ArtDrop escrow
-      operationId: refundArtDropEscrow
-      x-required-scopes:
-        - account.transfer
-      tags:
-        - Account Transactions
-      responses:
-        '201':
-          description: Created
   '/accounts/{address}/artdrop/certificates':
     get:
       summary: List ArtDrop certificates for an account
@@ -906,13 +873,6 @@ paths:
         - account.read
       tags:
         - Accounts
-      parameters:
-        - name: logic_owner
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Address that exposes the EscrowModule logic capability.
       responses:
         '200':
           description: OK

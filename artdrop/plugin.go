@@ -15,9 +15,15 @@ type Plugin struct {
 	svc *Service
 }
 
-// NewPlugin creates the artdrop plugin using the shared application dependencies.
-func NewPlugin(deps plugins.PluginDeps) plugins.Plugin {
-	return &Plugin{svc: NewService(deps)}
+// NewPlugin creates the artdrop plugin using the shared application
+// dependencies and the artdrop contract-address config (see LoadConfig).
+// Returns an error if cfg fails to validate — see NewService.
+func NewPlugin(deps plugins.PluginDeps, cfg *Config) (plugins.Plugin, error) {
+	svc, err := NewService(deps, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Plugin{svc: svc}, nil
 }
 
 // Name returns the plugin name.
@@ -57,9 +63,6 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate", h.ActivateChip()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate-chip", h.ActivateChip()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate-and-settle", h.ActivateChip()).Methods(http.MethodPost)
-	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/release", h.Release()).Methods(http.MethodPost)
-	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/cancel", h.Cancel()).Methods(http.MethodPost)
-	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/refund", h.Refund()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/certificates", h.ListCertificates()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/certificates/{certId}", h.GetCertificateDetail()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/collection-length", h.GetCollectionLength()).Methods(http.MethodGet)

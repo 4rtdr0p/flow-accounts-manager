@@ -40,6 +40,10 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := plugins.PluginDeps{}
+			registeredPlugins, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
+			if err != nil {
+				t.Fatalf("registerPlugins: %v", err)
+			}
 			router := buildRouter(tc.opts, routeHandlers{
 				System:           handlers.NewSystem(nil),
 				Templates:        handlers.NewTemplates(nil),
@@ -53,7 +57,7 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 				DebugSHA:         "debug-sha",
 				DebugBuildTime:   "debug-build-time",
 				WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-			}, registerPlugins(nil, deps), deps)
+			}, registeredPlugins, deps)
 
 			rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 			if err != nil {
@@ -107,6 +111,10 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 	}
 
 	deps := plugins.PluginDeps{}
+	registeredPlugins, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
+	if err != nil {
+		t.Fatalf("registerPlugins: %v", err)
+	}
 	router := buildRouter(routeOptions{}, routeHandlers{
 		System:           handlers.NewSystem(nil),
 		Templates:        handlers.NewTemplates(nil),
@@ -120,7 +128,7 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
 		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
-	}, registerPlugins(nil, deps), deps)
+	}, registeredPlugins, deps)
 
 	rules, err := openapi.AuthRulesFromRouter(router, scopeIndex)
 	if err != nil {
@@ -170,7 +178,11 @@ func TestTransferRouteBelongsToArtDropPlugin(t *testing.T) {
 	}
 
 	deps := plugins.PluginDeps{}
-	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdrop.NewPlugin(deps)}, deps)
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdrop.ParseTestConfig(t))
+	if err != nil {
+		t.Fatalf("artdrop.NewPlugin: %v", err)
+	}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdropPlugin}, deps)
 	if !routeExists(t, pluginRouter, http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/transfer") {
 		t.Fatal("expected artdrop plugin to register POST /accounts/{address}/transfer")
 	}
@@ -217,7 +229,11 @@ func TestStudioPricingActiveRouteBelongsToArtDropPlugin(t *testing.T) {
 	}
 
 	deps := plugins.PluginDeps{}
-	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdrop.NewPlugin(deps)}, deps)
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdrop.ParseTestConfig(t))
+	if err != nil {
+		t.Fatalf("artdrop.NewPlugin: %v", err)
+	}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdropPlugin}, deps)
 	if !routeExists(t, pluginRouter, http.MethodGet, "/v1/studio/pricing/active") {
 		t.Fatal("expected artdrop plugin to register GET /studio/pricing/active")
 	}
@@ -264,7 +280,11 @@ func TestStudioQuotesPriceRouteBelongsToArtDropPlugin(t *testing.T) {
 	}
 
 	deps := plugins.PluginDeps{}
-	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdrop.NewPlugin(deps)}, deps)
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdrop.ParseTestConfig(t))
+	if err != nil {
+		t.Fatalf("artdrop.NewPlugin: %v", err)
+	}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdropPlugin}, deps)
 	if !routeExists(t, pluginRouter, http.MethodPost, "/v1/studio/quotes:price") {
 		t.Fatal("expected artdrop plugin to register POST /studio/quotes:price")
 	}
