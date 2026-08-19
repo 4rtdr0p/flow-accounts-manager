@@ -281,14 +281,27 @@ func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
 	}
 }
 
+// TestIsArtistReturnsTrue also covers the registryOwner parameter added to
+// is_artist.cdc/Service.IsArtist: registryOwner used to be a second,
+// independent literal hardcoded inside the script body, invisible to
+// substituteAddresses (which only rewrites import lines) — a redeploy could
+// update the import correctly and silently leave that second literal
+// pointing at a retired account, making the script resolve and run while
+// returning false for every real artist. It's now a script argument built
+// from config, so this asserts the arg the chain actually receives is the
+// server's ArtDropRegistryAddress, not a literal baked into the .cdc file.
 func TestIsArtistReturnsTrue(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewBool(true),
 	}
-	svc := mustNewService(t, plugins.PluginDeps{
+	cfg := ParseTestConfig(t)
+	svc, err := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
-	})
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	is, err := svc.IsArtist(context.Background(), "0xf8d6e0586b0a20c7")
 	if err != nil {
@@ -297,15 +310,22 @@ func TestIsArtistReturnsTrue(t *testing.T) {
 	if !is {
 		t.Fatalf("expected isArtist true, got false")
 	}
-	if len(txSvc.args) != 1 {
-		t.Fatalf("expected 1 script arg, got %d", len(txSvc.args))
+	if len(txSvc.args) != 2 {
+		t.Fatalf("expected 2 script args (artist, registryOwner), got %d", len(txSvc.args))
 	}
 	addr, ok := txSvc.args[0].(cadence.Address)
 	if !ok {
-		t.Fatalf("expected script arg to be cadence.Address, got %T", txSvc.args[0])
+		t.Fatalf("expected first script arg to be cadence.Address, got %T", txSvc.args[0])
 	}
 	if addr.Hex() != flow.HexToAddress("0xf8d6e0586b0a20c7").Hex() {
-		t.Fatalf("expected script arg address 0xf8d6e0586b0a20c7, got %s", addr.Hex())
+		t.Fatalf("expected first script arg address 0xf8d6e0586b0a20c7, got %s", addr.Hex())
+	}
+	registryOwner, ok := txSvc.args[1].(cadence.Address)
+	if !ok {
+		t.Fatalf("expected second script arg to be cadence.Address, got %T", txSvc.args[1])
+	}
+	if registryOwner.Hex() != flow.HexToAddress(cfg.ArtDropRegistryAddress).Hex() {
+		t.Fatalf("expected second script arg to be server config's ArtDropRegistryAddress %q, got %s", cfg.ArtDropRegistryAddress, registryOwner.Hex())
 	}
 }
 

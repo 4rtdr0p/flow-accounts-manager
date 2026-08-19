@@ -1,9 +1,35 @@
 package artdrop
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
+
+// embeddedCDCScripts returns every .cdc source actually go:embed'd into the
+// binary (see the //go:embed directives in service.go), keyed by filename.
+// Shared by tests that need to walk the full embedded set.
+func embeddedCDCScripts() map[string]string {
+	return map[string]string{
+		"setup_collection.cdc":              setupCollectionCDC,
+		"register_provider.cdc":             registerProviderCDC,
+		"get_certificate_detail.cdc":        getCertificateDetailCDC,
+		"get_certificates.cdc":              getCertificatesCDC,
+		"get_escrow_summary.cdc":            getEscrowSummaryCDC,
+		"create_escrow.cdc":                 createEscrowCDC,
+		"activate_chip_and_settle.cdc":      activateChipAndSettleCDC,
+		"get_original_extended_summary.cdc": getOriginalExtendedSummaryCDC,
+		"get_edition_summary.cdc":           getEditionSummaryCDC,
+		"get_edition_ids_by_original.cdc":   getEditionIDsByOriginalCDC,
+		"get_platform_fee.cdc":              getPlatformFeeCDC,
+		"get_market_mode_name.cdc":          getMarketModeNameCDC,
+		"is_artist.cdc":                     isArtistCDC,
+		"onboard_artist.cdc":                onboardArtistCDC,
+		"setup_artist_direct_claim.cdc":     setupArtistDirectClaimCDC,
+		"create_original.cdc":               createOriginalCDC,
+		"create_edition.cdc":                createEditionCDC,
+	}
+}
 
 func testAddressConfig() Config {
 	return Config{
@@ -117,32 +143,49 @@ func TestSubstituteAddressesKeepsScriptOtherwiseIntact(t *testing.T) {
 func TestEmbeddedCDCScriptsSubstituteCleanly(t *testing.T) {
 	cfg := ParseTestConfig(t)
 
-	scripts := map[string]string{
-		"setup_collection.cdc":              setupCollectionCDC,
-		"register_provider.cdc":             registerProviderCDC,
-		"get_certificate_detail.cdc":        getCertificateDetailCDC,
-		"get_certificates.cdc":              getCertificatesCDC,
-		"get_escrow_summary.cdc":            getEscrowSummaryCDC,
-		"create_escrow.cdc":                 createEscrowCDC,
-		"activate_chip_and_settle.cdc":      activateChipAndSettleCDC,
-		"get_original_extended_summary.cdc": getOriginalExtendedSummaryCDC,
-		"get_edition_summary.cdc":           getEditionSummaryCDC,
-		"get_edition_ids_by_original.cdc":   getEditionIDsByOriginalCDC,
-		"get_platform_fee.cdc":              getPlatformFeeCDC,
-		"get_market_mode_name.cdc":          getMarketModeNameCDC,
-		"is_artist.cdc":                     isArtistCDC,
-		"onboard_artist.cdc":                onboardArtistCDC,
-		"setup_artist_direct_claim.cdc":     setupArtistDirectClaimCDC,
-		"create_original.cdc":               createOriginalCDC,
-		"create_edition.cdc":                createEditionCDC,
-	}
-
-	for name, script := range scripts {
+	for name, script := range embeddedCDCScripts() {
 		t.Run(name, func(t *testing.T) {
 			got := substituteAddresses(script, *cfg)
 			for contract, addr := range contractAddresses(*cfg) {
 				if strings.Contains(script, "import "+contract+" from") && !strings.Contains(got, "import "+contract+" from "+addr) {
 					t.Fatalf("%s imports %s but substitution didn't rewrite it to %s, got:\n%s", name, contract, addr, got)
+				}
+			}
+		})
+	}
+}
+
+// addressLiteralRE matches a bare Flow address literal anywhere in a line —
+// deliberately broader than importLineRE, which only matches the specific
+// "import X from 0x..." shape.
+var addressLiteralRE = regexp.MustCompile(`0x[0-9A-Fa-f]{16}`)
+
+// TestEmbeddedCDCScriptsHaveNoAddressLiteralsOutsideImportLines guards
+// against exactly the bug found auditing is_artist.cdc against the live
+// deployed contracts (2026-08-19): it hardcoded the ArtDropRegistry address
+// twice — once on its import line, which substituteAddresses correctly
+// rewrites, and once again inline in a getAccount(0x...) call in the
+// function body, which substituteAddresses can never see by construction
+// (it only ever matches import lines). A redeploy updated the import and
+// silently left the body literal pointing at the retired account — the
+// script still type-checked, still executed, and returned false for every
+// real artist. No build ever caught it; it shipped to production.
+//
+// This scans every embedded script for any 16-hex-char address literal
+// that isn't on an import line and fails the build if it finds one, so the
+// next script written with this shape fails a test instead of shipping.
+// The fix is always the same: take the address as a script/transaction
+// parameter built from Config (see is_artist.cdc's registryOwner and
+// create_escrow.cdc's logicOwner), never hardcode it a second time.
+func TestEmbeddedCDCScriptsHaveNoAddressLiteralsOutsideImportLines(t *testing.T) {
+	for name, script := range embeddedCDCScripts() {
+		t.Run(name, func(t *testing.T) {
+			for i, line := range strings.Split(script, "\n") {
+				if importLineRE.MatchString(line) {
+					continue
+				}
+				if addr := addressLiteralRE.FindString(line); addr != "" {
+					t.Fatalf("%s:%d: address literal %s outside an import line — substituteAddresses can't rewrite this; take it as a parameter instead:\n  %s", name, i+1, addr, line)
 				}
 			}
 		})

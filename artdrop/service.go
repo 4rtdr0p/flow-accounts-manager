@@ -771,7 +771,10 @@ func (s *Service) IsArtist(ctx context.Context, address string) (bool, error) {
 		return false, err
 	}
 
-	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(address)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
+	}
 
 	val, err := s.deps.Transactions.ExecuteScript(ctx, s.isArtistCDC, args)
 	if err != nil {
