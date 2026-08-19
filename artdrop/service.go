@@ -38,15 +38,6 @@ var createEscrowCDC string
 //go:embed cdc/activate_chip_and_settle.cdc
 var activateChipAndSettleCDC string
 
-//go:embed cdc/release_escrow.cdc
-var releaseEscrowCDC string
-
-//go:embed cdc/cancel_escrow.cdc
-var cancelEscrowCDC string
-
-//go:embed cdc/refund_escrow.cdc
-var refundEscrowCDC string
-
 //go:embed cdc/get_original_extended_summary.cdc
 var getOriginalExtendedSummaryCDC string
 
@@ -98,9 +89,6 @@ type Service struct {
 	getEscrowSummaryCDC           string
 	createEscrowCDC               string
 	activateChipAndSettleCDC      string
-	releaseEscrowCDC              string
-	cancelEscrowCDC               string
-	refundEscrowCDC               string
 	getOriginalExtendedSummaryCDC string
 	getEditionSummaryCDC          string
 	getEditionIDsByOriginalCDC    string
@@ -142,9 +130,6 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		getEscrowSummaryCDC:           sub(getEscrowSummaryCDC),
 		createEscrowCDC:               sub(createEscrowCDC),
 		activateChipAndSettleCDC:      sub(activateChipAndSettleCDC),
-		releaseEscrowCDC:              sub(releaseEscrowCDC),
-		cancelEscrowCDC:               sub(cancelEscrowCDC),
-		refundEscrowCDC:               sub(refundEscrowCDC),
 		getOriginalExtendedSummaryCDC: sub(getOriginalExtendedSummaryCDC),
 		getEditionSummaryCDC:          sub(getEditionSummaryCDC),
 		getEditionIDsByOriginalCDC:    sub(getEditionIDsByOriginalCDC),
@@ -385,12 +370,14 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 }
 
 // ActivateChip validates a chip signature and settles the escrow.
+//
+// certificateId/certificateOwner are no longer request inputs: the
+// escrow-lifecycle redesign (2026-08) changed EscrowModule.
+// activateChipAndSettle to derive both from the escrow's own on-chain
+// state, closing a certificate-theft vulnerability where a caller could
+// pass arbitrary values here. See ActivateChipRequest.
 func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, escrowId uint64, req ActivateChipRequest) (*jobs.Job, *transactions.Transaction, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-	certificateOwner, err := flow_helpers.ValidateAddress(req.CertificateOwner, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -403,26 +390,9 @@ func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, e
 		cadence.NewUInt64(escrowId),
 		cadence.String(req.Challenge),
 		newUInt8Array(req.Signature),
-		cadence.NewUInt64(req.CertificateId),
-		cadence.NewAddress(flow.HexToAddress(certificateOwner)),
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, address, s.activateChipAndSettleCDC, args, TxTypeActivateChip)
-}
-
-// Release releases the escrowed funds to the seller.
-func (s *Service) Release(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, s.releaseEscrowCDC, TxTypeRelease)
-}
-
-// Cancel cancels the escrow and returns the funds to the buyer.
-func (s *Service) Cancel(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, s.cancelEscrowCDC, TxTypeCancel)
-}
-
-// Refund refunds the escrowed funds.
-func (s *Service) Refund(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, s.refundEscrowCDC, TxTypeRefund)
 }
 
 // ListCertificates returns the certificates owned by the given address,
@@ -814,20 +784,6 @@ func (s *Service) IsArtist(ctx context.Context, address string) (bool, error) {
 	}
 
 	return bool(result), nil
-}
-
-func (s *Service) escrowAction(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest, code string, txType transactions.Type) (*jobs.Job, *transactions.Transaction, error) {
-	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
-		cadence.NewUInt64(escrowId),
-	}
-
-	return s.deps.Transactions.Create(ctx, sync, address, code, args, txType)
 }
 
 func newUInt8Array(bytes []byte) cadence.Array {

@@ -1,7 +1,6 @@
 package artdrop
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -258,30 +257,6 @@ func (h *Handler) ActivateChipFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
-func (h *Handler) Release() http.Handler {
-	return handlers.UseJson(http.HandlerFunc(h.ReleaseFunc))
-}
-
-func (h *Handler) ReleaseFunc(rw http.ResponseWriter, r *http.Request) {
-	h.handleEscrowAction(rw, r, h.svc.Release)
-}
-
-func (h *Handler) Cancel() http.Handler {
-	return handlers.UseJson(http.HandlerFunc(h.CancelFunc))
-}
-
-func (h *Handler) CancelFunc(rw http.ResponseWriter, r *http.Request) {
-	h.handleEscrowAction(rw, r, h.svc.Cancel)
-}
-
-func (h *Handler) Refund() http.Handler {
-	return handlers.UseJson(http.HandlerFunc(h.RefundFunc))
-}
-
-func (h *Handler) RefundFunc(rw http.ResponseWriter, r *http.Request) {
-	h.handleEscrowAction(rw, r, h.svc.Refund)
-}
-
 func (h *Handler) ListCertificates() http.Handler {
 	return http.HandlerFunc(h.ListCertificatesFunc)
 }
@@ -519,31 +494,6 @@ func (h *Handler) parseEscrowID(rw http.ResponseWriter, r *http.Request) (uint64
 		return 0, false
 	}
 	return escrowId, true
-}
-
-func (h *Handler) handleEscrowAction(
-	rw http.ResponseWriter,
-	r *http.Request,
-	action func(context.Context, bool, string, uint64, EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error),
-) {
-	var req EscrowActionRequest
-	if !h.decodeBody(rw, r, &req) {
-		return
-	}
-
-	escrowId, ok := h.parseEscrowID(rw, r)
-	if !ok {
-		return
-	}
-
-	sync := r.FormValue(handlers.SyncQueryParameter) != ""
-	job, tx, err := action(r.Context(), sync, mux.Vars(r)["address"], escrowId, req)
-	if err != nil {
-		handlers.HandleError(rw, r, err)
-		return
-	}
-
-	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
 func (h *Handler) handleTransactionResponse(rw http.ResponseWriter, sync bool, job *jobs.Job, tx *transactions.Transaction) {

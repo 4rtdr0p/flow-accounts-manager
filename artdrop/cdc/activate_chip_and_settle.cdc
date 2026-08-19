@@ -3,10 +3,17 @@
 /// The signer is the buyer (chip tapper). Requires:
 /// - Escrow in Pending status, owned by the signer (caller == buyer)
 /// - Valid challenge + signature against the registered chipPubKey
-/// - certificateId currently owned by certificateOwner
+///
+/// certificateId and its current owner are no longer transaction inputs —
+/// escrow-lifecycle redesign (2026-08) derives both from the escrow's own
+/// on-chain state (EscrowModule.runActivateChipAndSettle uses
+/// escrowRead.certificateId / escrowRead.seller / escrowRead.buyer). That
+/// was the fix for a certificate-theft vulnerability: a caller used to be
+/// able to pass an arbitrary certificateId/certificateOwner here.
 ///
 /// Atomic: signature verify + protocol transfer of the NFT to the buyer +
-/// markEscrowSettled happen together or the whole transaction reverts.
+/// markEscrowClaimed (and, if still Pending, the fund release) happen
+/// together or the whole transaction reverts.
 
 import ArtDropCore from 0xec581a0282d99a1a
 import EscrowModule from 0x1bfedfa0ec66c23e
@@ -15,9 +22,7 @@ transaction(
     logicOwner: Address,
     escrowId: UInt64,
     challenge: String,
-    signature: [UInt8],
-    certificateId: UInt64,
-    certificateOwner: Address
+    signature: [UInt8]
 ) {
     prepare(signer: &Account) {
         let escrowLogic = getAccount(logicOwner)
@@ -29,9 +34,7 @@ transaction(
             escrowId: escrowId,
             challenge: challenge,
             signature: signature,
-            activator: signer.address,
-            certificateId: certificateId,
-            certificateOwner: certificateOwner
+            activator: signer.address
         )
     }
 }

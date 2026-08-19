@@ -118,30 +118,6 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 	}
 }
 
-func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
-	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
-		Config: &configs.Config{ChainID: flow.Emulator},
-	}))
-
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/not-a-number/release",
-		strings.NewReader(`{}`),
-	)
-	req.Header.Set("Content-Type", "application/json")
-	req = mux.SetURLVars(req, map[string]string{
-		"address":  "0xf8d6e0586b0a20c7",
-		"escrowId": "not-a-number",
-	})
-	rw := httptest.NewRecorder()
-
-	handler.Release().ServeHTTP(rw, req)
-
-	if rw.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
-	}
-}
-
 func TestSetupArtistDirectFuncReturnsCreatedTransaction(t *testing.T) {
 	txSvc := &setupTxService{}
 	h := NewHandler(mustNewService(t, plugins.PluginDeps{

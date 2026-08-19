@@ -107,9 +107,13 @@ func TestSubstituteAddressesKeepsScriptOtherwiseIntact(t *testing.T) {
 // contains the exact "import <Contract> from 0x..." shape
 // substituteAddresses expects, for each of the four ArtDrop contracts it
 // references. It doesn't re-verify the full go:embed file list against the
-// task's audit (18/5/1/1 import counts) — that was done by hand — but it
-// would catch a future .cdc edit that silently breaks substitution (e.g. an
-// import written with an alias or on a wrapped line).
+// task's audit (18 ArtDropCore / 2 EscrowModule / 0 PaymentModule / 1
+// ArtDropRegistry, post escrow-lifecycle redesign — release_escrow.cdc,
+// cancel_escrow.cdc and refund_escrow.cdc were deleted, taking the only
+// PaymentModule import and three of the five EscrowModule imports with
+// them) — that was done by hand — but it would catch a future .cdc edit
+// that silently breaks substitution (e.g. an import written with an alias
+// or on a wrapped line).
 func TestEmbeddedCDCScriptsSubstituteCleanly(t *testing.T) {
 	cfg := ParseTestConfig(t)
 
@@ -121,9 +125,6 @@ func TestEmbeddedCDCScriptsSubstituteCleanly(t *testing.T) {
 		"get_escrow_summary.cdc":            getEscrowSummaryCDC,
 		"create_escrow.cdc":                 createEscrowCDC,
 		"activate_chip_and_settle.cdc":      activateChipAndSettleCDC,
-		"release_escrow.cdc":                releaseEscrowCDC,
-		"cancel_escrow.cdc":                 cancelEscrowCDC,
-		"refund_escrow.cdc":                 refundEscrowCDC,
 		"get_original_extended_summary.cdc": getOriginalExtendedSummaryCDC,
 		"get_edition_summary.cdc":           getEditionSummaryCDC,
 		"get_edition_ids_by_original.cdc":   getEditionIDsByOriginalCDC,
