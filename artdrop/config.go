@@ -28,24 +28,22 @@ type Config struct {
 	// it exists as its own setting only so it could be pointed elsewhere
 	// without a code change if that ever stopped being true.
 	//
-	// This value is server-controlled and must never be taken from client
-	// request bodies: CreateEscrowRequest.LogicOwner, ActivateChipRequest.
-	// LogicOwner and EscrowActionRequest.LogicOwner are still accepted for
-	// backwards compatibility with in-flight callers, but their values are
-	// now ignored in favor of this config.
+	// This value is server-controlled and is never taken from client request
+	// bodies — CreateEscrowRequest, ActivateChipRequest and
+	// EscrowActionRequest have no LogicOwner field at all.
 	LogicOwner string `env:"ARTDROP_LOGIC_OWNER_ADDRESS"`
 
 	// ArtDropCoreAddress is the account ArtDropCore is deployed to.
-	ArtDropCoreAddress string `env:"ARTDROP_CORE_ADDRESS,notEmpty" envDefault:"0xec581a0282d99a1a"`
+	ArtDropCoreAddress string `env:"ARTDROP_CORE_ADDRESS,notEmpty" envDefault:"0xcbd95d58129cafc1"`
 
 	// ArtDropRegistryAddress is the account ArtDropRegistry is deployed to.
-	ArtDropRegistryAddress string `env:"ARTDROP_REGISTRY_ADDRESS,notEmpty" envDefault:"0xec581a0282d99a1a"`
+	ArtDropRegistryAddress string `env:"ARTDROP_REGISTRY_ADDRESS,notEmpty" envDefault:"0xcbd95d58129cafc1"`
 
 	// EscrowModuleAddress is the account EscrowModule is deployed to.
-	EscrowModuleAddress string `env:"ARTDROP_ESCROW_MODULE_ADDRESS,notEmpty" envDefault:"0x1bfedfa0ec66c23e"`
+	EscrowModuleAddress string `env:"ARTDROP_ESCROW_MODULE_ADDRESS,notEmpty" envDefault:"0x39ea81b69a62a57f"`
 
 	// PaymentModuleAddress is the account PaymentModule is deployed to.
-	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x1bfedfa0ec66c23e"`
+	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x39ea81b69a62a57f"`
 }
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from

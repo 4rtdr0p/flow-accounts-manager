@@ -7,23 +7,25 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 )
 
-// TestLoadConfigDefaultsMatchPreMigrationAddresses locks in the "leave the
-// defaults as the current values so nothing breaks today" requirement: with
-// no FLOW_WALLET_ARTDROP_* env vars set, LoadConfig must resolve to exactly
-// the addresses that were previously hardcoded across the 22 .cdc files.
-func TestLoadConfigDefaultsMatchPreMigrationAddresses(t *testing.T) {
+// TestLoadConfigDefaultsMatchDeployedAddresses locks in the current
+// envDefault values against the addresses the tech lead confirmed live on
+// chain after the escrow-lifecycle redeploy (2026-08-19): A2/Core+Registry
+// at 0xcbd95d58129cafc1, C2/Modules (Escrow+Payment) at
+// 0x39ea81b69a62a57f. The old, now-retired addresses
+// (0xec581a0282d99a1a, 0x1bfedfa0ec66c23e) must not appear here.
+func TestLoadConfigDefaultsMatchDeployedAddresses(t *testing.T) {
 	cfg := ParseTestConfig(t)
 
-	if cfg.ArtDropCoreAddress != "0xec581a0282d99a1a" {
+	if cfg.ArtDropCoreAddress != "0xcbd95d58129cafc1" {
 		t.Fatalf("ArtDropCoreAddress default changed: got %q", cfg.ArtDropCoreAddress)
 	}
-	if cfg.ArtDropRegistryAddress != "0xec581a0282d99a1a" {
+	if cfg.ArtDropRegistryAddress != "0xcbd95d58129cafc1" {
 		t.Fatalf("ArtDropRegistryAddress default changed: got %q", cfg.ArtDropRegistryAddress)
 	}
-	if cfg.EscrowModuleAddress != "0x1bfedfa0ec66c23e" {
+	if cfg.EscrowModuleAddress != "0x39ea81b69a62a57f" {
 		t.Fatalf("EscrowModuleAddress default changed: got %q", cfg.EscrowModuleAddress)
 	}
-	if cfg.PaymentModuleAddress != "0x1bfedfa0ec66c23e" {
+	if cfg.PaymentModuleAddress != "0x39ea81b69a62a57f" {
 		t.Fatalf("PaymentModuleAddress default changed: got %q", cfg.PaymentModuleAddress)
 	}
 	// LogicOwner has no envDefault of its own — it must fall back to
