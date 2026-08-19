@@ -100,15 +100,27 @@ func TestServiceSetupStopsWhenCollectionSetupFails(t *testing.T) {
 	}
 }
 
+// TestServiceSetupArtistDirectRunsOnboardThenClaim also pins the inbox
+// provider fix: ArtDropCore.issueArtistDirectCapability publishes the claim
+// to `self.account.inbox` — the ArtDropCore contract account, not the
+// wallet-api's admin account. Those two are separate accounts (they only
+// coincided in a single-account deployment), so the claim's `provider`
+// argument must be Config.ArtDropCoreAddress, never AdminAddress — asserted
+// here against two deliberately different addresses so the test would fail
+// if they were ever confused for one another again.
 func TestServiceSetupArtistDirectRunsOnboardThenClaim(t *testing.T) {
 	txSvc := &setupTxService{}
-	svc := mustNewService(t, plugins.PluginDeps{
+	cfg := ParseTestConfig(t)
+	svc, err := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			AdminAddress: "0xf8d6e0586b0a20c7",
 			ChainID:      flow.Emulator,
 		},
-	})
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	_, tx, err := svc.SetupArtistDirect(context.Background(), true, "0x0ae53cb6e3f42a79")
 	if err != nil {
@@ -135,8 +147,12 @@ func TestServiceSetupArtistDirectRunsOnboardThenClaim(t *testing.T) {
 	if got := txSvc.calls[0].args[0]; got != cadence.NewAddress(flow.HexToAddress("0x0ae53cb6e3f42a79")) {
 		t.Fatalf("expected onboard arg artist address, got %#v", got)
 	}
-	if got := txSvc.calls[1].args[0]; got != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
-		t.Fatalf("expected claim arg provider address, got %#v", got)
+	// cfg.ArtDropCoreAddress ("0xcbd95d58129cafc1" by default) and AdminAddress
+	// ("0xf8d6e0586b0a20c7" here) are deliberately different values, so this
+	// assertion alone fails if the two are ever confused for one another
+	// again.
+	if got := txSvc.calls[1].args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.ArtDropCoreAddress)) {
+		t.Fatalf("expected claim arg provider to be the ArtDropCore account %q, got %#v", cfg.ArtDropCoreAddress, got)
 	}
 	if got := txSvc.calls[1].args[1]; got != cadence.String("artist-direct-0x0ae53cb6e3f42a79") {
 		t.Fatalf("expected inbox name arg, got %#v", got)

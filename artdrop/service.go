@@ -219,13 +219,22 @@ func (s *Service) SetupArtistDirect(ctx context.Context, sync bool, artistAddres
 		return nil, nil, fmt.Errorf("onboard artist: %w", err)
 	}
 
+	// The claim's `provider` must be the account the inbox entry was
+	// published from — ArtDropCore.issueArtistDirectCapability publishes to
+	// `self.account.inbox`, i.e. the ArtDropCore contract account itself,
+	// not the wallet-api's admin account. Those two only happened to
+	// coincide in a single-account deployment; they've been separate
+	// accounts since, so this claim has been unable to find its inbox
+	// entry the entire time they diverged. adminAddress is still the
+	// correct proposer/signer above (the account holding the
+	// ArtistOnboarding capability) — this is a different address entirely.
 	job, tx, err := s.deps.Transactions.Create(
 		ctx,
 		sync,
 		artistAddress,
 		s.setupArtistDirectClaimCDC,
 		[]transactions.Argument{
-			cadence.NewAddress(flow.HexToAddress(adminAddress)),
+			cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropCoreAddress)),
 			cadence.String("artist-direct-" + artistAddress),
 		},
 		TxTypeSetupArtistDirect,
