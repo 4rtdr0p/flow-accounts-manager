@@ -15,9 +15,15 @@ type Plugin struct {
 	svc *Service
 }
 
-// NewPlugin creates the artdrop plugin using the shared application dependencies.
-func NewPlugin(deps plugins.PluginDeps) plugins.Plugin {
-	return &Plugin{svc: NewService(deps)}
+// NewPlugin creates the artdrop plugin using the shared application
+// dependencies and the artdrop contract-address config (see LoadConfig).
+// Returns an error if cfg fails to validate — see NewService.
+func NewPlugin(deps plugins.PluginDeps, cfg *Config) (plugins.Plugin, error) {
+	svc, err := NewService(deps, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Plugin{svc: svc}, nil
 }
 
 // Name returns the plugin name.

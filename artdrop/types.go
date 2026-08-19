@@ -45,6 +45,13 @@ type CreateEditionRequest struct {
 }
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.
+//
+// LogicOwner and VaultIdentifier are accepted but ignored: LogicOwner (the
+// EscrowModule capability owner) now comes from server config
+// (Config.LogicOwner), and VaultIdentifier (the storage path escrow
+// creation withdraws from) is fixed to defaultVaultIdentifier. Both fields
+// are kept in the struct only so callers still sending them don't get a
+// decode error; their values never reach the chain.
 type CreateEscrowRequest struct {
 	LogicOwner      string  `json:"logic_owner"`
 	Buyer           string  `json:"buyer"`
@@ -58,7 +65,10 @@ type CreateEscrowRequest struct {
 	VaultIdentifier string  `json:"vault_identifier"`
 }
 
-// ActivateChipRequest contains the parameters needed to activate a chip and settle an escrow.
+// ActivateChipRequest contains the parameters needed to activate a chip and
+// settle an escrow.
+//
+// LogicOwner is accepted but ignored — see CreateEscrowRequest.LogicOwner.
 type ActivateChipRequest struct {
 	LogicOwner       string `json:"logic_owner"`
 	EscrowId         uint64 `json:"escrow_id"`
@@ -68,7 +78,10 @@ type ActivateChipRequest struct {
 	CertificateOwner string `json:"certificate_owner"`
 }
 
-// EscrowActionRequest is a reusable payload for release, cancel and refund actions.
+// EscrowActionRequest is a reusable payload for release, cancel and refund
+// actions.
+//
+// LogicOwner is accepted but ignored — see CreateEscrowRequest.LogicOwner.
 type EscrowActionRequest struct {
 	LogicOwner string `json:"logic_owner"`
 }

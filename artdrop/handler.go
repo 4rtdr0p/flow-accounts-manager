@@ -478,16 +478,14 @@ func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	logicOwner := r.URL.Query().Get("logic_owner")
-	if logicOwner == "" {
-		handlers.HandleError(rw, r, &errors.RequestError{
-			StatusCode: http.StatusBadRequest,
-			Err:        fmt.Errorf("field 'logic_owner' is required"),
-		})
-		return
-	}
 
-	summary, err := h.svc.GetEscrow(r.Context(), logicOwner, escrowId)
+	// logic_owner used to be a required query param, validated against the
+	// caller's value and otherwise unused (get_escrow_summary.cdc never took
+	// it as an argument). The EscrowModule owner is now a server-side config
+	// value (see Config.LogicOwner), so the param is no longer required; it's
+	// simply ignored if a caller still sends it, to avoid breaking them
+	// mid-flight.
+	summary, err := h.svc.GetEscrow(r.Context(), escrowId)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return

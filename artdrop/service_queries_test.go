@@ -45,7 +45,7 @@ func TestListCertificatesReturnsIds(t *testing.T) {
 			}),
 		}),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -75,7 +75,7 @@ func TestListCertificatesReturnsEmpty(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{}),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -91,7 +91,7 @@ func TestListCertificatesReturnsEmpty(t *testing.T) {
 
 func TestListCertificatesPropagatesScriptError(t *testing.T) {
 	txSvc := &queryTxService{err: errors.New("script execution failed")}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -107,7 +107,7 @@ func TestListCertificatesRejectsUnexpectedType(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: strVal,
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -122,12 +122,12 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt8(3),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	summary, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	summary, err := svc.GetEscrow(context.Background(), 7)
 	if err != nil {
 		t.Fatalf("GetEscrow returned error: %v", err)
 	}
@@ -147,12 +147,12 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 
 func TestGetEscrowPropagatesScriptError(t *testing.T) {
 	txSvc := &queryTxService{err: errors.New("script execution failed")}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	_, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	_, err := svc.GetEscrow(context.Background(), 7)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -162,12 +162,12 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt64(42),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	_, err := svc.GetEscrow(context.Background(), "0xf8d6e0586b0a20c7", 7)
+	_, err := svc.GetEscrow(context.Background(), 7)
 	if err == nil {
 		t.Fatal("expected error for unexpected script result type, got nil")
 	}
@@ -196,7 +196,7 @@ func TestGetCertificateDetailReturnsConsolidatedMetadata(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -245,7 +245,7 @@ func TestGetCertificateDetailReturnsNilWhenScriptReturnsNil(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewOptional(nil),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -270,7 +270,7 @@ func TestGetCertificateDetailRejectsUnexpectedChipPubKeyType(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(nil)},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -285,7 +285,7 @@ func TestIsArtistReturnsTrue(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewBool(true),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -313,7 +313,7 @@ func TestIsArtistReturnsFalse(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewBool(false),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -329,7 +329,7 @@ func TestIsArtistReturnsFalse(t *testing.T) {
 
 func TestIsArtistPropagatesScriptError(t *testing.T) {
 	txSvc := &queryTxService{err: errors.New("script execution failed")}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -344,7 +344,7 @@ func TestIsArtistRejectsUnexpectedType(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt64(1),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -357,7 +357,7 @@ func TestIsArtistRejectsUnexpectedType(t *testing.T) {
 
 func TestIsArtistRejectsInvalidAddress(t *testing.T) {
 	txSvc := &queryTxService{}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -444,7 +444,7 @@ func TestGetOriginalSummaryMapsContractFields(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(displayName)},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -468,7 +468,7 @@ func TestGetOriginalSummaryAllowsMissingDisplayName(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(nil)},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -488,7 +488,7 @@ func TestGetOriginalSummaryRejectsUnexpectedDisplayNameType(t *testing.T) {
 			{Key: cadence.String("displayName"), Value: cadence.NewOptional(cadence.NewUInt64(42))},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -530,7 +530,7 @@ func TestGetEditionSummaryMapsContractFields(t *testing.T) {
 			{Key: cadence.String("rarityProfile"), Value: cadence.NewUInt8(1)},
 		})),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -558,7 +558,7 @@ func TestGetEditionIDsByOriginalMapsArray(t *testing.T) {
 			cadence.NewUInt64(13),
 		}),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -583,7 +583,7 @@ func TestGetEditionIDsByOriginalAllowsEmptyArray(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewArray([]cadence.Value{}),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
@@ -604,7 +604,7 @@ func TestGetEditionIDsByOriginalRejectsUnexpectedType(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewOptional(nil),
 	}
-	svc := NewService(plugins.PluginDeps{
+	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})

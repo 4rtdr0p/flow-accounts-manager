@@ -252,7 +252,15 @@ func runServer(cfg *configs.Config) {
 		WorkerPool:   wp,
 		Mongo:        mongoClient,
 	}
-	registeredPlugins := registerPlugins(cfg, pluginDeps)
+
+	artdropCfg, err := artdrop.LoadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	registeredPlugins, err := registerPlugins(cfg, artdropCfg, pluginDeps)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	r := buildRouter(routerOptions, routeHandlers{
 		System:         systemHandler,
@@ -471,11 +479,16 @@ type routeHandlers struct {
 }
 
 // registerPlugins returns the list of active plugins.
-func registerPlugins(cfg *configs.Config, deps plugins.PluginDeps) []plugins.Plugin {
+func registerPlugins(cfg *configs.Config, artdropCfg *artdrop.Config, deps plugins.PluginDeps) ([]plugins.Plugin, error) {
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdropCfg)
+	if err != nil {
+		return nil, fmt.Errorf("register artdrop plugin: %w", err)
+	}
+
 	return []plugins.Plugin{
 		example.NewPlugin(deps),
-		artdrop.NewPlugin(deps),
-	}
+		artdropPlugin,
+	}, nil
 }
 
 func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugins.Plugin, deps plugins.PluginDeps) *mux.Router {

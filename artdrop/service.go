@@ -77,14 +77,85 @@ var createOriginalCDC string
 //go:embed cdc/create_edition.cdc
 var createEditionCDC string
 
+// defaultVaultIdentifier is the only storage path escrow creation is allowed
+// to withdraw from: the standard FLOW vault, matching the /storage/
+// flowTokenVault path release_escrow.cdc, cancel_escrow.cdc and
+// refund_escrow.cdc already hardcode. CreateEscrowRequest.VaultIdentifier
+// used to let a caller name an arbitrary storage path here; a legitimate
+// caller never needs anything other than their FLOW vault, so the value is
+// now fixed server-side instead of trusting client input.
+const defaultVaultIdentifier = "flowTokenVault"
+
 // Service implements the artdrop plugin business logic.
 type Service struct {
 	deps plugins.PluginDeps
+	cfg  Config
+
+	setupCollectionCDC            string
+	registerProviderCDC           string
+	getCertificateDetailCDC       string
+	getCertificatesCDC            string
+	getEscrowSummaryCDC           string
+	createEscrowCDC               string
+	activateChipAndSettleCDC      string
+	releaseEscrowCDC              string
+	cancelEscrowCDC               string
+	refundEscrowCDC               string
+	getOriginalExtendedSummaryCDC string
+	getEditionSummaryCDC          string
+	getEditionIDsByOriginalCDC    string
+	getPlatformFeeCDC             string
+	getMarketModeNameCDC          string
+	isArtistCDC                   string
+	onboardArtistCDC              string
+	setupArtistDirectClaimCDC     string
+	createOriginalCDC             string
+	createEditionCDC              string
 }
 
-// NewService creates a new artdrop service using the shared plugin dependencies.
-func NewService(deps plugins.PluginDeps) *Service {
-	return &Service{deps: deps}
+// NewService creates a new artdrop service using the shared plugin
+// dependencies and the artdrop contract-address config. It substitutes cfg's
+// addresses into every embedded .cdc script's import lines once, up front,
+// so per-request handling never has to think about it again. Returns an
+// error rather than a partially-wired Service if cfg is missing or fails to
+// validate — see Config.normalizeAndValidate.
+func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("artdrop: config is required")
+	}
+
+	validated := *cfg
+	if err := validated.normalizeAndValidate(); err != nil {
+		return nil, fmt.Errorf("artdrop: invalid config: %w", err)
+	}
+
+	sub := func(script string) string { return substituteAddresses(script, validated) }
+
+	return &Service{
+		deps: deps,
+		cfg:  validated,
+
+		setupCollectionCDC:            sub(setupCollectionCDC),
+		registerProviderCDC:           sub(registerProviderCDC),
+		getCertificateDetailCDC:       sub(getCertificateDetailCDC),
+		getCertificatesCDC:            sub(getCertificatesCDC),
+		getEscrowSummaryCDC:           sub(getEscrowSummaryCDC),
+		createEscrowCDC:               sub(createEscrowCDC),
+		activateChipAndSettleCDC:      sub(activateChipAndSettleCDC),
+		releaseEscrowCDC:              sub(releaseEscrowCDC),
+		cancelEscrowCDC:               sub(cancelEscrowCDC),
+		refundEscrowCDC:               sub(refundEscrowCDC),
+		getOriginalExtendedSummaryCDC: sub(getOriginalExtendedSummaryCDC),
+		getEditionSummaryCDC:          sub(getEditionSummaryCDC),
+		getEditionIDsByOriginalCDC:    sub(getEditionIDsByOriginalCDC),
+		getPlatformFeeCDC:             sub(getPlatformFeeCDC),
+		getMarketModeNameCDC:          sub(getMarketModeNameCDC),
+		isArtistCDC:                   sub(isArtistCDC),
+		onboardArtistCDC:              sub(onboardArtistCDC),
+		setupArtistDirectClaimCDC:     sub(setupArtistDirectClaimCDC),
+		createOriginalCDC:             sub(createOriginalCDC),
+		createEditionCDC:              sub(createEditionCDC),
+	}, nil
 }
 
 // Transfer executes an ArtDrop protocol transfer of a certificate NFT.
@@ -119,7 +190,7 @@ func (s *Service) Transfer(ctx context.Context, sync bool, address string, req T
 		cadence.NewAddress(flow.HexToAddress(to)),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, s.deps.Config.AdminAddress, string(script), args, TxTypeTransfer)
+	return s.deps.Transactions.Create(ctx, sync, s.deps.Config.AdminAddress, substituteAddresses(string(script), s.cfg), args, TxTypeTransfer)
 }
 
 // Setup prepares an account to use the artdrop contract suite.
@@ -129,11 +200,11 @@ func (s *Service) Setup(ctx context.Context, sync bool, address string) (*jobs.J
 		return nil, nil, err
 	}
 
-	if _, _, err := s.deps.Transactions.Create(ctx, true, address, setupCollectionCDC, nil, TxTypeSetup); err != nil {
+	if _, _, err := s.deps.Transactions.Create(ctx, true, address, s.setupCollectionCDC, nil, TxTypeSetup); err != nil {
 		return nil, nil, fmt.Errorf("setup artdrop collection: %w", err)
 	}
 
-	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, registerProviderCDC, nil, TxTypeSetup)
+	job, tx, err := s.deps.Transactions.Create(ctx, sync, address, s.registerProviderCDC, nil, TxTypeSetup)
 	if err != nil {
 		return nil, nil, fmt.Errorf("register artdrop provider: %w", err)
 	}
@@ -156,7 +227,7 @@ func (s *Service) SetupArtistDirect(ctx context.Context, sync bool, artistAddres
 		ctx,
 		true,
 		adminAddress,
-		onboardArtistCDC,
+		s.onboardArtistCDC,
 		[]transactions.Argument{cadence.NewAddress(flow.HexToAddress(artistAddress))},
 		TxTypeSetupArtistDirect,
 	); err != nil {
@@ -167,7 +238,7 @@ func (s *Service) SetupArtistDirect(ctx context.Context, sync bool, artistAddres
 		ctx,
 		sync,
 		artistAddress,
-		setupArtistDirectClaimCDC,
+		s.setupArtistDirectClaimCDC,
 		[]transactions.Argument{
 			cadence.NewAddress(flow.HexToAddress(adminAddress)),
 			cadence.String("artist-direct-" + artistAddress),
@@ -206,7 +277,7 @@ func (s *Service) CreateOriginal(ctx context.Context, sync bool, artistAddress s
 		ctx,
 		sync,
 		artistAddress,
-		createOriginalCDC,
+		s.createOriginalCDC,
 		[]transactions.Argument{
 			cadence.String(req.Name),
 			cadence.String(req.Description),
@@ -252,7 +323,7 @@ func (s *Service) CreateEdition(ctx context.Context, sync bool, artistAddress st
 		ctx,
 		sync,
 		artistAddress,
-		createEditionCDC,
+		s.createEditionCDC,
 		[]transactions.Argument{
 			cadence.NewUInt64(originalID),
 			cadence.NewUInt64(req.ReprintLimit),
@@ -277,10 +348,6 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 		return nil, nil, fmt.Errorf("validate admin address: %w", err)
 	}
 
-	logicOwner, err := flow_helpers.ValidateAddress(req.LogicOwner, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
 	buyer, err := flow_helpers.ValidateAddress(req.Buyer, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, nil, err
@@ -300,12 +367,9 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	if req.ChipId == "" {
 		return nil, nil, fmt.Errorf("field 'chip_id' is required")
 	}
-	if req.VaultIdentifier == "" {
-		return nil, nil, fmt.Errorf("field 'vault_identifier' is required")
-	}
 
 	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(logicOwner)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
 		cadence.NewAddress(flow.HexToAddress(buyer)),
 		cadence.NewAddress(flow.HexToAddress(seller)),
 		cadence.NewUInt64(req.EditionId),
@@ -314,19 +378,15 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 		unlockAt,
 		cadence.NewUInt64(req.Nonce),
 		amount,
-		cadence.String(req.VaultIdentifier),
+		cadence.String(defaultVaultIdentifier),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, proposerAddress, createEscrowCDC, args, TxTypeCreateEscrow)
+	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.createEscrowCDC, args, TxTypeCreateEscrow)
 }
 
 // ActivateChip validates a chip signature and settles the escrow.
 func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, escrowId uint64, req ActivateChipRequest) (*jobs.Job, *transactions.Transaction, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
-	logicOwner, err := flow_helpers.ValidateAddress(req.LogicOwner, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -339,7 +399,7 @@ func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, e
 	}
 
 	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(logicOwner)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
 		cadence.NewUInt64(escrowId),
 		cadence.String(req.Challenge),
 		newUInt8Array(req.Signature),
@@ -347,22 +407,22 @@ func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, e
 		cadence.NewAddress(flow.HexToAddress(certificateOwner)),
 	}
 
-	return s.deps.Transactions.Create(ctx, sync, address, activateChipAndSettleCDC, args, TxTypeActivateChip)
+	return s.deps.Transactions.Create(ctx, sync, address, s.activateChipAndSettleCDC, args, TxTypeActivateChip)
 }
 
 // Release releases the escrowed funds to the seller.
 func (s *Service) Release(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, releaseEscrowCDC, TxTypeRelease)
+	return s.escrowAction(ctx, sync, address, escrowId, req, s.releaseEscrowCDC, TxTypeRelease)
 }
 
 // Cancel cancels the escrow and returns the funds to the buyer.
 func (s *Service) Cancel(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, cancelEscrowCDC, TxTypeCancel)
+	return s.escrowAction(ctx, sync, address, escrowId, req, s.cancelEscrowCDC, TxTypeCancel)
 }
 
 // Refund refunds the escrowed funds.
 func (s *Service) Refund(ctx context.Context, sync bool, address string, escrowId uint64, req EscrowActionRequest) (*jobs.Job, *transactions.Transaction, error) {
-	return s.escrowAction(ctx, sync, address, escrowId, req, refundEscrowCDC, TxTypeRefund)
+	return s.escrowAction(ctx, sync, address, escrowId, req, s.refundEscrowCDC, TxTypeRefund)
 }
 
 // ListCertificates returns the certificates owned by the given address,
@@ -382,7 +442,7 @@ func (s *Service) ListCertificates(ctx context.Context, address string) ([]Certi
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificatesCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getCertificatesCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificates script: %w", err)
 	}
@@ -439,17 +499,12 @@ func (s *Service) GetCollectionLength(ctx context.Context, address string) (*Col
 }
 
 // GetEscrow returns a summary of the requested escrow.
-func (s *Service) GetEscrow(ctx context.Context, logicOwner string, escrowId uint64) (*EscrowSummary, error) {
-	_, err := flow_helpers.ValidateAddress(logicOwner, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
 	args := []transactions.Argument{
 		cadence.NewUInt64(escrowId),
 	}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEscrowSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_escrow_summary script: %w", err)
 	}
@@ -495,7 +550,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 		cadence.NewUInt64(certificateId),
 	}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getCertificateDetailCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getCertificateDetailCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_certificate_detail script: %w", err)
 	}
@@ -548,7 +603,7 @@ func (s *Service) GetCertificateDetail(ctx context.Context, address string, cert
 func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*OriginalSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getOriginalExtendedSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getOriginalExtendedSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_original_extended_summary script: %w", err)
 	}
@@ -609,7 +664,7 @@ func (s *Service) GetOriginalSummary(ctx context.Context, originalId uint64) (*O
 func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*EditionSummary, error) {
 	args := []transactions.Argument{cadence.NewUInt64(editionId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionSummaryCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEditionSummaryCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_summary script: %w", err)
 	}
@@ -686,7 +741,7 @@ func (s *Service) GetEditionSummary(ctx context.Context, editionId uint64) (*Edi
 func (s *Service) GetEditionIDsByOriginal(ctx context.Context, originalId uint64) ([]uint64, error) {
 	args := []transactions.Argument{cadence.NewUInt64(originalId)}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getEditionIDsByOriginalCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEditionIDsByOriginalCDC, args)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_edition_ids_by_original script: %w", err)
 	}
@@ -710,7 +765,7 @@ func (s *Service) GetEditionIDsByOriginal(ctx context.Context, originalId uint64
 
 // GetPlatformFee returns the current platform fee.
 func (s *Service) GetPlatformFee(ctx context.Context) (*PlatformFeeResponse, error) {
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getPlatformFeeCDC, nil)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getPlatformFeeCDC, nil)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_platform_fee script: %w", err)
 	}
@@ -725,7 +780,7 @@ func (s *Service) GetPlatformFee(ctx context.Context) (*PlatformFeeResponse, err
 
 // GetMarketMode returns the current market mode name.
 func (s *Service) GetMarketMode(ctx context.Context) (*MarketModeResponse, error) {
-	val, err := s.deps.Transactions.ExecuteScript(ctx, getMarketModeNameCDC, nil)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getMarketModeNameCDC, nil)
 	if err != nil {
 		return nil, fmt.Errorf("execute get_market_mode_name script: %w", err)
 	}
@@ -748,7 +803,7 @@ func (s *Service) IsArtist(ctx context.Context, address string) (bool, error) {
 
 	args := []transactions.Argument{cadence.NewAddress(flow.HexToAddress(address))}
 
-	val, err := s.deps.Transactions.ExecuteScript(ctx, isArtistCDC, args)
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.isArtistCDC, args)
 	if err != nil {
 		return false, fmt.Errorf("execute is_artist script: %w", err)
 	}
@@ -766,13 +821,9 @@ func (s *Service) escrowAction(ctx context.Context, sync bool, address string, e
 	if err != nil {
 		return nil, nil, err
 	}
-	logicOwner, err := flow_helpers.ValidateAddress(req.LogicOwner, s.deps.Config.ChainID)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(logicOwner)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
 		cadence.NewUInt64(escrowId),
 	}
 

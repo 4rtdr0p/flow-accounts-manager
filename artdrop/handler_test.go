@@ -32,7 +32,7 @@ func TestTransferAcceptsCertificateIDZero(t *testing.T) {
 	}
 
 	txSvc := &captureTransactionService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			ChainID:                    flow.Emulator,
@@ -85,7 +85,7 @@ func TestTransferRequiresCertificateID(t *testing.T) {
 
 func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 	txSvc := &captureTransactionService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			AdminAddress: "0xf8d6e0586b0a20c7",
@@ -121,7 +121,7 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 }
 
 func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Config: &configs.Config{ChainID: flow.Emulator},
 	}))
 
@@ -146,7 +146,7 @@ func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
 
 func TestSetupArtistDirectFuncReturnsCreatedTransaction(t *testing.T) {
 	txSvc := &setupTxService{}
-	h := NewHandler(NewService(plugins.PluginDeps{
+	h := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			AdminAddress: "0xf8d6e0586b0a20c7",
@@ -170,7 +170,7 @@ func TestSetupArtistDirectFuncReturnsCreatedTransaction(t *testing.T) {
 
 func TestCreateOriginalHandlerReturnsCreated(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -190,7 +190,7 @@ func TestCreateOriginalHandlerReturnsCreated(t *testing.T) {
 
 func TestCreateOriginalHandlerRequiresFields(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -210,7 +210,7 @@ func TestCreateOriginalHandlerRequiresFields(t *testing.T) {
 
 func TestCreateOriginalHandlerRejectsMismatchedTokenSubject(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -236,7 +236,7 @@ func TestCreateOriginalHandlerRejectsMismatchedTokenSubject(t *testing.T) {
 
 func TestCreateOriginalHandlerAllowsMatchingTokenSubject(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -261,7 +261,7 @@ func TestCreateOriginalHandlerAllowsMissingTokenSubject(t *testing.T) {
 	// A token with no subject claim (e.g. a service/admin token) is left
 	// untouched by the artistAddress check; see requireArtistSubject.
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -281,7 +281,7 @@ func TestCreateOriginalHandlerAllowsMissingTokenSubject(t *testing.T) {
 
 func TestCreateEditionHandlerReturnsCreated(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -304,7 +304,7 @@ func TestCreateEditionHandlerReturnsCreated(t *testing.T) {
 
 func TestCreateEditionHandlerRejectsInvalidOriginalID(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
@@ -327,7 +327,7 @@ func TestCreateEditionHandlerRejectsInvalidOriginalID(t *testing.T) {
 
 func TestCreateEditionHandlerRequiresFields(t *testing.T) {
 	txSvc := &setupTxService{}
-	handler := NewHandler(NewService(plugins.PluginDeps{
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
