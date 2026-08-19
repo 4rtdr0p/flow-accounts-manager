@@ -147,7 +147,7 @@ func TestServiceSetupArtistDirectRunsOnboardThenClaim(t *testing.T) {
 	if got := txSvc.calls[0].args[0]; got != cadence.NewAddress(flow.HexToAddress("0x0ae53cb6e3f42a79")) {
 		t.Fatalf("expected onboard arg artist address, got %#v", got)
 	}
-	// cfg.ArtDropCoreAddress ("0xcbd95d58129cafc1" by default) and AdminAddress
+	// cfg.ArtDropCoreAddress ("0xd97d6774544fcd9c" by default) and AdminAddress
 	// ("0xf8d6e0586b0a20c7" here) are deliberately different values, so this
 	// assertion alone fails if the two are ever confused for one another
 	// again.
