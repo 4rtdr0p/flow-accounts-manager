@@ -3,6 +3,13 @@
 /// El buyer paga 100% off-chain (Stripe). El protocolo toma el 5%,
 /// lo convierte a FLOW, y firma esta transacción para crear el escrow.
 /// El seller recibe el Certificate cuando el buyer active el chip (D6).
+///
+/// chipPubKey is no longer a parameter here (chip-registry redesign,
+/// 2026-08-19) — EscrowModule.createEscrow looks the chip's public key up
+/// from ArtDropRegistry.ChipPublicKeyIndex by chipId, panicking loudly if
+/// the chip hasn't been provisioned. Registration/replacement is a
+/// separate, OperationalAdmin-gated, one-time-per-chip operation — not
+/// something this transaction or the wallet API can do.
 
 import FungibleToken from 0x9a0766d93b6608b7
 import ArtDropCore from 0xec581a0282d99a1a
@@ -14,7 +21,6 @@ transaction(
     seller: Address,
     editionId: UInt64,
     chipId: String,
-    chipPubKey: [UInt8],
     unlockAt: UFix64,
     nonce: UInt64,
     amount: UFix64,
@@ -38,7 +44,6 @@ transaction(
             seller: seller,
             editionId: editionId,
             chipId: chipId,
-            chipPubKey: chipPubKey,
             unlockAt: unlockAt,
             nonce: nonce,
             payment: <-payment

@@ -9,23 +9,24 @@ import (
 
 // TestLoadConfigDefaultsMatchDeployedAddresses locks in the current
 // envDefault values against the addresses the tech lead confirmed live on
-// chain after the escrow-lifecycle redeploy (2026-08-19): A2/Core+Registry
-// at 0xcbd95d58129cafc1, C2/Modules (Escrow+Payment) at
-// 0x39ea81b69a62a57f. The old, now-retired addresses
-// (0xec581a0282d99a1a, 0x1bfedfa0ec66c23e) must not appear here.
+// chain after the fresh full-topology redeploy (2026-08-19): A3/Core+Registry
+// at 0xd97d6774544fcd9c, C3/Modules (Escrow+Payment) at
+// 0x2edba2d63af095b8. The older, now-retired address generations
+// (0xcbd95d58129cafc1/0x39ea81b69a62a57f from the previous redeploy, and
+// 0xec581a0282d99a1a/0x1bfedfa0ec66c23e before that) must not appear here.
 func TestLoadConfigDefaultsMatchDeployedAddresses(t *testing.T) {
 	cfg := ParseTestConfig(t)
 
-	if cfg.ArtDropCoreAddress != "0xcbd95d58129cafc1" {
+	if cfg.ArtDropCoreAddress != "0xd97d6774544fcd9c" {
 		t.Fatalf("ArtDropCoreAddress default changed: got %q", cfg.ArtDropCoreAddress)
 	}
-	if cfg.ArtDropRegistryAddress != "0xcbd95d58129cafc1" {
+	if cfg.ArtDropRegistryAddress != "0xd97d6774544fcd9c" {
 		t.Fatalf("ArtDropRegistryAddress default changed: got %q", cfg.ArtDropRegistryAddress)
 	}
-	if cfg.EscrowModuleAddress != "0x39ea81b69a62a57f" {
+	if cfg.EscrowModuleAddress != "0x2edba2d63af095b8" {
 		t.Fatalf("EscrowModuleAddress default changed: got %q", cfg.EscrowModuleAddress)
 	}
-	if cfg.PaymentModuleAddress != "0x39ea81b69a62a57f" {
+	if cfg.PaymentModuleAddress != "0x2edba2d63af095b8" {
 		t.Fatalf("PaymentModuleAddress default changed: got %q", cfg.PaymentModuleAddress)
 	}
 	// LogicOwner has no envDefault of its own — it must fall back to

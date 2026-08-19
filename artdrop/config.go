@@ -34,16 +34,16 @@ type Config struct {
 	LogicOwner string `env:"ARTDROP_LOGIC_OWNER_ADDRESS"`
 
 	// ArtDropCoreAddress is the account ArtDropCore is deployed to.
-	ArtDropCoreAddress string `env:"ARTDROP_CORE_ADDRESS,notEmpty" envDefault:"0xcbd95d58129cafc1"`
+	ArtDropCoreAddress string `env:"ARTDROP_CORE_ADDRESS,notEmpty" envDefault:"0xd97d6774544fcd9c"`
 
 	// ArtDropRegistryAddress is the account ArtDropRegistry is deployed to.
-	ArtDropRegistryAddress string `env:"ARTDROP_REGISTRY_ADDRESS,notEmpty" envDefault:"0xcbd95d58129cafc1"`
+	ArtDropRegistryAddress string `env:"ARTDROP_REGISTRY_ADDRESS,notEmpty" envDefault:"0xd97d6774544fcd9c"`
 
 	// EscrowModuleAddress is the account EscrowModule is deployed to.
-	EscrowModuleAddress string `env:"ARTDROP_ESCROW_MODULE_ADDRESS,notEmpty" envDefault:"0x39ea81b69a62a57f"`
+	EscrowModuleAddress string `env:"ARTDROP_ESCROW_MODULE_ADDRESS,notEmpty" envDefault:"0x2edba2d63af095b8"`
 
 	// PaymentModuleAddress is the account PaymentModule is deployed to.
-	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x39ea81b69a62a57f"`
+	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x2edba2d63af095b8"`
 }
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from

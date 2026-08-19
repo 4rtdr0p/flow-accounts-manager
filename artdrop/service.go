@@ -368,7 +368,6 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 		cadence.NewAddress(flow.HexToAddress(seller)),
 		cadence.NewUInt64(req.EditionId),
 		cadence.String(req.ChipId),
-		newUInt8Array(req.ChipPubKey),
 		unlockAt,
 		cadence.NewUInt64(req.Nonce),
 		amount,

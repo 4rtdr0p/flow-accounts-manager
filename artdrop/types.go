@@ -58,15 +58,21 @@ type CreateEditionRequest struct {
 // — and were removed outright rather than kept-but-ignored: this plugin has
 // no callers that predate the protocol's address migration to preserve
 // compatibility with.
+//
+// ChipPubKey was removed the same way (chip-registry redesign, 2026-08-19):
+// EscrowModule.createEscrow no longer takes a chip public key at all — it
+// looks the chip's registered key up from ArtDropRegistry.ChipPublicKeyIndex
+// by chipId. Provisioning that key is a separate, one-time-per-chip,
+// OperationalAdmin-gated operation the wallet API cannot perform (see
+// artdrop/cdc/create_escrow.cdc).
 type CreateEscrowRequest struct {
-	Buyer      string  `json:"buyer"`
-	Seller     string  `json:"seller"`
-	EditionId  uint64  `json:"edition_id"`
-	ChipId     string  `json:"chip_id"`
-	ChipPubKey []byte  `json:"chip_pub_key"`
-	UnlockAt   float64 `json:"unlock_at"`
-	Nonce      uint64  `json:"nonce"`
-	Amount     float64 `json:"amount"`
+	Buyer     string  `json:"buyer"`
+	Seller    string  `json:"seller"`
+	EditionId uint64  `json:"edition_id"`
+	ChipId    string  `json:"chip_id"`
+	UnlockAt  float64 `json:"unlock_at"`
+	Nonce     uint64  `json:"nonce"`
+	Amount    float64 `json:"amount"`
 }
 
 // ActivateChipRequest contains the parameters needed to activate a chip and

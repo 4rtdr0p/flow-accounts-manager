@@ -98,7 +98,6 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 		"seller":"0x0ae53cb6e3f42a79",
 		"edition_id":42,
 		"chip_id":"chip-1",
-		"chip_pub_key":"AQID",
 		"unlock_at":123.45,
 		"nonce":7,
 		"amount":10.5
@@ -113,8 +112,8 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 	if rw.Code != http.StatusCreated {
 		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
 	}
-	if len(txSvc.args) != 10 {
-		t.Fatalf("expected 10 Cadence args, got %d", len(txSvc.args))
+	if len(txSvc.args) != 9 {
+		t.Fatalf("expected 9 Cadence args (no chip public key), got %d", len(txSvc.args))
 	}
 }
 
