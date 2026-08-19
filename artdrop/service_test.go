@@ -309,11 +309,14 @@ func TestServiceCreateEditionUsesArtistProposerAndCadenceArgs(t *testing.T) {
 }
 
 // TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs also covers the
-// removal of CreateEscrowRequest.LogicOwner and .VaultIdentifier: neither
-// field exists on the request anymore (there's nothing for a caller to
-// override), so this asserts directly that the logicOwner and
-// vaultIdentifier args reaching the chain are the server's own config and
-// defaultVaultIdentifier, full stop.
+// removal of CreateEscrowRequest.LogicOwner, .VaultIdentifier and
+// .ChipPubKey: none of the three exist on the request anymore (there's
+// nothing for a caller to override, and nothing for the chip-registry
+// redesign's createEscrow to accept even if there were), so this asserts
+// directly that the logicOwner and vaultIdentifier args reaching the chain
+// are the server's own config and defaultVaultIdentifier, and that the
+// call carries exactly the 9 args the new createEscrow signature takes —
+// full stop, no chip public key anywhere in the argument list.
 func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	txSvc := &setupTxService{}
 	cfg := ParseTestConfig(t)
@@ -329,14 +332,13 @@ func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	}
 
 	_, _, err = svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
-		Buyer:      "0xf8d6e0586b0a20c7",
-		Seller:     "0x0ae53cb6e3f42a79",
-		EditionId:  42,
-		ChipId:     "chip-1",
-		ChipPubKey: []byte{1, 2, 3},
-		UnlockAt:   123.45,
-		Nonce:      7,
-		Amount:     10.5,
+		Buyer:     "0xf8d6e0586b0a20c7",
+		Seller:    "0x0ae53cb6e3f42a79",
+		EditionId: 42,
+		ChipId:    "chip-1",
+		UnlockAt:  123.45,
+		Nonce:     7,
+		Amount:    10.5,
 	})
 	if err != nil {
 		t.Fatalf("CreateEscrow returned error: %v", err)
@@ -355,17 +357,61 @@ func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	if !strings.Contains(call.code, "createEscrow") {
 		t.Fatal("expected create escrow CDC")
 	}
-	if len(call.args) != 10 {
-		t.Fatalf("expected 10 args, got %d", len(call.args))
+	if len(call.args) != 9 {
+		t.Fatalf("expected 9 args (no chip public key), got %d", len(call.args))
 	}
 	if got := call.args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
 		t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
 	}
-	if _, ok := call.args[5].(cadence.Array); !ok {
-		t.Fatalf("expected chip public key cadence array, got %T", call.args[5])
+	if got := call.args[4]; got != cadence.String("chip-1") {
+		t.Fatalf("expected chipId arg, got %#v", got)
 	}
-	if got := call.args[9]; got != cadence.String(defaultVaultIdentifier) {
+	if got := call.args[8]; got != cadence.String(defaultVaultIdentifier) {
 		t.Fatalf("expected vaultIdentifier arg %q, got %#v", defaultVaultIdentifier, got)
+	}
+}
+
+// TestServiceCreateEscrowSendsNoChipPublicKey pins the chip-registry
+// redesign (2026-08-19) directly: EscrowModule.createEscrow no longer
+// accepts a chip public key argument at all — the contract looks it up
+// from ArtDropRegistry.ChipPublicKeyIndex by chipId instead, panicking
+// loudly if the chip hasn't been provisioned. A raw chip public key is the
+// only []byte-shaped argument this call ever sent, so asserting no arg is a
+// cadence.Array is a direct, single-purpose pin — independent of the
+// general arg-count/shape assertions in
+// TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs — that would fail
+// immediately if a chip key (or any other byte array) ever got wired back
+// into this call.
+func TestServiceCreateEscrowSendsNoChipPublicKey(t *testing.T) {
+	txSvc := &setupTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	})
+
+	_, _, err := svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
+		Buyer:     "0xf8d6e0586b0a20c7",
+		Seller:    "0x0ae53cb6e3f42a79",
+		EditionId: 42,
+		ChipId:    "chip-1",
+		UnlockAt:  123.45,
+		Nonce:     7,
+		Amount:    10.5,
+	})
+	if err != nil {
+		t.Fatalf("CreateEscrow returned error: %v", err)
+	}
+
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+	}
+	for i, arg := range txSvc.calls[0].args {
+		if _, ok := arg.(cadence.Array); ok {
+			t.Fatalf("expected no cadence.Array argument (a chip public key would be the only one) — found one at index %d: %#v", i, arg)
+		}
 	}
 }
 

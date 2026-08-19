@@ -97,19 +97,19 @@ func TestCreateEscrow_RejectsAmountUnrelatedToAnySalePrice(t *testing.T) {
 
 	// Mirrors the live emulator test of 2026-08-06 (INFORME_ESCROW_LIVE_TEST.md
 	// section 9): an "absurd" amount with no sale price behind it whatsoever.
-	// LogicOwner and VaultIdentifier are gone from CreateEscrowRequest as of
-	// the config-driven-addresses work (they're server-controlled now — see
-	// Config.LogicOwner / defaultVaultIdentifier), so this construction has
-	// fewer fields than the original audit's version.
+	// LogicOwner, VaultIdentifier and ChipPubKey are gone from
+	// CreateEscrowRequest (server-controlled / registry-looked-up now — see
+	// Config.LogicOwner, defaultVaultIdentifier, and the chip-registry
+	// redesign note on CreateEscrowRequest), so this construction has fewer
+	// fields than the original audit's version.
 	_, _, err := svc.CreateEscrow(context.Background(), true, "0x179b6b1cb6755e31", CreateEscrowRequest{
-		Buyer:      "0x179b6b1cb6755e31",
-		Seller:     "0xf3fcd2c1a78f5eee",
-		EditionId:  1,
-		ChipId:     "chip-test-1",
-		ChipPubKey: make([]byte, 64),
-		UnlockAt:   4102444800.0, // far future
-		Nonce:      1,
-		Amount:     999999.0, // 999,999 FLOW "5% fee" -- no sale this size exists
+		Buyer:     "0x179b6b1cb6755e31",
+		Seller:    "0xf3fcd2c1a78f5eee",
+		EditionId: 1,
+		ChipId:    "chip-test-1",
+		UnlockAt:  4102444800.0, // far future
+		Nonce:     1,
+		Amount:    999999.0, // 999,999 FLOW "5% fee" -- no sale this size exists
 	})
 
 	if err == nil {
