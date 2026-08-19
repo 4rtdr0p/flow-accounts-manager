@@ -19,15 +19,15 @@ const ID = "20260807"
 // charge. The pricing_hash is a fingerprint of the config/rate/engine version
 // used to compute the amount at charge time.
 type StudioProductionCharge struct {
-	ID                  uint    `gorm:"column:id;primary_key;autoIncrement"`
-	UserID              string  `gorm:"column:user_id;index"`
-	QuoteID             string  `gorm:"column:quote_id;index"`
-	AmountCents         int64   `gorm:"column:amount_cents"`
-	Currency            string  `gorm:"column:currency;size:3;default:usd"`
-	StripePaymentIntent string  `gorm:"column:stripe_payment_intent_id;uniqueIndex"`
-	PricingHash         string  `gorm:"column:pricing_hash"`
-	EngineVersion       string  `gorm:"column:engine_version"`
-	Metadata            string  `gorm:"column:metadata;type:text"`
+	ID                  uint      `gorm:"column:id;primary_key;autoIncrement"`
+	UserID              string    `gorm:"column:user_id;index"`
+	QuoteID             string    `gorm:"column:quote_id;index"`
+	AmountCents         int64     `gorm:"column:amount_cents"`
+	Currency            string    `gorm:"column:currency;size:3;default:usd"`
+	StripePaymentIntent string    `gorm:"column:stripe_payment_intent_id;uniqueIndex"`
+	PricingHash         string    `gorm:"column:pricing_hash"`
+	EngineVersion       string    `gorm:"column:engine_version"`
+	Metadata            string    `gorm:"column:metadata;type:text"`
 	CreatedAt           time.Time `gorm:"column:created_at"`
 }
 

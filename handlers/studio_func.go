@@ -15,12 +15,12 @@ import (
 // recomputes the exact price from the quote's config snapshot and the active
 // pricing rates at charge time.
 type createStockRequestRequest struct {
-	UserID           string `json:"userId"`
-	QuoteID          string `json:"quoteId"`
+	UserID            string `json:"userId"`
+	QuoteID           string `json:"quoteId"`
 	QuantityRequested int    `json:"quantityRequested"`
-	StripeCustomerID string `json:"stripeCustomerId"`
-	PaymentMethodID  string `json:"paymentMethodId,omitempty"`
-	Metadata         string `json:"metadata,omitempty"`
+	StripeCustomerID  string `json:"stripeCustomerId"`
+	PaymentMethodID   string `json:"paymentMethodId,omitempty"`
+	Metadata          string `json:"metadata,omitempty"`
 }
 
 // CreateStockRequestFunc handles POST /v1/stock-requests:create.

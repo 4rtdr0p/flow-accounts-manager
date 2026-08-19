@@ -15,8 +15,8 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/mux"
-	upstreamgorm "gorm.io/gorm"
 	"gorm.io/driver/postgres"
+	upstreamgorm "gorm.io/gorm"
 )
 
 func Test_IdempotencyMiddleware(t *testing.T) {
@@ -475,7 +475,7 @@ func newBackendCases(t *testing.T) []backendCase {
 
 	cases := []backendCase{
 		{
-			name: "local",
+			name:  "local",
 			store: handlers.NewIdempotencyStoreLocal(),
 			key: func(label string) string {
 				return "local-" + label
@@ -493,7 +493,7 @@ func newBackendCases(t *testing.T) []backendCase {
 				t.Logf("skipping postgres idempotency backend: %v", err)
 			} else {
 				cases = append(cases, backendCase{
-					name: "postgres",
+					name:  "postgres",
 					store: handlers.NewIdempotencyStoreGorm(db),
 					key: func(label string) string {
 						return "pg-" + label
@@ -516,7 +516,7 @@ func newBackendCases(t *testing.T) []backendCase {
 			t.Logf("skipping redis idempotency backend: %v", err)
 		} else {
 			cases = append(cases, backendCase{
-				name: "redis",
+				name:  "redis",
 				store: handlers.NewIdempotencyStoreRedis(conn),
 				key: func(label string) string {
 					return "redis-" + label
@@ -536,9 +536,9 @@ func newBackendCases(t *testing.T) []backendCase {
 // invoked, then behaves like the wrapped store. It is used to verify that
 // the handler retries SetResponse before giving up.
 type flakyIdempotencyStore struct {
-	inner       handlers.IdempotencyStore
+	inner        handlers.IdempotencyStore
 	failuresLeft int
-	mu          sync.Mutex
+	mu           sync.Mutex
 }
 
 func newFlakyStore(inner handlers.IdempotencyStore, failuresLeft int) *flakyIdempotencyStore {

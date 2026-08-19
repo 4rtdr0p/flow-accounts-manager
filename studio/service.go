@@ -220,4 +220,4 @@ func isDuplicateKeyError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
-} 
+}

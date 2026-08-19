@@ -24,8 +24,8 @@ type StudioQuote struct {
 	// a studio quote. Payload persists the quote with an ObjectId _id and no
 	// "id" field; the public token is the only stable, externally-addressable
 	// identity, so lookups key on it.
-	ID     string         `bson:"publicToken" json:"publicToken"`
-	UserID string         `bson:"userId" json:"userId"`
+	ID     string `bson:"publicToken" json:"publicToken"`
+	UserID string `bson:"userId" json:"userId"`
 	// Config holds the Studio Wizard config snapshot (process, W, L, borders,
 	// run_size, ...) as stored by Payload CMS. It is the input to the pricing
 	// engine adapter.

@@ -1926,8 +1926,8 @@ func TestOpsServices(t *testing.T) {
 }
 
 type stubMongoPricingProbe struct {
-	count int64
-	err   error
+	count        int64
+	err          error
 	seenDeadline *bool
 }
 
