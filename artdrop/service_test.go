@@ -292,27 +292,35 @@ func TestServiceCreateEditionUsesArtistProposerAndCadenceArgs(t *testing.T) {
 	}
 }
 
+// TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs also covers the
+// removal of CreateEscrowRequest.LogicOwner and .VaultIdentifier: neither
+// field exists on the request anymore (there's nothing for a caller to
+// override), so this asserts directly that the logicOwner and
+// vaultIdentifier args reaching the chain are the server's own config and
+// defaultVaultIdentifier, full stop.
 func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	txSvc := &setupTxService{}
-	svc := mustNewService(t, plugins.PluginDeps{
+	cfg := ParseTestConfig(t)
+	svc, err := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			AdminAddress: "0xf8d6e0586b0a20c7",
 			ChainID:      flow.Emulator,
 		},
-	})
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
-	_, _, err := svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
-		LogicOwner:      "0xf8d6e0586b0a20c7",
-		Buyer:           "0xf8d6e0586b0a20c7",
-		Seller:          "0x0ae53cb6e3f42a79",
-		EditionId:       42,
-		ChipId:          "chip-1",
-		ChipPubKey:      []byte{1, 2, 3},
-		UnlockAt:        123.45,
-		Nonce:           7,
-		Amount:          10.5,
-		VaultIdentifier: "flowTokenVault",
+	_, _, err = svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
+		Buyer:      "0xf8d6e0586b0a20c7",
+		Seller:     "0x0ae53cb6e3f42a79",
+		EditionId:  42,
+		ChipId:     "chip-1",
+		ChipPubKey: []byte{1, 2, 3},
+		UnlockAt:   123.45,
+		Nonce:      7,
+		Amount:     10.5,
 	})
 	if err != nil {
 		t.Fatalf("CreateEscrow returned error: %v", err)
@@ -334,101 +342,66 @@ func TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	if len(call.args) != 10 {
 		t.Fatalf("expected 10 args, got %d", len(call.args))
 	}
+	if got := call.args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
+		t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
+	}
 	if _, ok := call.args[5].(cadence.Array); !ok {
 		t.Fatalf("expected chip public key cadence array, got %T", call.args[5])
 	}
-}
-
-// TestServiceCreateEscrowIgnoresClientLogicOwnerAndVaultIdentifier locks in
-// the change made alongside config-driven contract addresses: LogicOwner and
-// VaultIdentifier used to come straight from the request body onto the
-// chain. Now LogicOwner comes from server config and VaultIdentifier is
-// fixed to defaultVaultIdentifier — a caller sending attacker-controlled
-// values for either must not see them reach the transaction args.
-func TestServiceCreateEscrowIgnoresClientLogicOwnerAndVaultIdentifier(t *testing.T) {
-	txSvc := &setupTxService{}
-	cfg := ParseTestConfig(t)
-	svc, err := NewService(plugins.PluginDeps{
-		Transactions: txSvc,
-		Config: &configs.Config{
-			AdminAddress: "0xf8d6e0586b0a20c7",
-			ChainID:      flow.Emulator,
-		},
-	}, cfg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	_, _, err = svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
-		LogicOwner:      "0x0ae53cb6e3f42a79", // attacker-controlled: not cfg.LogicOwner
-		Buyer:           "0xf8d6e0586b0a20c7",
-		Seller:          "0x0ae53cb6e3f42a79",
-		EditionId:       42,
-		ChipId:          "chip-1",
-		ChipPubKey:      []byte{1, 2, 3},
-		UnlockAt:        123.45,
-		Nonce:           7,
-		Amount:          10.5,
-		VaultIdentifier: "adminVault", // attacker-controlled: not defaultVaultIdentifier
-	})
-	if err != nil {
-		t.Fatalf("CreateEscrow returned error: %v", err)
-	}
-
-	if len(txSvc.calls) != 1 {
-		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
-	}
-	args := txSvc.calls[0].args
-	if len(args) != 10 {
-		t.Fatalf("expected 10 args, got %d", len(args))
-	}
-	if got := args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
-		t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
-	}
-	if got := args[9]; got != cadence.String(defaultVaultIdentifier) {
+	if got := call.args[9]; got != cadence.String(defaultVaultIdentifier) {
 		t.Fatalf("expected vaultIdentifier arg %q, got %#v", defaultVaultIdentifier, got)
 	}
 }
 
-// TestServiceActivateChipAndEscrowActionsIgnoreClientLogicOwner covers the
-// same request-body-vs-server-config precedence as
-// TestServiceCreateEscrowIgnoresClientLogicOwnerAndVaultIdentifier for
-// ActivateChip, Release, Cancel and Refund.
-func TestServiceActivateChipAndEscrowActionsIgnoreClientLogicOwner(t *testing.T) {
-	const attackerLogicOwner = "0x0ae53cb6e3f42a79"
-
+// TestServiceEscrowActionsUsePathAddressAndPathEscrowID also covers the
+// removal of ActivateChipRequest.LogicOwner and EscrowActionRequest.
+// LogicOwner: with no such field left on any of these requests, the
+// logicOwner arg reaching the chain can only ever be the server's config
+// value, which this asserts directly for all four actions.
+func TestServiceEscrowActionsUsePathAddressAndPathEscrowID(t *testing.T) {
 	tests := []struct {
-		name string
-		call func(*Service) (*jobs.Job, *transactions.Transaction, error)
+		name   string
+		call   func(*Service) (*jobs.Job, *transactions.Transaction, error)
+		txType transactions.Type
+		code   string
 	}{
 		{
 			name: "activate",
 			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
 				return svc.ActivateChip(context.Background(), true, "0xf8d6e0586b0a20c7", 55, ActivateChipRequest{
-					LogicOwner:       attackerLogicOwner,
+					EscrowId:         99,
 					Challenge:        "challenge",
 					Signature:        []byte{9, 8, 7},
+					CertificateId:    123,
 					CertificateOwner: "0x0ae53cb6e3f42a79",
 				})
 			},
+			txType: TxTypeActivateChip,
+			code:   "activateChipAndSettle",
 		},
 		{
 			name: "release",
 			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Release(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: attackerLogicOwner})
+				return svc.Release(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{})
 			},
+			txType: TxTypeRelease,
+			code:   "releaseEscrow",
 		},
 		{
 			name: "cancel",
 			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Cancel(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: attackerLogicOwner})
+				return svc.Cancel(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{})
 			},
+			txType: TxTypeCancel,
+			code:   "cancel",
 		},
 		{
 			name: "refund",
 			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Refund(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: attackerLogicOwner})
+				return svc.Refund(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{})
 			},
+			txType: TxTypeRefund,
+			code:   "refund",
 		},
 	}
 
@@ -444,77 +417,7 @@ func TestServiceActivateChipAndEscrowActionsIgnoreClientLogicOwner(t *testing.T)
 				t.Fatalf("NewService: %v", err)
 			}
 
-			if _, _, err := tt.call(svc); err != nil {
-				t.Fatalf("action returned error: %v", err)
-			}
-
-			if len(txSvc.calls) != 1 {
-				t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
-			}
-			if got := txSvc.calls[0].args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
-				t.Fatalf("expected logicOwner arg to be server config's %q (not the attacker-controlled request value), got %#v", cfg.LogicOwner, got)
-			}
-		})
-	}
-}
-
-func TestServiceEscrowActionsUsePathAddressAndPathEscrowID(t *testing.T) {
-	tests := []struct {
-		name   string
-		call   func(*Service) (*jobs.Job, *transactions.Transaction, error)
-		txType transactions.Type
-		code   string
-	}{
-		{
-			name: "activate",
-			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.ActivateChip(context.Background(), true, "0xf8d6e0586b0a20c7", 55, ActivateChipRequest{
-					LogicOwner:       "0xf8d6e0586b0a20c7",
-					EscrowId:         99,
-					Challenge:        "challenge",
-					Signature:        []byte{9, 8, 7},
-					CertificateId:    123,
-					CertificateOwner: "0x0ae53cb6e3f42a79",
-				})
-			},
-			txType: TxTypeActivateChip,
-			code:   "activateChipAndSettle",
-		},
-		{
-			name: "release",
-			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Release(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
-			},
-			txType: TxTypeRelease,
-			code:   "releaseEscrow",
-		},
-		{
-			name: "cancel",
-			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Cancel(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
-			},
-			txType: TxTypeCancel,
-			code:   "cancel",
-		},
-		{
-			name: "refund",
-			call: func(svc *Service) (*jobs.Job, *transactions.Transaction, error) {
-				return svc.Refund(context.Background(), true, "0xf8d6e0586b0a20c7", 55, EscrowActionRequest{LogicOwner: "0xf8d6e0586b0a20c7"})
-			},
-			txType: TxTypeRefund,
-			code:   "refund",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			txSvc := &setupTxService{}
-			svc := mustNewService(t, plugins.PluginDeps{
-				Transactions: txSvc,
-				Config:       &configs.Config{ChainID: flow.Emulator},
-			})
-
-			_, _, err := tt.call(svc)
+			_, _, err = tt.call(svc)
 			if err != nil {
 				t.Fatalf("action returned error: %v", err)
 			}
@@ -531,6 +434,9 @@ func TestServiceEscrowActionsUsePathAddressAndPathEscrowID(t *testing.T) {
 			}
 			if !strings.Contains(call.code, tt.code) {
 				t.Fatalf("expected CDC containing %q", tt.code)
+			}
+			if got := call.args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
+				t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
 			}
 			if got := call.args[1]; got != cadence.UInt64(55) {
 				t.Fatalf("expected path escrow id arg 55, got %#v", got)

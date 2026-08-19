@@ -94,7 +94,6 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 	}))
 
 	body := `{
-		"logic_owner":"0xf8d6e0586b0a20c7",
 		"buyer":"0xf8d6e0586b0a20c7",
 		"seller":"0x0ae53cb6e3f42a79",
 		"edition_id":42,
@@ -102,8 +101,7 @@ func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
 		"chip_pub_key":"AQID",
 		"unlock_at":123.45,
 		"nonce":7,
-		"amount":10.5,
-		"vault_identifier":"flowTokenVault"
+		"amount":10.5
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows?sync=true", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -128,7 +126,7 @@ func TestReleaseEscrowHandlerRejectsInvalidEscrowID(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/not-a-number/release",
-		strings.NewReader(`{"logic_owner":"0xf8d6e0586b0a20c7"}`),
+		strings.NewReader(`{}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	req = mux.SetURLVars(req, map[string]string{

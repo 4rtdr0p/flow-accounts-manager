@@ -46,31 +46,29 @@ type CreateEditionRequest struct {
 
 // CreateEscrowRequest contains the parameters needed to create a new escrow.
 //
-// LogicOwner and VaultIdentifier are accepted but ignored: LogicOwner (the
-// EscrowModule capability owner) now comes from server config
-// (Config.LogicOwner), and VaultIdentifier (the storage path escrow
-// creation withdraws from) is fixed to defaultVaultIdentifier. Both fields
-// are kept in the struct only so callers still sending them don't get a
-// decode error; their values never reach the chain.
+// LogicOwner (the EscrowModule capability owner) and VaultIdentifier (the
+// storage path escrow creation withdraws from) used to be client-supplied
+// here. Both are now server-controlled — LogicOwner comes from
+// Config.LogicOwner and VaultIdentifier is fixed to defaultVaultIdentifier
+// — and were removed outright rather than kept-but-ignored: this plugin has
+// no callers that predate the protocol's address migration to preserve
+// compatibility with.
 type CreateEscrowRequest struct {
-	LogicOwner      string  `json:"logic_owner"`
-	Buyer           string  `json:"buyer"`
-	Seller          string  `json:"seller"`
-	EditionId       uint64  `json:"edition_id"`
-	ChipId          string  `json:"chip_id"`
-	ChipPubKey      []byte  `json:"chip_pub_key"`
-	UnlockAt        float64 `json:"unlock_at"`
-	Nonce           uint64  `json:"nonce"`
-	Amount          float64 `json:"amount"`
-	VaultIdentifier string  `json:"vault_identifier"`
+	Buyer      string  `json:"buyer"`
+	Seller     string  `json:"seller"`
+	EditionId  uint64  `json:"edition_id"`
+	ChipId     string  `json:"chip_id"`
+	ChipPubKey []byte  `json:"chip_pub_key"`
+	UnlockAt   float64 `json:"unlock_at"`
+	Nonce      uint64  `json:"nonce"`
+	Amount     float64 `json:"amount"`
 }
 
 // ActivateChipRequest contains the parameters needed to activate a chip and
 // settle an escrow.
 //
-// LogicOwner is accepted but ignored — see CreateEscrowRequest.LogicOwner.
+// LogicOwner was removed — see CreateEscrowRequest.
 type ActivateChipRequest struct {
-	LogicOwner       string `json:"logic_owner"`
 	EscrowId         uint64 `json:"escrow_id"`
 	Challenge        string `json:"challenge"`
 	Signature        []byte `json:"signature"`
@@ -79,12 +77,11 @@ type ActivateChipRequest struct {
 }
 
 // EscrowActionRequest is a reusable payload for release, cancel and refund
-// actions.
-//
-// LogicOwner is accepted but ignored — see CreateEscrowRequest.LogicOwner.
-type EscrowActionRequest struct {
-	LogicOwner string `json:"logic_owner"`
-}
+// actions. It currently carries no fields — LogicOwner was removed, see
+// CreateEscrowRequest — but is kept as a named type since the handler/
+// service layer still passes a request value through per action and a
+// future action-specific field would land here.
+type EscrowActionRequest struct{}
 
 // CertificateInfo represents a single certificate returned by the list endpoint.
 type CertificateInfo struct {

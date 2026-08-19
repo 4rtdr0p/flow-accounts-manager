@@ -906,13 +906,6 @@ paths:
         - account.read
       tags:
         - Accounts
-      parameters:
-        - name: logic_owner
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Address that exposes the EscrowModule logic capability.
       responses:
         '200':
           description: OK

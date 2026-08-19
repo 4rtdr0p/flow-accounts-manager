@@ -336,6 +336,10 @@ func TestIsArtistHandlerRejectsInvalidAddress(t *testing.T) {
 	}
 }
 
+// TestGetEscrowHandlerReturnsOK also covers the removal of the logic_owner
+// query param: it used to be required (validated, but never actually used
+// to build the script call — get_escrow_summary.cdc never took it as an
+// argument), and is gone now. This request carries no query string at all.
 func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: cadence.NewUInt8(2),
@@ -345,7 +349,7 @@ func TestGetEscrowHandlerReturnsOK(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42?logic_owner=0xf8d6e0586b0a20c7", nil)
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
 	req = mux.SetURLVars(req, map[string]string{
 		"address":  "0xf8d6e0586b0a20c7",
 		"escrowId": "42",
@@ -379,40 +383,6 @@ func TestGetEscrowHandlerRejectsInvalidEscrowId(t *testing.T) {
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid escrowId, got %d: %s", rw.Code, rw.Body.String())
-	}
-}
-
-// TestGetEscrowHandlerIgnoresLogicOwnerQueryParam covers the change made
-// alongside the config-driven contract addresses work: logic_owner used to
-// be a required query param (see the former
-// TestGetEscrowHandlerRequiresLogicOwner) that was validated but never
-// actually used to build the script call. The EscrowModule owner is now a
-// server-side config value, so the param is no longer required — a request
-// omitting it entirely must still succeed — and a caller that does send it
-// must not have its value influence the result.
-func TestGetEscrowHandlerIgnoresLogicOwnerQueryParam(t *testing.T) {
-	txSvc := &queryTxService{
-		scriptResult: cadence.NewUInt8(2),
-	}
-	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
-		Transactions: txSvc,
-		Config:       &configs.Config{ChainID: flow.Emulator},
-	}))
-
-	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/42", nil)
-	req = mux.SetURLVars(req, map[string]string{
-		"address":  "0xf8d6e0586b0a20c7",
-		"escrowId": "42",
-	})
-	rw := httptest.NewRecorder()
-
-	handler.GetEscrow().ServeHTTP(rw, req)
-
-	if rw.Code != http.StatusOK {
-		t.Fatalf("expected status 200 with no logic_owner param, got %d: %s", rw.Code, rw.Body.String())
-	}
-	if !strings.Contains(rw.Body.String(), `"id":42`) {
-		t.Fatalf("expected response to contain escrow id 42, got %s", rw.Body.String())
 	}
 }
 
