@@ -21,9 +21,26 @@ jobs:
           go-version: '1.24'
           # setup-go@v5 manages module/build caches natively; no manual cache step needed.
 
+      - name: Check formatting (gofmt)
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo
+            echo "Run: gofmt -w <file>..."
+            exit 1
+          fi
+
       - name: Run unit tests
         run: |
-          go test ./handlers/... ./configs/...
+          # Every package except the root module (`.`) and ./tests/... — both
+          # of those need a live, correctly-keyed Flow emulator and are
+          # covered by the integration job below. Listing packages instead of
+          # hand-maintaining a path list means a new package gets covered
+          # automatically instead of silently falling through the gap this
+          # job exists to close.
+          go test $(go list ./... | grep -v -E '^github\.com/flow-hydraulics/flow-wallet-api$|^github\.com/flow-hydraulics/flow-wallet-api/tests(/|$)')
           go test -run 'Auth|Route|Scope' .
 
   # Emulator-backed integration coverage should exercise the shared account and
