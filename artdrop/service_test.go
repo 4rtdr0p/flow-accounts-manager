@@ -415,6 +415,69 @@ func TestServiceCreateEscrowSendsNoChipPublicKey(t *testing.T) {
 	}
 }
 
+// TestServiceReEscrowUsesAdminProposerAndCadenceArgs pins the request shape
+// for ReEscrow the same way TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs
+// pins CreateEscrow's — server-controlled logicOwner/vaultIdentifier,
+// certificateId (not editionId) at the position the contract expects, so a
+// future edit can't silently reintroduce a client-supplied logicOwner,
+// vaultIdentifier, or editionId field.
+func TestServiceReEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
+	txSvc := &setupTxService{}
+	cfg := ParseTestConfig(t)
+	svc, err := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, _, err = svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
+		Buyer:         "0xf8d6e0586b0a20c7",
+		Seller:        "0x0ae53cb6e3f42a79",
+		CertificateId: 7,
+		ChipId:        "chip-1",
+		UnlockAt:      123.45,
+		Nonce:         7,
+		Amount:        10.5,
+	})
+	if err != nil {
+		t.Fatalf("ReEscrow returned error: %v", err)
+	}
+
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
+	}
+	call := txSvc.calls[0]
+	if call.proposerAddress != "0xf8d6e0586b0a20c7" {
+		t.Fatalf("expected admin proposer, got %q", call.proposerAddress)
+	}
+	if call.txType != TxTypeReEscrow {
+		t.Fatalf("expected type %q, got %q", TxTypeReEscrow, call.txType)
+	}
+	if !strings.Contains(call.code, "createReEscrow") {
+		t.Fatal("expected re-escrow CDC")
+	}
+	if len(call.args) != 9 {
+		t.Fatalf("expected 9 args, got %d", len(call.args))
+	}
+	if got := call.args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
+		t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
+	}
+	if got := call.args[3]; got != cadence.NewUInt64(7) {
+		t.Fatalf("expected certificateId arg 7, got %#v", got)
+	}
+	if got := call.args[4]; got != cadence.String("chip-1") {
+		t.Fatalf("expected chipId arg, got %#v", got)
+	}
+	if got := call.args[8]; got != cadence.String(defaultVaultIdentifier) {
+		t.Fatalf("expected vaultIdentifier arg %q, got %#v", defaultVaultIdentifier, got)
+	}
+}
+
 // TestServiceActivateChipUsesPathAddressAndServerLogicOwner also covers the
 // removal of ActivateChipRequest.LogicOwner, .CertificateId and
 // .CertificateOwner (escrow-lifecycle redesign, 2026-08 — the contract now

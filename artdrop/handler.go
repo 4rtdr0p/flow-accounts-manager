@@ -232,6 +232,26 @@ func (h *Handler) CreateEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
+func (h *Handler) ReEscrow() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.ReEscrowFunc))
+}
+
+func (h *Handler) ReEscrowFunc(rw http.ResponseWriter, r *http.Request) {
+	var req ReEscrowRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.ReEscrow(r.Context(), sync, mux.Vars(r)["address"], req)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
 func (h *Handler) ActivateChip() http.Handler {
 	return handlers.UseJson(http.HandlerFunc(h.ActivateChipFunc))
 }

@@ -35,6 +35,9 @@ var getEscrowSummaryCDC string
 //go:embed cdc/create_escrow.cdc
 var createEscrowCDC string
 
+//go:embed cdc/re_escrow.cdc
+var reEscrowCDC string
+
 //go:embed cdc/activate_chip_and_settle.cdc
 var activateChipAndSettleCDC string
 
@@ -88,6 +91,7 @@ type Service struct {
 	getCertificatesCDC            string
 	getEscrowSummaryCDC           string
 	createEscrowCDC               string
+	reEscrowCDC                   string
 	activateChipAndSettleCDC      string
 	getOriginalExtendedSummaryCDC string
 	getEditionSummaryCDC          string
@@ -129,6 +133,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		getCertificatesCDC:            sub(getCertificatesCDC),
 		getEscrowSummaryCDC:           sub(getEscrowSummaryCDC),
 		createEscrowCDC:               sub(createEscrowCDC),
+		reEscrowCDC:                   sub(reEscrowCDC),
 		activateChipAndSettleCDC:      sub(activateChipAndSettleCDC),
 		getOriginalExtendedSummaryCDC: sub(getOriginalExtendedSummaryCDC),
 		getEditionSummaryCDC:          sub(getEditionSummaryCDC),
@@ -375,6 +380,56 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.createEscrowCDC, args, TxTypeCreateEscrow)
+}
+
+// ReEscrow opens a new escrow against an EXISTING, already-minted
+// certificate ([SECURITY] issue #175 / no-orphans re-escrow design) — no
+// mint. Mirrors CreateEscrow's server-controlled-argument discipline
+// exactly: proposerAddress/logicOwner and vaultIdentifier come from
+// s.deps.Config/defaultVaultIdentifier, never the request body.
+func (s *Service) ReEscrow(ctx context.Context, sync bool, address string, req ReEscrowRequest) (*jobs.Job, *transactions.Transaction, error) {
+	if _, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID); err != nil {
+		return nil, nil, err
+	}
+
+	proposerAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("validate admin address: %w", err)
+	}
+
+	buyer, err := flow_helpers.ValidateAddress(req.Buyer, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	seller, err := flow_helpers.ValidateAddress(req.Seller, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, err
+	}
+	unlockAt, err := newUFix64(req.UnlockAt)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'unlock_at': %w", err)
+	}
+	amount, err := newUFix64(req.Amount)
+	if err != nil {
+		return nil, nil, fmt.Errorf("field 'amount': %w", err)
+	}
+	if req.ChipId == "" {
+		return nil, nil, fmt.Errorf("field 'chip_id' is required")
+	}
+
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
+		cadence.NewAddress(flow.HexToAddress(buyer)),
+		cadence.NewAddress(flow.HexToAddress(seller)),
+		cadence.NewUInt64(req.CertificateId),
+		cadence.String(req.ChipId),
+		unlockAt,
+		cadence.NewUInt64(req.Nonce),
+		amount,
+		cadence.String(defaultVaultIdentifier),
+	}
+
+	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.reEscrowCDC, args, TxTypeReEscrow)
 }
 
 // ActivateChip validates a chip signature and settles the escrow.
