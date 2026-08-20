@@ -3,6 +3,7 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,11 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrNoPaymentMethod is returned when a customer has no saved payment method
+// to resolve as a default (no invoice_settings.default_payment_method and no
+// payment methods on file).
+var ErrNoPaymentMethod = errors.New("customer has no saved payment method")
 
 // StripePaymentIntent is the subset of a Stripe PaymentIntent that the charge
 // flow needs: its id and status.
@@ -50,15 +56,22 @@ func (c *StripeClient) CreateAndConfirm(ctx context.Context, in StripeChargeInpu
 		return nil, ErrStripeDisabled
 	}
 
+	paymentMethodID := in.PaymentMethodID
+	if paymentMethodID == "" {
+		resolved, err := c.resolvePaymentMethod(ctx, in.CustomerID)
+		if err != nil {
+			return nil, err
+		}
+		paymentMethodID = resolved
+	}
+
 	form := url.Values{}
 	form.Set("amount", fmt.Sprintf("%d", in.AmountCents))
 	form.Set("currency", in.Currency)
 	form.Set("customer", in.CustomerID)
 	form.Set("confirm", "true")
 	form.Set("off_session", "true")
-	if in.PaymentMethodID != "" {
-		form.Set("payment_method", in.PaymentMethodID)
-	}
+	form.Set("payment_method", paymentMethodID)
 	form.Set("automatic_payment_methods[enabled]", "true")
 	if in.Metadata != "" {
 		form.Set("metadata[charge_ref]", in.Metadata)
@@ -79,6 +92,52 @@ func (c *StripeClient) CreateAndConfirm(ctx context.Context, in StripeChargeInpu
 		return nil, err
 	}
 	return &intent, nil
+}
+
+// resolvePaymentMethod returns the payment method to charge when the caller
+// didn't supply one explicitly: the customer's invoice_settings.default_payment_method,
+// falling back to the first payment method on file. It returns
+// ErrNoPaymentMethod if the customer has neither.
+func (c *StripeClient) resolvePaymentMethod(ctx context.Context, customerID string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/customers/"+url.PathEscape(customerID), nil)
+	if err != nil {
+		return "", fmt.Errorf("build stripe customer request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secretKey)
+
+	var cust struct {
+		InvoiceSettings struct {
+			DefaultPaymentMethod string `json:"default_payment_method"`
+		} `json:"invoice_settings"`
+	}
+	if err := c.do(req, &cust); err != nil {
+		return "", fmt.Errorf("read stripe customer: %w", err)
+	}
+	if cust.InvoiceSettings.DefaultPaymentMethod != "" {
+		return cust.InvoiceSettings.DefaultPaymentMethod, nil
+	}
+
+	q := url.Values{}
+	q.Set("customer", customerID)
+	q.Set("type", "card")
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/payment_methods?"+q.Encode(), nil)
+	if err != nil {
+		return "", fmt.Errorf("build stripe payment methods request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.secretKey)
+
+	var list struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := c.do(req, &list); err != nil {
+		return "", fmt.Errorf("list stripe payment methods: %w", err)
+	}
+	if len(list.Data) == 0 {
+		return "", fmt.Errorf("%w: customer %s", ErrNoPaymentMethod, customerID)
+	}
+	return list.Data[0].ID, nil
 }
 
 // do performs a Stripe request and decodes the JSON response. A non-2xx status
