@@ -51,16 +51,21 @@ func (e *ChargeEngine) Quote(ctx context.Context, config map[string]any, runSize
 }
 
 // maxRunSize returns the largest production tier the engine computed for a
-// config (the "12 beds" batch, or whatever the last entry is): the same
-// batches slice that backs the price, so a quantity cap derived from it comes
-// from the same authoritative source as the price itself. Volume is ordered
-// from smallest to largest tier and does not depend on the requested run
-// size, so this is stable across quotes for the same config.
+// config (normally the "12 beds" batch): the same batches slice that backs
+// the price, so a quantity cap derived from it comes from the same
+// authoritative source as the price itself. This is a security check, so it
+// takes the maximum over Units explicitly rather than trusting Volume to stay
+// sorted — Compute happens to build it ascending today, but nothing enforces
+// that, and a silently-wrong cap from a reordered or inserted tier is exactly
+// the failure mode this check exists to prevent.
 func maxRunSize(volume []VolumePrice) int {
-	if len(volume) == 0 {
-		return 0
+	largest := 0
+	for _, v := range volume {
+		if v.Units > largest {
+			largest = v.Units
+		}
 	}
-	return volume[len(volume)-1].Units
+	return largest
 }
 
 // ---------------------------------------------------------------------------
