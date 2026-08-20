@@ -17,6 +17,7 @@ func embeddedCDCScripts() map[string]string {
 		"get_certificates.cdc":              getCertificatesCDC,
 		"get_escrow_summary.cdc":            getEscrowSummaryCDC,
 		"create_escrow.cdc":                 createEscrowCDC,
+		"re_escrow.cdc":                     reEscrowCDC,
 		"activate_chip_and_settle.cdc":      activateChipAndSettleCDC,
 		"get_original_extended_summary.cdc": getOriginalExtendedSummaryCDC,
 		"get_edition_summary.cdc":           getEditionSummaryCDC,

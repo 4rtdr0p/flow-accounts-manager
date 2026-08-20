@@ -15,6 +15,7 @@ const (
 	TxTypeSetup             transactions.Type = "ArtdropSetup"
 	TxTypeTransfer          transactions.Type = "ArtdropTransfer"
 	TxTypeCreateEscrow      transactions.Type = "ArtdropCreateEscrow"
+	TxTypeReEscrow          transactions.Type = "ArtdropReEscrow"
 	TxTypeActivateChip      transactions.Type = "ArtdropActivateChip"
 	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
@@ -73,6 +74,31 @@ type CreateEscrowRequest struct {
 	UnlockAt  float64 `json:"unlock_at"`
 	Nonce     uint64  `json:"nonce"`
 	Amount    float64 `json:"amount"`
+}
+
+// ReEscrowRequest contains the parameters needed to open a new escrow
+// against an EXISTING, already-minted certificate ([SECURITY] issue #175 /
+// no-orphans re-escrow design). No orphaned certificate: the normal
+// unclaimed-escrow timeout path used to leave a certificate stranded with
+// the seller forever, because the only way to sell it again was
+// CreateEscrow, which always mints a NEW certificate.
+//
+// CertificateId replaces EditionId — the contract derives editionId from
+// the certificate itself. There is deliberately no EditionId field here;
+// do not add one, and do not let a caller imply which edition this is —
+// that's exactly the caller-supplied value the contract-side fix exists to
+// not trust.
+//
+// LogicOwner and VaultIdentifier are server-controlled the same way as
+// CreateEscrowRequest — see that type's doc comment.
+type ReEscrowRequest struct {
+	Buyer         string  `json:"buyer"`
+	Seller        string  `json:"seller"`
+	CertificateId uint64  `json:"certificate_id"`
+	ChipId        string  `json:"chip_id"`
+	UnlockAt      float64 `json:"unlock_at"`
+	Nonce         uint64  `json:"nonce"`
+	Amount        float64 `json:"amount"`
 }
 
 // ActivateChipRequest contains the parameters needed to activate a chip and
