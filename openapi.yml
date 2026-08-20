@@ -790,6 +790,17 @@ paths:
       responses:
         '201':
           description: Created
+  '/accounts/{address}/artdrop/escrows/re-escrow':
+    post:
+      summary: Open an ArtDrop escrow against an existing certificate
+      operationId: reEscrowArtDropCertificate
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
   '/accounts/{address}/artdrop/escrows/{escrowId}/activate':
     post:
       summary: Activate an ArtDrop escrow chip
