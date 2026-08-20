@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/pricing"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
@@ -40,8 +41,10 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	// changes. When Mongo is not configured the store is nil and the endpoint
 	// reports studio pricing as disabled (503).
 	var pricingCacheTTL time.Duration
+	var stripeSecretKey string
 	if deps.Config != nil {
 		pricingCacheTTL = deps.Config.StudioPricingCacheTTL
+		stripeSecretKey = deps.Config.StripeSecretKey
 	}
 	pricingSvc := pricing.NewActiveService(datastoremongo.NewPricingStore(deps.Mongo, deps.Config), pricingCacheTTL)
 	pricingHandler := pricing.NewHandler(pricingSvc)
@@ -53,6 +56,18 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	quoteSvc := pricing.NewQuoteService(pricingSvc)
 	quoteHandler := pricing.NewQuoteHandler(quoteSvc)
 	router.Handle("/studio/quotes:price", quoteHandler.Quote()).Methods(http.MethodPost)
+
+	// Studio production charge auditing. The create endpoint is idempotent per
+	// Stripe payment intent (see studio.Service.RecordProductionCharge). It
+	// reuses the pricing/quote services above to recompute the exact price at
+	// charge time rather than trusting the client.
+	chargeEngine := pricing.NewChargeEngine(quoteSvc)
+	stripeClient := studio.NewStripeClient(stripeSecretKey, "")
+	quoteStore := datastoremongo.NewQuoteStore(deps.Mongo, deps.Config)
+	studioService := studio.NewChargeService(studio.NewGormStore(deps.DB), quoteStore, chargeEngine, stripeClient)
+	studioHandler := studio.NewHandler(studioService)
+	router.Handle("/stock-requests:create", studioHandler.CreateStockRequest()).Methods(http.MethodPost)
+	router.Handle("/studio/charges", studioHandler.ListCharges()).Methods(http.MethodGet)
 
 	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)

@@ -8,6 +8,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/tokens"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
+	"gorm.io/gorm"
 )
 
 // Plugin defines the extension point for adding route groups to the API.
@@ -26,4 +27,8 @@ type PluginDeps struct {
 	// Mongo is the read-only Mongo client for Payload pricing data. It is nil
 	// when Mongo is not configured (MONGO_URI empty).
 	Mongo *datastoremongo.Client
+	// DB is the shared SQL database handle, for plugins that own their own
+	// tables (see the package-level Migrations() convention, e.g.
+	// artdrop.Migrations).
+	DB *gorm.DB
 }

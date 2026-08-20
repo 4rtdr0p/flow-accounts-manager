@@ -52,7 +52,6 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 				Transactions:     handlers.NewTransactions(nil, nil),
 				Tokens:           handlers.NewTokens(nil),
 				Ops:              handlers.NewOps(nil),
-				Studio:           handlers.NewStudio(nil),
 				DebugURL:         "debug-url",
 				DebugSHA:         "debug-sha",
 				DebugBuildTime:   "debug-build-time",
@@ -123,7 +122,6 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 		Transactions:     handlers.NewTransactions(nil, nil),
 		Tokens:           handlers.NewTokens(nil),
 		Ops:              handlers.NewOps(nil),
-		Studio:           handlers.NewStudio(nil),
 		DebugURL:         "debug-url",
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
@@ -156,7 +154,6 @@ func TestTransferRouteBelongsToArtDropPlugin(t *testing.T) {
 		Transactions:     handlers.NewTransactions(nil, nil),
 		Tokens:           handlers.NewTokens(nil),
 		Ops:              handlers.NewOps(nil),
-		Studio:           handlers.NewStudio(nil),
 		DebugURL:         "debug-url",
 		DebugSHA:         "debug-sha",
 		DebugBuildTime:   "debug-build-time",
@@ -299,6 +296,108 @@ func TestStudioQuotesPriceRouteBelongsToArtDropPlugin(t *testing.T) {
 		}
 	}
 	t.Fatal("expected studio quotes price route to require pricing.read")
+}
+
+func TestStockRequestsCreateRouteBelongsToArtDropPlugin(t *testing.T) {
+	handlers := routeHandlers{
+		System:           handlers.NewSystem(nil),
+		Templates:        handlers.NewTemplates(nil),
+		Jobs:             handlers.NewJobs(nil),
+		Accounts:         handlers.NewAccounts(nil),
+		Transactions:     handlers.NewTransactions(nil, nil),
+		Tokens:           handlers.NewTokens(nil),
+		Ops:              handlers.NewOps(nil),
+		DebugURL:         "debug-url",
+		DebugSHA:         "debug-sha",
+		DebugBuildTime:   "debug-build-time",
+		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
+	}
+
+	coreRouter := buildRouter(routeOptions{}, handlers, nil, plugins.PluginDeps{})
+	if routeExists(t, coreRouter, http.MethodPost, "/v1/stock-requests:create") {
+		t.Fatal("expected /stock-requests:create to be registered by the artdrop plugin, not the core router")
+	}
+
+	spec, err := os.ReadFile("openapi.yml")
+	if err != nil {
+		t.Fatalf("read openapi.yml: %v", err)
+	}
+	scopeIndex, err := openapi.LoadScopeIndex(spec)
+	if err != nil {
+		t.Fatalf("LoadScopeIndex: %v", err)
+	}
+
+	deps := plugins.PluginDeps{}
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdrop.ParseTestConfig(t))
+	if err != nil {
+		t.Fatalf("artdrop.NewPlugin: %v", err)
+	}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdropPlugin}, deps)
+	if !routeExists(t, pluginRouter, http.MethodPost, "/v1/stock-requests:create") {
+		t.Fatal("expected artdrop plugin to register POST /stock-requests:create")
+	}
+
+	rules, err := openapi.AuthRulesFromRouter(pluginRouter, scopeIndex)
+	if err != nil {
+		t.Fatalf("AuthRulesFromRouter: %v", err)
+	}
+	for _, rule := range rules {
+		if rule.Key() == "POST /{apiVersion}/stock-requests:create" && rule.RequiredScope == "studio.charge.create" {
+			return
+		}
+	}
+	t.Fatal("expected stock-requests:create route to require studio.charge.create")
+}
+
+func TestStudioChargesRouteBelongsToArtDropPlugin(t *testing.T) {
+	handlers := routeHandlers{
+		System:           handlers.NewSystem(nil),
+		Templates:        handlers.NewTemplates(nil),
+		Jobs:             handlers.NewJobs(nil),
+		Accounts:         handlers.NewAccounts(nil),
+		Transactions:     handlers.NewTransactions(nil, nil),
+		Tokens:           handlers.NewTokens(nil),
+		Ops:              handlers.NewOps(nil),
+		DebugURL:         "debug-url",
+		DebugSHA:         "debug-sha",
+		DebugBuildTime:   "debug-build-time",
+		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
+	}
+
+	coreRouter := buildRouter(routeOptions{}, handlers, nil, plugins.PluginDeps{})
+	if routeExists(t, coreRouter, http.MethodGet, "/v1/studio/charges") {
+		t.Fatal("expected /studio/charges to be registered by the artdrop plugin, not the core router")
+	}
+
+	spec, err := os.ReadFile("openapi.yml")
+	if err != nil {
+		t.Fatalf("read openapi.yml: %v", err)
+	}
+	scopeIndex, err := openapi.LoadScopeIndex(spec)
+	if err != nil {
+		t.Fatalf("LoadScopeIndex: %v", err)
+	}
+
+	deps := plugins.PluginDeps{}
+	artdropPlugin, err := artdrop.NewPlugin(deps, artdrop.ParseTestConfig(t))
+	if err != nil {
+		t.Fatalf("artdrop.NewPlugin: %v", err)
+	}
+	pluginRouter := buildRouter(routeOptions{}, handlers, []plugins.Plugin{artdropPlugin}, deps)
+	if !routeExists(t, pluginRouter, http.MethodGet, "/v1/studio/charges") {
+		t.Fatal("expected artdrop plugin to register GET /studio/charges")
+	}
+
+	rules, err := openapi.AuthRulesFromRouter(pluginRouter, scopeIndex)
+	if err != nil {
+		t.Fatalf("AuthRulesFromRouter: %v", err)
+	}
+	for _, rule := range rules {
+		if rule.Key() == "GET /{apiVersion}/studio/charges" && rule.RequiredScope == "studio.charge.read" {
+			return
+		}
+	}
+	t.Fatal("expected studio charges route to require studio.charge.read")
 }
 
 func routeExists(t *testing.T, router *mux.Router, method string, path string) bool {
