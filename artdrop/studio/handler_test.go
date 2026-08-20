@@ -1,4 +1,4 @@
-package handlers
+package studio
 
 import (
 	"bytes"
@@ -8,23 +8,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/flow-hydraulics/flow-wallet-api/studio"
 )
 
-// mockStudioService is a minimal in-memory implementation of studio.Service
+// mockStudioService is a minimal in-memory implementation of Service
 // for handler tests.
 type mockStudioService struct {
-	charges []studio.ProductionCharge
+	charges []ProductionCharge
 	err     error
-	lastIn  studio.CreateStockRequestChargeInput
+	lastIn  CreateStockRequestChargeInput
 }
 
-func (m *mockStudioService) RecordProductionCharge(in studio.CreateProductionChargeInput) (*studio.ProductionCharge, error) {
+func (m *mockStudioService) RecordProductionCharge(in CreateProductionChargeInput) (*ProductionCharge, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	c := &studio.ProductionCharge{
+	c := &ProductionCharge{
 		ID:                  uint(len(m.charges) + 1),
 		UserID:              in.UserID,
 		QuoteID:             in.QuoteID,
@@ -39,12 +37,12 @@ func (m *mockStudioService) RecordProductionCharge(in studio.CreateProductionCha
 	return c, nil
 }
 
-func (m *mockStudioService) CreateStockRequestCharge(ctx context.Context, in studio.CreateStockRequestChargeInput) (*studio.ProductionCharge, error) {
+func (m *mockStudioService) CreateStockRequestCharge(ctx context.Context, in CreateStockRequestChargeInput) (*ProductionCharge, error) {
 	m.lastIn = in
 	if m.err != nil {
 		return nil, m.err
 	}
-	c := &studio.ProductionCharge{
+	c := &ProductionCharge{
 		ID:                  uint(len(m.charges) + 1),
 		UserID:              in.UserID,
 		QuoteID:             in.QuoteID,
@@ -59,11 +57,11 @@ func (m *mockStudioService) CreateStockRequestCharge(ctx context.Context, in stu
 	return c, nil
 }
 
-func (m *mockStudioService) ListProductionChargesByUser(userID string) ([]studio.ProductionCharge, error) {
+func (m *mockStudioService) ListProductionChargesByUser(userID string) ([]ProductionCharge, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	var out []studio.ProductionCharge
+	var out []ProductionCharge
 	for _, c := range m.charges {
 		if c.UserID == userID {
 			out = append(out, c)
@@ -72,8 +70,8 @@ func (m *mockStudioService) ListProductionChargesByUser(userID string) ([]studio
 	return out, nil
 }
 
-func newStudioHandler(svc studio.Service) *Studio {
-	return NewStudio(svc)
+func newStudioHandler(svc Service) *Handler {
+	return NewHandler(svc)
 }
 
 func TestCreateStockRequestHappyPath(t *testing.T) {
@@ -91,7 +89,7 @@ func TestCreateStockRequestHappyPath(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp studio.ProductionCharge
+	var resp ProductionCharge
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("invalid json response: %v", err)
 	}
@@ -106,7 +104,7 @@ func TestCreateStockRequestHappyPath(t *testing.T) {
 }
 
 func TestCreateStockRequestConflictOnDuplicate(t *testing.T) {
-	h := newStudioHandler(&mockStudioService{err: studio.ErrChargeAlreadyRecorded})
+	h := newStudioHandler(&mockStudioService{err: ErrChargeAlreadyRecorded})
 
 	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
@@ -122,7 +120,7 @@ func TestCreateStockRequestConflictOnDuplicate(t *testing.T) {
 // A failed audit write after Stripe charged must respond 500, so the
 // idempotency middleware releases the key instead of caching the failure.
 func TestCreateStockRequestRecordFailureIsServerError(t *testing.T) {
-	h := newStudioHandler(&mockStudioService{err: studio.ErrChargeRecordFailed})
+	h := newStudioHandler(&mockStudioService{err: ErrChargeRecordFailed})
 
 	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
@@ -163,7 +161,7 @@ func TestCreateStockRequestInvalidBody(t *testing.T) {
 
 func TestListChargesHappyPath(t *testing.T) {
 	svc := &mockStudioService{}
-	svc.charges = append(svc.charges, studio.ProductionCharge{
+	svc.charges = append(svc.charges, ProductionCharge{
 		ID:                  1,
 		UserID:              "user-1",
 		AmountCents:         2500,
@@ -180,7 +178,7 @@ func TestListChargesHappyPath(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp []studio.ProductionCharge
+	var resp []ProductionCharge
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("invalid json response: %v", err)
 	}

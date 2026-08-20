@@ -19,7 +19,15 @@ const (
 	dbTypeSqlite     = "sqlite"
 )
 
-func New(cfg *configs.Config) (*gorm.DB, error) {
+// New opens the database configured by cfg and migrates it to the latest
+// schema version. pluginMigrations are appended to the core migration list
+// (migrations.List) so they run in the same gormigrate table as the core
+// migrations, keeping rollback and versioning coherent across the whole
+// schema. Each plugin that owns tables exposes its migrations as a
+// package-level func (e.g. artdrop.Migrations) that the caller collects and
+// passes in here, since migrations are static and can be built before the
+// plugin instances that need this DB handle exist.
+func New(cfg *configs.Config, pluginMigrations ...*gormigrate.Migration) (*gorm.DB, error) {
 	// TODO(latenssi): safeguard against nil config?
 
 	var dialector gorm.Dialector
@@ -52,7 +60,8 @@ func New(cfg *configs.Config) (*gorm.DB, error) {
 		sqlDB.SetMaxOpenConns(1)
 	}
 
-	m := gormigrate.New(db, gormigrate.DefaultOptions, migrations.List())
+	allMigrations := append(migrations.List(), pluginMigrations...)
+	m := gormigrate.New(db, gormigrate.DefaultOptions, allMigrations)
 	if cfg.DatabaseVersion == "" {
 		err = m.Migrate()
 	} else {
