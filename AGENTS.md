@@ -24,6 +24,15 @@ PR body ends with `Closes #<n>`.
 - Go: `gofmt`/`go vet` clean, wrap errors with context, table-driven tests.
 - **Tests mandatory**: happy path **and** error paths — auth (expired/wrong scope), idempotency, and the
   atomic rotation/graduation invariants. Run `go test ./...`.
+- **Any change that adds or edits a route (new endpoint, changed path, changed method) must also run
+  `go test -run 'Auth|Route|Scope' .` from repo root** — `TestOpenAPIScopeIndexCoversFullRouter` lives
+  there and is what actually catches a route registered without a matching `x-required-scopes` entry
+  in `openapi.yml`. The service validates this at startup and exits fatally if it's missing, so a
+  gap here doesn't fail in CI — it crash-loops the deployed pod instead (PR #83 shipped exactly this
+  gap once; `go build`, `go vet`, `gofmt`, and `go test ./artdrop/...` all pass without the fix, since
+  none of them touch the root package's route/scope index). Scoping test runs to a subpackage
+  (`./artdrop/...`) is not equivalent to `./...` from root, and neither one substitutes for the
+  targeted `-run 'Auth|Route|Scope' .` — run it explicitly whenever a route changes.
 
 ## Reporting protocol (MANDATORY — comment on YOUR issue)
 
