@@ -25,28 +25,47 @@ func NewChargeEngine(svc *QuoteService) *ChargeEngine {
 }
 
 // Quote recomputes the price for the given quote config snapshot and run size,
-// returning the server-computed amount in cents plus the pricing hash and
-// engine version that produced it.
-func (e *ChargeEngine) Quote(ctx context.Context, config map[string]any, runSize int) (amountCents int64, pricingHash string, engineVersion string, err error) {
+// returning the server-computed amount in cents, the pricing hash and engine
+// version that produced it, and the largest production tier the engine itself
+// produces for this config (see maxRunSize).
+func (e *ChargeEngine) Quote(ctx context.Context, config map[string]any, runSize int) (amountCents int64, pricingHash string, engineVersion string, maxQuantity int, err error) {
 	if e == nil || e.svc == nil {
-		return 0, "", "", ErrPricingDisabled
+		return 0, "", "", 0, ErrPricingDisabled
 	}
 
 	cfg, err := toEngineConfig(config)
 	if err != nil {
-		return 0, "", "", fmt.Errorf("translate quote config: %w", err)
+		return 0, "", "", 0, fmt.Errorf("translate quote config: %w", err)
 	}
 	cfg.RunSize = runSize
 
 	result, err := e.svc.Quote(ctx, cfg)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", 0, err
 	}
 
 	// RunTotal is the total price for the run size (the requested quantity),
 	// already floored to the minimum order.
 	amountCents = int64(math.Round(result.RunTotal * 100))
-	return amountCents, result.Hash, result.EngineVersion, nil
+	return amountCents, result.Hash, result.EngineVersion, maxRunSize(result.Volume), nil
+}
+
+// maxRunSize returns the largest production tier the engine computed for a
+// config (normally the "12 beds" batch): the same batches slice that backs
+// the price, so a quantity cap derived from it comes from the same
+// authoritative source as the price itself. This is a security check, so it
+// takes the maximum over Units explicitly rather than trusting Volume to stay
+// sorted — Compute happens to build it ascending today, but nothing enforces
+// that, and a silently-wrong cap from a reordered or inserted tier is exactly
+// the failure mode this check exists to prevent.
+func maxRunSize(volume []VolumePrice) int {
+	largest := 0
+	for _, v := range volume {
+		if v.Units > largest {
+			largest = v.Units
+		}
+	}
+	return largest
 }
 
 // ---------------------------------------------------------------------------

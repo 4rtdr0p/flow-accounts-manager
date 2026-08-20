@@ -32,6 +32,11 @@ var ErrStripeDisabled = errors.New("stripe is disabled")
 // map it to a 5xx so the idempotency middleware releases the key reservation.
 var ErrChargeRecordFailed = errors.New("failed to record charge")
 
+// ErrQuantityExceedsMaxTier is returned when the requested quantity is above
+// the largest production tier the pricing engine computes for the quote's
+// config.
+var ErrQuantityExceedsMaxTier = errors.New("requested quantity exceeds maximum production tier")
+
 // Service lists all functionality provided by the studio service.
 type Service interface {
 	// RecordProductionCharge persists a charge audit record. It is
@@ -49,10 +54,11 @@ type Service interface {
 
 // ServiceImpl implements the studio Service.
 type ServiceImpl struct {
-	store  Store
-	quotes QuoteReader
-	engine PriceEngine
-	charge ChargeClient
+	store                    Store
+	quotes                   QuoteReader
+	engine                   PriceEngine
+	charge                   ChargeClient
+	shippingRateCentsPerUnit int64
 }
 
 // NewService initiates a new studio service.
@@ -62,9 +68,11 @@ func NewService(store Store) Service {
 
 // NewChargeService initiates a studio service wired for the full charge flow
 // (quote reader + pricing engine + Stripe client). Any of the optional deps may
-// be nil; the corresponding step reports its disabled error.
-func NewChargeService(store Store, quotes QuoteReader, engine PriceEngine, charge ChargeClient) Service {
-	return &ServiceImpl{store: store, quotes: quotes, engine: engine, charge: charge}
+// be nil; the corresponding step reports its disabled error. shippingRateCentsPerUnit
+// is the flat per-unit shipping charge applied to delivery orders (see
+// Config.StudioShippingRatePerUnitUSD).
+func NewChargeService(store Store, quotes QuoteReader, engine PriceEngine, charge ChargeClient, shippingRateCentsPerUnit int64) Service {
+	return &ServiceImpl{store: store, quotes: quotes, engine: engine, charge: charge, shippingRateCentsPerUnit: shippingRateCentsPerUnit}
 }
 
 // RecordProductionCharge persists a charge audit record, guarding against
@@ -84,14 +92,16 @@ func (s *ServiceImpl) RecordProductionCharge(in CreateProductionChargeInput) (*P
 	}
 
 	charge := &ProductionCharge{
-		UserID:              in.UserID,
-		QuoteID:             in.QuoteID,
-		AmountCents:         in.AmountCents,
-		Currency:            in.Currency,
-		StripePaymentIntent: in.StripePaymentIntent,
-		PricingHash:         in.PricingHash,
-		EngineVersion:       in.EngineVersion,
-		Metadata:            in.Metadata,
+		UserID:                in.UserID,
+		QuoteID:               in.QuoteID,
+		AmountCents:           in.AmountCents,
+		ProductionAmountCents: in.ProductionAmountCents,
+		ShippingAmountCents:   in.ShippingAmountCents,
+		Currency:              in.Currency,
+		StripePaymentIntent:   in.StripePaymentIntent,
+		PricingHash:           in.PricingHash,
+		EngineVersion:         in.EngineVersion,
+		Metadata:              in.Metadata,
 	}
 
 	if err := s.store.CreateProductionCharge(charge); err != nil {
@@ -129,6 +139,10 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 	if in.IdempotencyKey == "" {
 		return nil, fmt.Errorf("idempotency key is required")
 	}
+	fulfillment := in.FulfillmentMethod
+	if fulfillment == "" {
+		fulfillment = FulfillmentPickup
+	}
 
 	// 1. Read the quote's config snapshot from Mongo.
 	if s.quotes == nil {
@@ -149,20 +163,39 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 		return nil, ErrQuoteNotFound
 	}
 
-	// 2. Recompute the exact price with the active rates from the quote's
-	// config snapshot and the requested quantity as the run size. The engine
-	// returns the server-computed amount in cents plus the pricing hash and
-	// engine version that produced it.
+	// 2. Recompute the exact production price with the active rates from the
+	// quote's config snapshot and the requested quantity as the run size. The
+	// engine returns the server-computed amount in cents, the pricing hash and
+	// engine version that produced it, and the largest production tier it
+	// computes for this config.
 	if s.engine == nil {
 		return nil, ErrPricingDisabled
 	}
-	amountCents, pricingHash, engineVersion, err := s.engine.Quote(ctx, quote.Config, in.Quantity)
+	productionCents, pricingHash, engineVersion, maxQuantity, err := s.engine.Quote(ctx, quote.Config, in.Quantity)
 	if err != nil {
 		return nil, fmt.Errorf("recompute quote price: %w", err)
 	}
-	if amountCents <= 0 {
-		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", amountCents)
+	if productionCents <= 0 {
+		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", productionCents)
 	}
+
+	// 3. The requested quantity must not exceed the largest production tier
+	// the engine itself computes for this config — the same authoritative
+	// source as the price, rather than a cached, client-manipulable copy of
+	// it.
+	if maxQuantity > 0 && in.Quantity > maxQuantity {
+		return nil, fmt.Errorf("%w: requested %d, max %d", ErrQuantityExceedsMaxTier, in.Quantity, maxQuantity)
+	}
+
+	// 4. Add shipping for a delivery order. The rate is server-configured;
+	// only whether it applies at all is taken from the client (see
+	// CreateStockRequestChargeInput.FulfillmentMethod for the trust
+	// boundary this implies).
+	var shippingCents int64
+	if fulfillment == FulfillmentDelivery {
+		shippingCents = s.shippingRateCentsPerUnit * int64(in.Quantity)
+	}
+	amountCents := productionCents + shippingCents
 
 	// 5. Create and confirm the Stripe PaymentIntent.
 	if s.charge == nil {
@@ -180,16 +213,19 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
 	}
 
-	// 6. Persist the audit record with the server-computed values.
+	// 6. Persist the audit record with the server-computed values, split into
+	// production vs shipping so ops can reconcile against each separately.
 	charge, err := s.RecordProductionCharge(CreateProductionChargeInput{
-		UserID:              in.UserID,
-		QuoteID:             in.QuoteID,
-		AmountCents:         amountCents,
-		Currency:            "usd",
-		StripePaymentIntent: intent.ID,
-		PricingHash:         pricingHash,
-		EngineVersion:       engineVersion,
-		Metadata:            in.Metadata,
+		UserID:                in.UserID,
+		QuoteID:               in.QuoteID,
+		AmountCents:           amountCents,
+		ProductionAmountCents: productionCents,
+		ShippingAmountCents:   shippingCents,
+		Currency:              "usd",
+		StripePaymentIntent:   intent.ID,
+		PricingHash:           pricingHash,
+		EngineVersion:         engineVersion,
+		Metadata:              in.Metadata,
 	})
 	if err != nil {
 		return nil, err

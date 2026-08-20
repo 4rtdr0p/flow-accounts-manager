@@ -101,6 +101,44 @@ func TestCreateStockRequestHappyPath(t *testing.T) {
 	if svc.lastIn.IdempotencyKey != "idem-abc" {
 		t.Fatalf("expected Idempotency-Key idem-abc propagated to service, got %q", svc.lastIn.IdempotencyKey)
 	}
+	// A request that omits fulfillmentMethod must reach the service as empty,
+	// so the service default (pickup) applies — the pre-existing behavior for
+	// every caller that doesn't send this new field.
+	if svc.lastIn.FulfillmentMethod != "" {
+		t.Fatalf("expected empty FulfillmentMethod when omitted from the request, got %q", svc.lastIn.FulfillmentMethod)
+	}
+}
+
+func TestCreateStockRequestPropagatesFulfillmentMethod(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123","fulfillmentMethod":"delivery"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if svc.lastIn.FulfillmentMethod != FulfillmentDelivery {
+		t.Fatalf("expected FulfillmentMethod delivery propagated to service, got %q", svc.lastIn.FulfillmentMethod)
+	}
+}
+
+func TestCreateStockRequestQuantityExceedsMaxTierIsBadRequest(t *testing.T) {
+	h := newStudioHandler(&mockStudioService{err: ErrQuantityExceedsMaxTier})
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":9999,"stripeCustomerId":"cus_123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
 }
 
 func TestCreateStockRequestConflictOnDuplicate(t *testing.T) {
