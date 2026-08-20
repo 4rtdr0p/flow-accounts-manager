@@ -65,6 +65,55 @@ func TestAuthHandler(t *testing.T) {
 	})
 }
 
+func TestAuthHandlerHealthCheckExemption(t *testing.T) {
+	secret := "test-secret"
+	rules := []AuthRule{
+		{
+			Method:        http.MethodGet,
+			PathPattern:   regexp.MustCompile(`^/v1/health/ready$`),
+			RequiredScope: "health.read",
+		},
+		{
+			Method:        http.MethodGet,
+			PathPattern:   regexp.MustCompile(`^/v1/accounts$`),
+			RequiredScope: "account.read",
+		},
+	}
+
+	h := AuthHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	}), AuthOptions{Enabled: true, Secret: secret, Rules: rules})
+
+	t.Run("health endpoint returns 200 without a token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/health/ready", nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+		}
+	})
+
+	t.Run("health endpoint returns 200 with a valid token too", func(t *testing.T) {
+		tok := signedToken(t, secret, "health.read", time.Now().Add(5*time.Minute))
+		req := httptest.NewRequest(http.MethodGet, "/v1/health/ready", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d", http.StatusOK, rr.Code)
+		}
+	})
+
+	t.Run("non-health endpoint still returns 401 without a token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/accounts", nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("expected %d, got %d", http.StatusUnauthorized, rr.Code)
+		}
+	})
+}
+
 func signedToken(t *testing.T, secret string, scope string, exp time.Time) string {
 	t.Helper()
 	claims := AuthClaims{

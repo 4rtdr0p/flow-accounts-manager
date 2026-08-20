@@ -47,6 +47,23 @@ func ContextWithClaims(ctx context.Context, claims *AuthClaims) context.Context 
 	return context.WithValue(ctx, claimsContextKey{}, claims)
 }
 
+// healthCheckExemptPaths lets Kubernetes readiness/liveness probes reach the
+// health endpoints without a bearer token: probes never send one, and with
+// auth enabled a 401 here means the pod never becomes ready and the rollout
+// stalls forever. Deliberately a compile-time allowlist matched on exact
+// method+path, not a prefix or an env-configurable list: a prefix on
+// /v1/health would silently exempt any future /v1/health/* route, and an
+// env-configurable list is a silent security hole waiting for a typo.
+var healthCheckExemptPaths = map[string]struct{}{
+	http.MethodGet + " /v1/health/ready":    {},
+	http.MethodGet + " /v1/health/liveness": {},
+}
+
+func isHealthCheckExempt(method, path string) bool {
+	_, ok := healthCheckExemptPaths[method+" "+path]
+	return ok
+}
+
 var pathParamPattern = regexp.MustCompile(`\\\{[^}]+\\\}`)
 
 func NewAuthRule(method string, pathTemplate string, requiredScope string) AuthRule {
@@ -68,6 +85,11 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 	}
 
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if isHealthCheckExempt(r.Method, r.URL.Path) {
+			h.ServeHTTP(rw, r)
+			return
+		}
+
 		requiredScope, ok := requiredScopeForRequest(opts.Rules, r.Method, r.URL.Path)
 		if !ok {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path}).Warn("auth denied: endpoint scope missing")
