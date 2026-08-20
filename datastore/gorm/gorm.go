@@ -26,7 +26,10 @@ const (
 // schema. Each plugin that owns tables exposes its migrations as a
 // package-level func (e.g. artdrop.Migrations) that the caller collects and
 // passes in here, since migrations are static and can be built before the
-// plugin instances that need this DB handle exist.
+// plugin instances that need this DB handle exist. Execution order is
+// positional — core migrations first, then pluginMigrations in the order
+// given — not sorted by ID, so callers should keep passing plugins in a
+// stable order and keep each plugin's own migration IDs timestamp-prefixed.
 func New(cfg *configs.Config, pluginMigrations ...*gormigrate.Migration) (*gorm.DB, error) {
 	// TODO(latenssi): safeguard against nil config?
 

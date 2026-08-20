@@ -134,7 +134,11 @@ func runServer(cfg *configs.Config) {
 
 	// Database. Plugin migrations are collected here (statically, ahead of
 	// the plugin instances themselves) and appended to the core migration
-	// list so they run in the same gormigrate table.
+	// list so they run in the same gormigrate table. This is the place a
+	// new plugin that owns tables adds its own <plugin>.Migrations()... —
+	// ordering is positional (core first, then each plugin argument in the
+	// order listed here), not by ID, so keep migration IDs timestamp-
+	// prefixed within and across plugins to keep that order legible.
 	db, err := flowgorm.New(cfg, artdrop.Migrations()...)
 	if err != nil {
 		log.Fatal(err)
