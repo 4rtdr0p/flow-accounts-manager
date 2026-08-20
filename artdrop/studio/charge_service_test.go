@@ -28,19 +28,21 @@ func (m *mockQuoteReader) GetByID(ctx context.Context, quoteID string) (*datasto
 }
 
 // mockPriceEngine is a scripted PriceEngine for tests. It mirrors the
-// primitive-only studio.PriceEngine signature.
+// primitive-only studio.PriceEngine signature. maxQuantity defaults to "no
+// cap" (0) when left unset, since most tests don't exercise the tier check.
 type mockPriceEngine struct {
 	amountCents   int64
 	pricingHash   string
 	engineVersion string
+	maxQuantity   int
 	err           error
 }
 
-func (m *mockPriceEngine) Quote(ctx context.Context, config map[string]any, runSize int) (int64, string, string, error) {
+func (m *mockPriceEngine) Quote(ctx context.Context, config map[string]any, runSize int) (int64, string, string, int, error) {
 	if m.err != nil {
-		return 0, "", "", m.err
+		return 0, "", "", 0, m.err
 	}
-	return m.amountCents, m.pricingHash, m.engineVersion, nil
+	return m.amountCents, m.pricingHash, m.engineVersion, m.maxQuantity, nil
 }
 
 // mockChargeClient is a scripted ChargeClient for tests. It records the last
@@ -76,9 +78,18 @@ func (m *mockStore) ListProductionChargesByUser(userID string) ([]ProductionChar
 	return nil, nil
 }
 
+// testShippingRateCentsPerUnit mirrors the production default (envDefault
+// "25" on Config.StudioShippingRatePerUnitUSD, in cents).
+const testShippingRateCentsPerUnit = 2500
+
 // newChargeTestService builds a ServiceImpl wired with the given mocks and a
 // fresh in-memory DB.
 func newChargeTestService(t *testing.T, quotes QuoteReader, engine PriceEngine, charge ChargeClient) Service {
+	t.Helper()
+	return newChargeTestServiceWithShippingRate(t, quotes, engine, charge, testShippingRateCentsPerUnit)
+}
+
+func newChargeTestServiceWithShippingRate(t *testing.T, quotes QuoteReader, engine PriceEngine, charge ChargeClient, shippingRateCentsPerUnit int64) Service {
 	t.Helper()
 	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -88,7 +99,7 @@ func newChargeTestService(t *testing.T, quotes QuoteReader, engine PriceEngine, 
 	if err := db.AutoMigrate(&ProductionCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	return NewChargeService(NewGormStore(db), quotes, engine, charge)
+	return NewChargeService(NewGormStore(db), quotes, engine, charge, shippingRateCentsPerUnit)
 }
 
 func validChargeInput() CreateStockRequestChargeInput {
@@ -370,7 +381,7 @@ func TestCreateStockRequestChargeRecordFailureIsNotLeakedAndNotDuplicate(t *test
 	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
 	store := &mockStore{createErr: errors.New("permission denied for table studio_production_charges (SQLSTATE 42501)")}
 
-	svc := NewChargeService(store, quotes, engine, charge)
+	svc := NewChargeService(store, quotes, engine, charge, testShippingRateCentsPerUnit)
 
 	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
 	if !errors.Is(err, ErrChargeRecordFailed) {
@@ -381,5 +392,145 @@ func TestCreateStockRequestChargeRecordFailureIsNotLeakedAndNotDuplicate(t *test
 	}
 	if errors.Is(err, ErrChargeAlreadyRecorded) {
 		t.Fatalf("a failed write must not be reported as ErrChargeAlreadyRecorded")
+	}
+}
+
+// TestCreateStockRequestChargePickupChargesNoShipping verifies that a pickup
+// order (the default) charges only the production amount: the pre-existing
+// behavior for every caller that doesn't send fulfillmentMethod.
+func TestCreateStockRequestChargePickupChargesNoShipping(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	in.FulfillmentMethod = FulfillmentPickup
+
+	got, err := svc.CreateStockRequestCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ShippingAmountCents != 0 {
+		t.Fatalf("expected no shipping for pickup, got %d cents", got.ShippingAmountCents)
+	}
+	if got.ProductionAmountCents != 2500 || got.AmountCents != 2500 {
+		t.Fatalf("expected amount 2500 cents with no shipping, got production=%d total=%d", got.ProductionAmountCents, got.AmountCents)
+	}
+	if charge.lastIn.AmountCents != 2500 {
+		t.Fatalf("expected Stripe to be charged 2500 cents, got %d", charge.lastIn.AmountCents)
+	}
+}
+
+// TestCreateStockRequestChargeUnsetFulfillmentDefaultsToPickup verifies that
+// omitting fulfillmentMethod entirely behaves exactly like pickup, so
+// existing callers (Payload-Galaxy PR #381) are unaffected.
+func TestCreateStockRequestChargeUnsetFulfillmentDefaultsToPickup(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	in.FulfillmentMethod = ""
+
+	got, err := svc.CreateStockRequestCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ShippingAmountCents != 0 || got.AmountCents != 2500 {
+		t.Fatalf("expected unset fulfillment method to default to pickup (no shipping), got shipping=%d total=%d", got.ShippingAmountCents, got.AmountCents)
+	}
+}
+
+// TestCreateStockRequestChargeDeliveryAddsShipping verifies a delivery order
+// adds the flat per-unit shipping rate times the requested quantity, and that
+// Stripe and the audit record both see the combined total split into its two
+// components.
+func TestCreateStockRequestChargeDeliveryAddsShipping(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestServiceWithShippingRate(t, quotes, engine, charge, 2500)
+
+	in := validChargeInput()
+	in.Quantity = 10
+	in.FulfillmentMethod = FulfillmentDelivery
+
+	got, err := svc.CreateStockRequestCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantShipping := int64(2500 * 10)
+	if got.ShippingAmountCents != wantShipping {
+		t.Fatalf("expected shipping %d cents (rate x quantity), got %d", wantShipping, got.ShippingAmountCents)
+	}
+	if got.ProductionAmountCents != 2500 {
+		t.Fatalf("expected production amount unchanged at 2500 cents, got %d", got.ProductionAmountCents)
+	}
+	wantTotal := int64(2500) + wantShipping
+	if got.AmountCents != wantTotal {
+		t.Fatalf("expected total %d cents, got %d", wantTotal, got.AmountCents)
+	}
+	if charge.lastIn.AmountCents != wantTotal {
+		t.Fatalf("expected Stripe to be charged the combined total %d cents, got %d", wantTotal, charge.lastIn.AmountCents)
+	}
+}
+
+// TestCreateStockRequestChargeQuantityAtMaxTierIsAllowed verifies a request
+// for exactly the largest tier the engine computed is accepted.
+func TestCreateStockRequestChargeQuantityAtMaxTierIsAllowed(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500, maxQuantity: 10}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	in.Quantity = 10
+
+	if _, err := svc.CreateStockRequestCharge(context.Background(), in); err != nil {
+		t.Fatalf("expected quantity at the max tier to be allowed, got %v", err)
+	}
+}
+
+// TestCreateStockRequestChargeQuantityAboveMaxTierIsRejected verifies a
+// request above the largest tier the engine computed is refused before
+// Stripe is ever called, and that the error names the requested quantity and
+// the max.
+func TestCreateStockRequestChargeQuantityAboveMaxTierIsRejected(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500, maxQuantity: 10}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	in.Quantity = 11
+
+	_, err := svc.CreateStockRequestCharge(context.Background(), in)
+	if !errors.Is(err, ErrQuantityExceedsMaxTier) {
+		t.Fatalf("expected ErrQuantityExceedsMaxTier, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "11") || !strings.Contains(err.Error(), "10") {
+		t.Fatalf("expected error to name the requested quantity and the max, got %q", err.Error())
+	}
+	if charge.lastIn.AmountCents != 0 {
+		t.Fatalf("expected Stripe NOT to be called when the quantity exceeds the max tier, but it was")
+	}
+}
+
+// TestCreateStockRequestChargeZeroMaxQuantityMeansNoCap verifies that an
+// engine reporting maxQuantity 0 (e.g. an empty Volume slice) does not
+// spuriously reject every request.
+func TestCreateStockRequestChargeZeroMaxQuantityMeansNoCap(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500, maxQuantity: 0}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "succeeded"}}
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	in := validChargeInput()
+	in.Quantity = 1000
+
+	if _, err := svc.CreateStockRequestCharge(context.Background(), in); err != nil {
+		t.Fatalf("expected no cap to be applied when maxQuantity is 0, got %v", err)
 	}
 }

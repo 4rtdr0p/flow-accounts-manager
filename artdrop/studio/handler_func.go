@@ -21,6 +21,9 @@ type createStockRequestRequest struct {
 	UserID            string `json:"userId"`
 	QuoteID           string `json:"quoteId"`
 	QuantityRequested int    `json:"quantityRequested"`
+	// FulfillmentMethod is "delivery" or "pickup". It is optional and
+	// defaults to pickup, matching the behavior before this field existed.
+	FulfillmentMethod string `json:"fulfillmentMethod,omitempty"`
 	StripeCustomerID  string `json:"stripeCustomerId"`
 	PaymentMethodID   string `json:"paymentMethodId,omitempty"`
 	Metadata          string `json:"metadata,omitempty"`
@@ -40,13 +43,14 @@ func (h *Handler) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request
 	}
 
 	charge, err := h.service.CreateStockRequestCharge(r.Context(), CreateStockRequestChargeInput{
-		UserID:           req.UserID,
-		QuoteID:          req.QuoteID,
-		Quantity:         req.QuantityRequested,
-		StripeCustomerID: req.StripeCustomerID,
-		PaymentMethodID:  req.PaymentMethodID,
-		IdempotencyKey:   r.Header.Get("Idempotency-Key"),
-		Metadata:         req.Metadata,
+		UserID:            req.UserID,
+		QuoteID:           req.QuoteID,
+		Quantity:          req.QuantityRequested,
+		FulfillmentMethod: FulfillmentMethod(req.FulfillmentMethod),
+		StripeCustomerID:  req.StripeCustomerID,
+		PaymentMethodID:   req.PaymentMethodID,
+		IdempotencyKey:    r.Header.Get("Idempotency-Key"),
+		Metadata:          req.Metadata,
 	})
 	if err != nil {
 		switch {
@@ -54,6 +58,8 @@ func (h *Handler) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
 		case stdErrors.Is(err, ErrQuoteNotFound):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
+		case stdErrors.Is(err, ErrQuantityExceedsMaxTier):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusBadRequest, Err: err})
 		case stdErrors.Is(err, ErrPricingDisabled), stdErrors.Is(err, ErrStripeDisabled):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusServiceUnavailable, Err: err})
 		case stdErrors.Is(err, ErrChargeRecordFailed):

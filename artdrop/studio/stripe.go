@@ -8,8 +8,19 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
+)
+
+// Stripe's metadata limits: at most this many keys per object, and this many
+// characters per value. A charge whose caller-supplied metadata exceeds
+// either is truncated/dropped deterministically rather than rejected whole by
+// Stripe. Stripe also caps key length at 40 characters.
+const (
+	stripeMetadataMaxKeys       = 50
+	stripeMetadataMaxKeyChars   = 40
+	stripeMetadataMaxValueChars = 500
 )
 
 // ErrNoPaymentMethod is returned when a customer has no saved payment method
@@ -73,7 +84,11 @@ func (c *StripeClient) CreateAndConfirm(ctx context.Context, in StripeChargeInpu
 	form.Set("off_session", "true")
 	form.Set("payment_method", paymentMethodID)
 	form.Set("automatic_payment_methods[enabled]", "true")
-	if in.Metadata != "" {
+	if fields := stripeMetadataFields(in.Metadata); fields != nil {
+		for k, v := range fields {
+			form.Set("metadata["+k+"]", v)
+		}
+	} else if in.Metadata != "" {
 		form.Set("metadata[charge_ref]", in.Metadata)
 	}
 
@@ -173,6 +188,65 @@ func (c *StripeClient) do(req *http.Request, out any) error {
 		}
 	}
 	return nil
+}
+
+// stripeMetadataFields parses raw as a JSON object and returns it as a flat
+// string-to-string map suitable for one metadata[<key>]=<value> form field
+// per entry, so ops can filter Stripe charges by editionId/artistProfileId/
+// type in the dashboard instead of only by an opaque charge_ref. It returns
+// nil when raw is empty or is not a JSON object, so the caller can fall back
+// to the single charge_ref field.
+//
+// Stripe's key/value limits are enforced deterministically: keys are sorted
+// so which ones survive is stable across calls with the same input, only the
+// first stripeMetadataMaxKeys are kept, and each key/value is truncated to
+// Stripe's character limits rather than left for Stripe to reject the whole
+// request over.
+func stripeMetadataFields(raw string) map[string]string {
+	if raw == "" {
+		return nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return nil
+	}
+
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > stripeMetadataMaxKeys {
+		keys = keys[:stripeMetadataMaxKeys]
+	}
+
+	fields := make(map[string]string, len(keys))
+	for _, k := range keys {
+		key := truncate(k, stripeMetadataMaxKeyChars)
+		fields[key] = truncate(stripeMetadataValueString(obj[k]), stripeMetadataMaxValueChars)
+	}
+	return fields
+}
+
+// stripeMetadataValueString renders a decoded JSON value as the string Stripe
+// metadata needs: strings pass through unchanged, everything else (numbers,
+// bools, nested objects/arrays, null) is re-encoded as JSON text.
+func stripeMetadataValueString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
 }
 
 // StripeChargeInput is the data needed to create and confirm a PaymentIntent.

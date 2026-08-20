@@ -1,6 +1,7 @@
 package artdrop
 
 import (
+	"math"
 	"net/http"
 	"time"
 
@@ -42,9 +43,11 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	// reports studio pricing as disabled (503).
 	var pricingCacheTTL time.Duration
 	var stripeSecretKey string
+	var shippingRateCentsPerUnit int64
 	if deps.Config != nil {
 		pricingCacheTTL = deps.Config.StudioPricingCacheTTL
 		stripeSecretKey = deps.Config.StripeSecretKey
+		shippingRateCentsPerUnit = int64(math.Round(deps.Config.StudioShippingRatePerUnitUSD * 100))
 	}
 	pricingSvc := pricing.NewActiveService(datastoremongo.NewPricingStore(deps.Mongo, deps.Config), pricingCacheTTL)
 	pricingHandler := pricing.NewHandler(pricingSvc)
@@ -64,7 +67,7 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	chargeEngine := pricing.NewChargeEngine(quoteSvc)
 	stripeClient := studio.NewStripeClient(stripeSecretKey, "")
 	quoteStore := datastoremongo.NewQuoteStore(deps.Mongo, deps.Config)
-	studioService := studio.NewChargeService(studio.NewGormStore(deps.DB), quoteStore, chargeEngine, stripeClient)
+	studioService := studio.NewChargeService(studio.NewGormStore(deps.DB), quoteStore, chargeEngine, stripeClient, shippingRateCentsPerUnit)
 	studioHandler := studio.NewHandler(studioService)
 	router.Handle("/stock-requests:create", studioHandler.CreateStockRequest()).Methods(http.MethodPost)
 	router.Handle("/studio/charges", studioHandler.ListCharges()).Methods(http.MethodGet)

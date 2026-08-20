@@ -207,6 +207,11 @@ type Config struct {
 	// for Studio production charges. When empty, the Stripe client is not
 	// initialized and the charge endpoint reports the feature as disabled.
 	StripeSecretKey string `env:"STRIPE_SECRET_KEY" envDefault:""`
+	// StudioShippingRatePerUnitUSD is the flat shipping rate, in whole USD,
+	// charged per unit on a delivery stock request. It is applied server-side
+	// in stock-requests:create; a config value rather than a literal so ops
+	// can change it without a code deploy.
+	StudioShippingRatePerUnitUSD float64 `env:"STUDIO_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
 }
 
 // Parse parses environment variables and flags to a valid Config.

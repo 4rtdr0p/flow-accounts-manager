@@ -231,3 +231,26 @@ func TestToEngineConfigNil(t *testing.T) {
 		t.Fatal("expected error for nil config, got nil")
 	}
 }
+
+// TestMaxRunSize verifies the quantity cap is read from the last (largest)
+// entry of the batches Compute produces, the same authoritative source that
+// backs the price, and not an independently maintained maximum.
+func TestMaxRunSize(t *testing.T) {
+	volume := []VolumePrice{
+		{Label: "1 print", Units: 1},
+		{Label: "1 row", Units: 4},
+		{Label: "Full bed", Units: 8},
+		{Label: "12 beds", Units: 96},
+	}
+	if got := maxRunSize(volume); got != 96 {
+		t.Errorf("expected max run size 96, got %d", got)
+	}
+}
+
+// TestMaxRunSizeEmpty verifies an empty batches slice reports no cap (0)
+// rather than panicking.
+func TestMaxRunSizeEmpty(t *testing.T) {
+	if got := maxRunSize(nil); got != 0 {
+		t.Errorf("expected 0 for an empty batches slice, got %d", got)
+	}
+}

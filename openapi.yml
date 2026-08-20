@@ -1544,9 +1544,13 @@ paths:
         recomputes the exact price with the active pricing rates, creates and
         confirms a Stripe PaymentIntent, and persists the audit record with the
         server-computed amount, hash and engine version. No amount, hash or
-        engine version is trusted from the client. Retries are governed by the
-        `Idempotency-Key` header, which is propagated to Stripe; replays return
-        the stored result, while a conflicting duplicate attempt returns 409.
+        engine version is trusted from the client. A delivery order adds a
+        flat, server-configured per-unit shipping charge on top of the
+        recomputed production price; `quantityRequested` is rejected if it
+        exceeds the largest production tier the pricing engine computes for
+        the quote's config. Retries are governed by the `Idempotency-Key`
+        header, which is propagated to Stripe; replays return the stored
+        result, while a conflicting duplicate attempt returns 409.
       operationId: createStockRequest
       x-required-scopes:
         - studio.charge.create
@@ -1570,6 +1574,14 @@ paths:
                 quantityRequested:
                   type: integer
                   minimum: 1
+                fulfillmentMethod:
+                  type: string
+                  enum: [pickup, delivery]
+                  default: pickup
+                  description: >-
+                    Whether the order is picked up (no shipping charge) or
+                    delivered (a flat, server-configured per-unit shipping
+                    charge is added). Defaults to pickup when omitted.
                 stripeCustomerId:
                   type: string
                 paymentMethodId:
@@ -1584,7 +1596,7 @@ paths:
               schema:
                 type: object
         '400':
-          description: Bad Request
+          description: Bad Request - malformed body or quantityRequested exceeds the maximum production tier
         '404':
           description: Not Found - studio quote does not exist or does not belong to the user
         '409':

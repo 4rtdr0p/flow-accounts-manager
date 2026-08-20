@@ -2,6 +2,7 @@ package artdrop
 
 import (
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/migrations/m20260807"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/migrations/m20260820"
 	"github.com/go-gormigrate/gormigrate/v2"
 )
 
@@ -19,6 +20,11 @@ func Migrations() []*gormigrate.Migration {
 			ID:       m20260807.ID,
 			Migrate:  m20260807.Migrate,
 			Rollback: m20260807.Rollback,
+		},
+		{
+			ID:       m20260820.ID,
+			Migrate:  m20260820.Migrate,
+			Rollback: m20260820.Rollback,
 		},
 	}
 }
