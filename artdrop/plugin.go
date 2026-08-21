@@ -1,20 +1,45 @@
 package artdrop
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"time"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/pricing"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
+	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
+	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
 )
 
 // Plugin is the artdrop plugin entry point.
 type Plugin struct {
 	svc *Service
+}
+
+// purchaseEscrowCreator adapts *Service.CreateEscrow (which takes an
+// artdrop.CreateEscrowRequest) to the primitive-based purchase.EscrowCreator
+// interface. It lives in the artdrop package because the purchase package must
+// not import artdrop (plugin.go imports purchase, so the reverse would be an
+// import cycle). The amount passed in is the server-computed FLOW amount.
+type purchaseEscrowCreator struct {
+	svc *Service
+}
+
+func (a purchaseEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
+	return a.svc.CreateEscrow(ctx, sync, address, CreateEscrowRequest{
+		Buyer:     buyer,
+		Seller:    seller,
+		EditionId: editionID,
+		ChipId:    chipID,
+		UnlockAt:  unlockAt,
+		Nonce:     nonce,
+		Amount:    amount,
+	})
 }
 
 // NewPlugin creates the artdrop plugin using the shared application
@@ -71,6 +96,34 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	studioHandler := studio.NewHandler(studioService)
 	router.Handle("/stock-requests:create", studioHandler.CreateStockRequest()).Methods(http.MethodPost)
 	router.Handle("/studio/charges", studioHandler.ListCharges()).Methods(http.MethodGet)
+
+	// Buyer purchase charge + escrow (#93). The endpoint charges the buyer's
+	// purchase and opens the on-chain escrow with a server-computed amount: it
+	// reads the artwork price from Mongo, applies the configured platform fee,
+	// converts the total to FLOW via the Pyth oracle, creates and confirms a
+	// Stripe PaymentIntent, opens the escrow, and persists the audit record.
+	// It reuses the studio Stripe client and the artdrop escrow creator.
+	var purchasePlatformFeeBps int
+	var pythMaxAge time.Duration
+	var pythBaseURL, pythFeedID string
+	if deps.Config != nil {
+		purchasePlatformFeeBps = deps.Config.PurchasePlatformFeeBasisPoints
+		pythMaxAge = deps.Config.PythMaxAge
+		pythBaseURL = deps.Config.PythHermesBaseURL
+		pythFeedID = deps.Config.PythHermesFeedID
+	}
+	purchaseStore := datastoremongo.NewPurchaseStore(deps.Mongo, deps.Config)
+	pythClient := purchase.NewPythClient(pythBaseURL, pythFeedID, pythMaxAge)
+	purchaseService := purchase.NewService(
+		purchase.NewGormStore(deps.DB),
+		purchaseStore,
+		pythClient,
+		stripeClient,
+		purchaseEscrowCreator{svc: p.svc},
+		purchasePlatformFeeBps,
+	)
+	purchaseHandler := purchase.NewHandler(purchaseService)
+	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)
 
 	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)
