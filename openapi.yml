@@ -1605,6 +1605,90 @@ paths:
           description: Service Unavailable - pricing or Stripe is disabled
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
+  /purchases:charge:
+    post:
+      summary: Charge a buyer's purchase and open the on-chain escrow.
+      description: >-
+        Charges the buyer's purchase and opens the on-chain escrow with a
+        server-computed amount. The server reads the artwork price from Mongo
+        (editions.price or paintings.originalPrice, both required and in
+        dollars), applies the configured platform fee, converts the total to
+        FLOW via the Pyth oracle (rejecting prices older than the configured
+        max age), creates and confirms a Stripe PaymentIntent, opens the
+        escrow, and persists the audit record. No amount is trusted from the
+        client. One PaymentIntent funds at most one escrow. Retries are
+        governed by the `Idempotency-Key` header, which is propagated to
+        Stripe; replays return the stored result, while a conflicting duplicate
+        attempt returns 409.
+      operationId: createPurchaseCharge
+      x-required-scopes:
+        - studio.charge.create
+      tags:
+        - Studio
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - artworkKind
+                - artworkId
+                - stripeCustomerId
+                - buyer
+                - seller
+                - editionId
+                - chipId
+                - unlockAt
+                - nonce
+              properties:
+                userId:
+                  type: string
+                artworkKind:
+                  type: string
+                  enum: [edition, painting]
+                artworkId:
+                  type: string
+                stripeCustomerId:
+                  type: string
+                paymentMethodId:
+                  type: string
+                metadata:
+                  type: string
+                buyer:
+                  type: string
+                seller:
+                  type: string
+                editionId:
+                  type: integer
+                  format: uint64
+                chipId:
+                  type: string
+                unlockAt:
+                  type: number
+                  format: float
+                nonce:
+                  type: integer
+                  format: uint64
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Bad Request - malformed body
+        '404':
+          description: Not Found - artwork does not exist
+        '409':
+          description: Conflict - duplicate attempt for the same Idempotency-Key or already-recorded charge
+        '422':
+          description: Unprocessable Entity - artwork price is missing
+        '503':
+          description: Service Unavailable - pricing, Pyth oracle, Stripe or escrow is disabled
+      parameters:
+        - $ref: '#/components/parameters/idempotencyKey'
   /studio/charges:
     get:
       summary: List studio production charges for a user.

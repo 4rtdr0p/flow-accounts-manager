@@ -195,6 +195,14 @@ type Config struct {
 	// (each with a config snapshot used to price a stock request at charge
 	// time). Read-only, keyed by quote id.
 	MongoStudioQuotesCollection string `env:"MONGO_STUDIO_QUOTES_COLLECTION" envDefault:"studio-quotes"`
+	// MongoEditionsCollection is the collection holding ArtDrop editions,
+	// whose documents carry the artwork price in dollars (editions.price).
+	// Read-only, keyed by edition id.
+	MongoEditionsCollection string `env:"MONGO_EDITIONS_COLLECTION" envDefault:"editions"`
+	// MongoPaintingsCollection is the collection holding ArtDrop paintings,
+	// whose documents carry the original artwork price in dollars
+	// (paintings.originalPrice). Read-only, keyed by painting id.
+	MongoPaintingsCollection string `env:"MONGO_PAINTINGS_COLLECTION" envDefault:"paintings"`
 	// MongoConnectTimeout is the timeout for establishing the Mongo connection.
 	MongoConnectTimeout time.Duration `env:"MONGO_CONNECT_TIMEOUT" envDefault:"10s"`
 	// StudioPricingCacheTTL is how long the in-memory cache of the active
@@ -212,6 +220,31 @@ type Config struct {
 	// in stock-requests:create; a config value rather than a literal so ops
 	// can change it without a code deploy.
 	StudioShippingRatePerUnitUSD float64 `env:"STUDIO_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
+
+	// -- Purchase charge + escrow (buyer purchase settlement) --
+	// PurchasePlatformFeeBasisPoints is the platform fee, in basis points,
+	// ArtDrop takes on a primary sale. It is computed on the artwork price
+	// read from Mongo (editions.price / paintings.originalPrice), NOT on the
+	// total including shipping, and is server configuration — it deliberately
+	// does not come from getPlatformFee() (which returns 0.0 on purpose and
+	// belongs to the disabled on-chain sale layer). Default 500 = 5%.
+	PurchasePlatformFeeBasisPoints int `env:"PURCHASE_PLATFORM_FEE_BASIS_POINTS" envDefault:"500"`
+	// PurchaseShippingRatePerUnitUSD is the flat shipping rate, in whole USD,
+	// charged per product on a purchase. It is charged separately from the
+	// artwork price (the 5% fee is computed on the artwork price alone) and
+	// is server configuration.
+	PurchaseShippingRatePerUnitUSD float64 `env:"PURCHASE_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
+	// PythHermesBaseURL is the base URL of the Pyth Hermes HTTP API used to
+	// convert the USD artwork price to FLOW. It is free and needs no API key.
+	PythHermesBaseURL string `env:"PYTH_HERMES_BASE_URL" envDefault:"https://hermes.pyth.network"`
+	// PythHermesFeedID is the Pyth Hermes price feed id for FLOW/USD. It is
+	// the feed the purchase charge flow reads to convert the USD artwork
+	// price to FLOW for the escrow amount.
+	PythHermesFeedID string `env:"PYTH_HERMES_FEED_ID" envDefault:"2fb245b9a84554a0f15aa123cbb5f64cd263b59e9a87d80148cbffab50c69f30"`
+	// PythMaxAge is the maximum age, in seconds, a Pyth price is accepted for
+	// the USD->FLOW conversion. A price older than this is rejected rather
+	// than used, so a stale oracle can't lock an escrow at a wrong amount.
+	PythMaxAge time.Duration `env:"PYTH_MAX_AGE" envDefault:"60s"`
 }
 
 // Parse parses environment variables and flags to a valid Config.
