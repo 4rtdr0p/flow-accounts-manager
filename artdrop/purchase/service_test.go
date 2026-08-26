@@ -156,24 +156,27 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 		t.Fatalf("CreatePurchaseCharge: %v", err)
 	}
 
-	// artwork $100 + 5% fee = $105 = 10500 cents
-	if got.AmountCents != 10500 {
-		t.Errorf("AmountCents = %d, want 10500", got.AmountCents)
+	// The buyer is charged the full artwork price: $100 = 10000 cents.
+	if got.AmountCents != 10000 {
+		t.Errorf("AmountCents = %d, want 10000", got.AmountCents)
 	}
+	// The platform fee is ArtDrop's 5% share of that $100, not a surcharge:
+	// $5 = 500 cents.
 	if got.PlatformFeeCents != 500 {
 		t.Errorf("PlatformFeeCents = %d, want 500", got.PlatformFeeCents)
 	}
-	// $105 / $0.50 per FLOW = 210 FLOW
-	if got.FlowAmount != 210.0 {
-		t.Errorf("FlowAmount = %f, want 210.0", got.FlowAmount)
+	// The escrow carries only the fee as a gas reserve: $5 / $0.50 per FLOW
+	// = 10 FLOW.
+	if got.FlowAmount != 10.0 {
+		t.Errorf("FlowAmount = %f, want 10.0", got.FlowAmount)
 	}
-	// The Stripe charge must use the server-computed USD amount.
-	if charge.lastIn.AmountCents != 10500 {
-		t.Errorf("Stripe AmountCents = %d, want 10500", charge.lastIn.AmountCents)
+	// The Stripe charge must use the full artwork price, not price + fee.
+	if charge.lastIn.AmountCents != 10000 {
+		t.Errorf("Stripe AmountCents = %d, want 10000", charge.lastIn.AmountCents)
 	}
-	// The escrow must receive the server-computed FLOW amount.
-	if escrow.amount != 210.0 {
-		t.Errorf("escrow amount = %f, want 210.0", escrow.amount)
+	// The escrow must receive only the fee-only FLOW amount.
+	if escrow.amount != 10.0 {
+		t.Errorf("escrow amount = %f, want 10.0", escrow.amount)
 	}
 }
 

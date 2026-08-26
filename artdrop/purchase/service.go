@@ -53,11 +53,12 @@ var ErrChargeRecordFailed = errors.New("failed to record charge")
 type Service interface {
 	// CreatePurchaseCharge charges a buyer's purchase and opens the escrow:
 	// it reads the artwork price from Mongo, applies the configured platform
-	// fee, converts the total to FLOW via the Pyth oracle, creates and
-	// confirms a Stripe PaymentIntent, opens the on-chain escrow with the
-	// server-computed FLOW amount, and persists the audit record. Every
-	// amount is computed server-side; the client only identifies the artwork,
-	// the parties and the payment details.
+	// fee (the ArtDrop share of that price, not a surcharge on it), charges
+	// the buyer the full artwork price via a Stripe PaymentIntent, converts
+	// only the platform fee to FLOW via the Pyth oracle, opens the on-chain
+	// escrow with that FLOW amount as a gas reserve, and persists the audit
+	// record. Every amount is computed server-side; the client only
+	// identifies the artwork, the parties and the payment details.
 	CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (*PurchaseCharge, error)
 }
 
@@ -74,8 +75,9 @@ type ServiceImpl struct {
 
 // NewService initiates a new purchase service wired for the full charge flow.
 // Any of the optional deps may be nil; the corresponding step reports its
-// disabled error. platformFeeBps is the platform fee in basis points applied
-// on top of the artwork price (see Config.PurchasePlatformFeeBasisPoints).
+// disabled error. platformFeeBps is the platform fee in basis points, applied
+// as ArtDrop's share of the artwork price rather than a surcharge added on top
+// of it (see Config.PurchasePlatformFeeBasisPoints).
 func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) Service {
 	return &ServiceImpl{
 		store:          store,
@@ -90,7 +92,8 @@ func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, char
 // CreatePurchaseCharge charges a buyer's purchase and opens the escrow
 // end-to-end. The amount is never trusted from the client: it is computed from
 // the artwork price in Mongo, the configured platform fee, and the current
-// FLOW/USD price from the Pyth oracle.
+// FLOW/USD price from the Pyth oracle. The buyer is charged the full artwork
+// price in USD; the escrow carries only the platform fee, converted to FLOW.
 func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (*PurchaseCharge, error) {
 	if in.UserID == "" {
 		return nil, fmt.Errorf("user id is required")
@@ -127,22 +130,24 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		return nil, err
 	}
 
-	// 2. Apply the configured platform fee (in basis points) on top of the
-	// artwork price. The fee is server-configured, never client-supplied.
+	// 2. Compute the configured platform fee (in basis points) as ArtDrop's
+	// share of the artwork price, not a surcharge added on top of it. The fee
+	// is server-configured, never client-supplied. The buyer is charged the
+	// full artwork price; the fee is the portion of that price ArtDrop keeps.
 	feeBps := s.platformFeeBps
 	if feeBps <= 0 {
 		feeBps = 0
 	}
 	artworkCents := int64(math.Round(artworkPrice.PriceUSD * 100))
 	feeCents := int64(math.Round(float64(artworkCents) * float64(feeBps) / 10000))
-	amountCents := artworkCents + feeCents
-	if amountCents <= 0 {
-		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", amountCents)
+	if artworkCents <= 0 {
+		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", artworkCents)
 	}
 
-	// 3. Convert the total USD to FLOW using the current Pyth oracle price.
-	// The escrow is funded in FLOW, so the on-chain amount must be derived
-	// from the same total the buyer is charged in USD.
+	// 3. Convert only the platform fee to FLOW using the current Pyth oracle
+	// price. The escrow does not hold the sale proceeds — it is a gas
+	// reserve funded from the admin vault and returned to the ArtDrop vault,
+	// sized to the 5% fee, not to the full artwork price.
 	if s.oracle == nil {
 		return nil, ErrOracleDisabled
 	}
@@ -156,14 +161,16 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	if pyth.PriceUSD <= 0 {
 		return nil, fmt.Errorf("pyth returned non-positive FLOW/USD price %f", pyth.PriceUSD)
 	}
-	flowAmount := float64(amountCents) / 100.0 / pyth.PriceUSD
+	flowAmount := float64(feeCents) / 100.0 / pyth.PriceUSD
 
-	// 4. Create and confirm the Stripe PaymentIntent for the USD amount.
+	// 4. Create and confirm the Stripe PaymentIntent for the full artwork
+	// price in USD. The buyer pays 100% of the artwork price; the platform
+	// fee is ArtDrop's share of that amount, not an addition to it.
 	if s.charge == nil {
 		return nil, ErrStripeDisabled
 	}
 	intent, err := s.charge.CreateAndConfirm(ctx, studio.StripeChargeInput{
-		AmountCents:     amountCents,
+		AmountCents:     artworkCents,
 		Currency:        "usd",
 		CustomerID:      in.StripeCustomerID,
 		PaymentMethodID: in.PaymentMethodID,
@@ -174,10 +181,10 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
 	}
 
-	// 5. Open the on-chain escrow with the server-computed FLOW amount. The
-	// escrow is created by the artdrop service (via the EscrowCreator
-	// adapter), which owns the transaction submission and the
-	// server-controlled escrow arguments.
+	// 5. Open the on-chain escrow with the server-computed FLOW amount (the
+	// fee-only gas reserve). The escrow is created by the artdrop service
+	// (via the EscrowCreator adapter), which owns the transaction submission
+	// and the server-controlled escrow arguments.
 	if s.escrow == nil {
 		return nil, ErrEscrowDisabled
 	}
@@ -191,7 +198,7 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		UserID:              in.UserID,
 		ArtworkKind:         string(in.ArtworkKind),
 		ArtworkID:           in.ArtworkID,
-		AmountCents:         amountCents,
+		AmountCents:         artworkCents,
 		PlatformFeeCents:    feeCents,
 		Currency:            "usd",
 		FlowAmount:          flowAmount,

@@ -3,11 +3,12 @@
 // It charges a buyer for an artwork (edition or painting) and opens the
 // on-chain escrow that funds the sale, with every amount computed server-side:
 // the artwork price is read from Mongo (editions.price /
-// paintings.originalPrice), a platform fee is applied, the total is converted
-// from USD to FLOW using the Pyth Hermes oracle, and the resulting FLOW amount
-// is what both the Stripe charge and the on-chain escrow use. The client only
-// identifies the artwork, the parties and the payment details — never an
-// amount.
+// paintings.originalPrice) and charged to the buyer in full via Stripe. The
+// platform fee is the ArtDrop-configured share of that same price, not a
+// surcharge on top of it. Only that fee is converted from USD to FLOW using
+// the Pyth Hermes oracle and used to open the on-chain escrow — a gas
+// reserve, not the sale proceeds. The client only identifies the artwork, the
+// parties and the payment details — never an amount.
 package purchase
 
 import "time"
