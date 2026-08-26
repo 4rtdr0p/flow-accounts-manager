@@ -64,9 +64,11 @@ type mockChargeClient struct {
 	intent *studio.StripePaymentIntent
 	err    error
 	lastIn studio.StripeChargeInput
+	called bool
 }
 
 func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in studio.StripeChargeInput) (*studio.StripePaymentIntent, error) {
+	m.called = true
 	m.lastIn = in
 	if m.err != nil {
 		return nil, m.err
@@ -83,9 +85,11 @@ func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in studio.Strip
 type mockEscrowCreator struct {
 	amount float64
 	err    error
+	called bool
 }
 
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
+	m.called = true
 	m.amount = amount
 	if m.err != nil {
 		return nil, nil, m.err
@@ -177,6 +181,55 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	// The escrow must receive only the fee-only FLOW amount.
 	if escrow.amount != 10.0 {
 		t.Errorf("escrow amount = %f, want 10.0", escrow.amount)
+	}
+}
+
+// TestCreatePurchaseCharge_ZeroFeeCheapArtwork pins the fix for the zero-FLOW
+// escrow bug: an artwork cheap enough that the 5% fee rounds down to zero
+// cents must be rejected before Stripe or the escrow are touched. Without this
+// guard the buyer would be charged via Stripe and the escrow would then abort
+// on chain (it requires a positive payment), failing silently after the
+// charge already succeeded.
+func TestCreatePurchaseCharge_ZeroFeeCheapArtwork(t *testing.T) {
+	prices := &mockArtworkPriceReader{
+		editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 0.09}, // 9 cents * 5% rounds to 0
+	}
+	charge := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, charge, escrow, 500)
+
+	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if err == nil {
+		t.Fatal("expected error for a zero-cent platform fee, got nil")
+	}
+	if charge.called {
+		t.Error("Stripe must not be charged when the computed fee is zero")
+	}
+	if escrow.called {
+		t.Error("escrow must not be opened when the computed fee is zero")
+	}
+}
+
+// TestCreatePurchaseCharge_ZeroFeeBps pins the same guard for a misconfigured
+// platformFeeBps of zero: with no fee configured there is nothing to reserve
+// on chain, so the request must fail before Stripe or the escrow are touched.
+func TestCreatePurchaseCharge_ZeroFeeBps(t *testing.T) {
+	prices := &mockArtworkPriceReader{
+		editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100.0},
+	}
+	charge := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, charge, escrow, 0)
+
+	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if err == nil {
+		t.Fatal("expected error for a zero platform fee bps, got nil")
+	}
+	if charge.called {
+		t.Error("Stripe must not be charged when platformFeeBps is zero")
+	}
+	if escrow.called {
+		t.Error("escrow must not be opened when platformFeeBps is zero")
 	}
 }
 

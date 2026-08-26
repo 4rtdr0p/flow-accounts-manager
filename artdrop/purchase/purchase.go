@@ -58,11 +58,13 @@ func (PurchaseCharge) TableName() string {
 
 // CreatePurchaseChargeInput is the data needed to charge a buyer's purchase
 // and open the escrow. The server computes every amount: it reads the artwork
-// price from Mongo, applies the configured platform fee, converts the total to
-// FLOW via the Pyth oracle, and uses that FLOW amount for both the Stripe
-// charge and the on-chain escrow. The client only identifies the artwork, the
-// parties and the payment details — no amount, fee or exchange rate is trusted
-// from the client.
+// price from Mongo, applies the configured platform fee (ArtDrop's share of
+// that price, not a surcharge on it), and converts only the fee to FLOW via
+// the Pyth oracle. The Stripe charge and the on-chain escrow use different
+// amounts — the full artwork price and the fee-only FLOW reserve,
+// respectively. The client only identifies the artwork, the parties and the
+// payment details — no amount, fee or exchange rate is trusted from the
+// client.
 //
 // IdempotencyKey is the client-supplied Idempotency-Key header. It is
 // propagated to Stripe so that an HTTP replay of the same logical purchase

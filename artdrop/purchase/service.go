@@ -143,6 +143,15 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	if artworkCents <= 0 {
 		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", artworkCents)
 	}
+	// The escrow's FLOW amount is derived from feeCents alone (see step 3),
+	// so a zero fee — misconfigured platformFeeBps, or rounding down to zero
+	// on a very cheap artwork — would open a zero-FLOW escrow. On chain that
+	// aborts the escrow transaction (it requires a positive payment), and by
+	// then the buyer would already have been charged via Stripe. Reject it
+	// here, before Stripe or Pyth are touched, so nothing is charged.
+	if feeCents <= 0 {
+		return nil, fmt.Errorf("computed platform fee must be positive (artwork %d cents, fee %d bps -> %d cents)", artworkCents, feeBps, feeCents)
+	}
 
 	// 3. Convert only the platform fee to FLOW using the current Pyth oracle
 	// price. The escrow does not hold the sale proceeds — it is a gas
