@@ -99,9 +99,10 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 
 	// Buyer purchase charge + escrow (#93). The endpoint charges the buyer's
 	// purchase and opens the on-chain escrow with a server-computed amount: it
-	// reads the artwork price from Mongo, applies the configured platform fee,
-	// converts the total to FLOW via the Pyth oracle, creates and confirms a
-	// Stripe PaymentIntent, opens the escrow, and persists the audit record.
+	// reads the artwork price from Mongo, charges that full price via Stripe,
+	// applies the configured platform fee and converts only that fee to FLOW
+	// via the Pyth oracle as the escrow's gas reserve, opens the escrow, and
+	// persists the audit record.
 	// It reuses the studio Stripe client and the artdrop escrow creator.
 	var purchasePlatformFeeBps int
 	var pythMaxAge time.Duration

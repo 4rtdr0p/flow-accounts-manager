@@ -43,9 +43,9 @@ import (
 // (`/purchases:charge`, artdrop/purchase) is where the server now owns the
 // amount. The client only identifies the artwork, the parties and the payment
 // details; the server reads the artwork price from Mongo, applies the
-// configured platform fee, converts the total to FLOW via the Pyth oracle, and
-// uses that server-computed FLOW amount for both the Stripe charge and the
-// on-chain escrow. The standalone CreateEscrow endpoint remains a low-level
+// configured platform fee, charges the full artwork price via Stripe, and
+// converts only that fee to FLOW via the Pyth oracle as the escrow's gas
+// reserve. The standalone CreateEscrow endpoint remains a low-level
 // operator/administrative primitive that still accepts an explicit `amount`;
 // the purchase flow is the path that guarantees a justified amount reaches the
 // chain. The server-computed-amount discipline is pinned by
