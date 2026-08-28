@@ -814,6 +814,59 @@ paths:
       responses:
         '200':
           description: OK
+  '/accounts/{address}/artdrop/escrows/by-edition/{editionId}':
+    get:
+      summary: List ArtDrop escrows opened against an edition
+      description: >-
+        Returns the escrow ids from ArtDropRegistry.EscrowsByEditionIndex for
+        the edition. Pass ?expand=summary to resolve each id to its full escrow
+        summary in a single combined on-chain query.
+      operationId: listArtDropEscrowsByEdition
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: expand
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary]
+          description: When set to "summary", each escrow id is expanded to its full summary.
+      responses:
+        '200':
+          description: OK
+  '/accounts/{address}/artdrop/escrows/by-seller':
+    get:
+      summary: List ArtDrop escrows where the account is the seller
+      description: >-
+        Walks the account's originals and editions to collect every escrow
+        opened against them, in a single combined on-chain query. Pass
+        ?expand=summary to include each escrow's full summary.
+      operationId: listArtDropEscrowsBySeller
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: expand
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary]
+          description: When set to "summary", each escrow id is expanded to its full summary.
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/artdrop/escrows/re-escrow':
     post:
       summary: Open an ArtDrop escrow against an existing certificate
