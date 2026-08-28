@@ -14,6 +14,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 )
 
 // Plugin is the artdrop plugin entry point.
@@ -56,15 +57,6 @@ func NewPlugin(deps plugins.PluginDeps, cfg *Config) (plugins.Plugin, error) {
 // Name returns the plugin name.
 func (p *Plugin) Name() string {
 	return "artdrop"
-}
-
-// Service exposes the underlying *Service so main.go can wire it into the
-// shared chain_events listener (escrow_projection.ArtDropEscrowEventHandler,
-// issue #102) and trigger the one-time escrow projection backfill at
-// startup — neither of which fits the plugins.Plugin interface, which only
-// deals in HTTP route registration.
-func (p *Plugin) Service() *Service {
-	return p.svc
 }
 
 // RegisterRoutes adds the artdrop plugin routes to the API router.
@@ -165,4 +157,29 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/artdrop/config/platform-fee", h.GetPlatformFee()).Methods(http.MethodGet)
 	router.Handle("/artdrop/config/market-mode", h.GetMarketMode()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/is-artist", h.IsArtist()).Methods(http.MethodGet)
+
+	// One-time escrow projection backfill (issue #102) — self-healing: a
+	// no-op unless the escrows table is still completely empty (see
+	// Service.BackfillEscrowProjection), so it's safe to trigger on every
+	// boot; RegisterRoutes only ever runs once per process, same as this
+	// plugin's other one-time setup above. Runs in a goroutine so a slow or
+	// unavailable access node never delays server startup — until it
+	// completes, GetEscrow/ListEscrowsBy* keep falling back to the chain
+	// exactly as they did before #102. Skipped when the chain listener
+	// itself is disabled (same flag main.go gates the listener with): with
+	// no listener keeping the projection current afterwards, seeding it
+	// here would be pointless and would still cost a chain call in setups
+	// that deliberately asked for none.
+	if deps.Config == nil || !deps.Config.DisableChainEvents {
+		go func() {
+			written, err := p.svc.BackfillEscrowProjection(context.Background())
+			if err != nil {
+				log.WithError(err).Warn("escrow projection: backfill failed, will retry next boot")
+				return
+			}
+			if written > 0 {
+				log.WithField("written", written).Info("escrow projection: backfill wrote rows")
+			}
+		}()
+	}
 }

@@ -40,7 +40,7 @@ func TestWalletAuthRulesMatchRegisteredRoutes(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := plugins.PluginDeps{}
-			registeredPlugins, _, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
+			registeredPlugins, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
 			if err != nil {
 				t.Fatalf("registerPlugins: %v", err)
 			}
@@ -110,7 +110,7 @@ func TestOpenAPIScopeIndexCoversFullRouter(t *testing.T) {
 	}
 
 	deps := plugins.PluginDeps{}
-	registeredPlugins, _, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
+	registeredPlugins, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
 	if err != nil {
 		t.Fatalf("registerPlugins: %v", err)
 	}

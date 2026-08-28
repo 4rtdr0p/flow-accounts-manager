@@ -270,7 +270,7 @@ func TestBackfillEscrowProjection_PopulatesFromChainThenIsANoOp(t *testing.T) {
 	dict2 := escrowSummaryDict(t, 2, 11, 2, 101, 0, nil, false, nil)
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
-			cadence.NewUInt64(2), // get_total_escrows
+			cadence.NewUInt64(2),                              // get_total_escrows
 			escrowSummaryExpandedArrayResult(t, dict1, dict2), // get_all_escrow_summaries
 		},
 	}

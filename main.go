@@ -252,7 +252,7 @@ func runServer(cfg *configs.Config) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	registeredPlugins, artdropPlugin, err := registerPlugins(cfg, artdropCfg, pluginDeps)
+	registeredPlugins, err := registerPlugins(cfg, artdropCfg, pluginDeps)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -390,8 +390,8 @@ func runServer(cfg *configs.Config) {
 			// fine going forward: it does NOT mean cfg.ChainListenerStartingHeight
 			// can be lowered to pick up historical escrows — that would
 			// replay every token deposit event since that height too. The
-			// escrow projection's own one-time backfill (see
-			// artdropPlugin.Service().BackfillEscrowProjection below) covers
+			// escrow projection's own one-time backfill (triggered from
+			// artdrop.Plugin.RegisterRoutes, see artdrop/plugin.go) covers
 			// history instead.
 			event_types = append(event_types, escrow_projection.EventTypes(artdropCfg.ArtDropCoreAddress)...)
 
@@ -428,28 +428,6 @@ func runServer(cfg *configs.Config) {
 		listener.Start()
 
 		log.Info("Started chain events listener")
-
-		// One-time escrow projection backfill (issue #102) — self-healing: a
-		// no-op unless the escrows table is still completely empty (see
-		// artdrop.Service.BackfillEscrowProjection), so it's safe to run
-		// this on every boot. Runs in a goroutine so a slow/unavailable
-		// access node doesn't delay server startup — until it completes,
-		// GetEscrow/ListEscrowsBy* keep falling back to the chain exactly
-		// as they did before #102. Gated the same as the listener itself
-		// (cfg.DisableChainEvents): with the listener off, nothing keeps
-		// the projection current afterwards either, so seeding it here
-		// would be pointless and would still make a chain call in setups
-		// that deliberately asked for none.
-		go func() {
-			written, err := artdropPlugin.Service().BackfillEscrowProjection(context.Background())
-			if err != nil {
-				log.WithError(err).Warn("escrow projection: backfill failed, will retry next boot")
-				return
-			}
-			if written > 0 {
-				log.WithField("written", written).Info("escrow projection: backfill wrote rows")
-			}
-		}()
 	}
 
 	// Trap interupt or sigterm and gracefully shutdown the server
@@ -511,25 +489,17 @@ type routeHandlers struct {
 	WorkerPoolStatus func() (interface{}, error)
 }
 
-// registerPlugins returns the list of active plugins, plus the artdrop
-// plugin specifically (needed below to wire the escrow projection's chain
-// listener handler and startup backfill, issue #102 — neither fits the
-// generic plugins.Plugin interface).
-func registerPlugins(cfg *configs.Config, artdropCfg *artdrop.Config, deps plugins.PluginDeps) ([]plugins.Plugin, *artdrop.Plugin, error) {
+// registerPlugins returns the list of active plugins.
+func registerPlugins(cfg *configs.Config, artdropCfg *artdrop.Config, deps plugins.PluginDeps) ([]plugins.Plugin, error) {
 	artdropPlugin, err := artdrop.NewPlugin(deps, artdropCfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("register artdrop plugin: %w", err)
-	}
-
-	concreteArtdropPlugin, ok := artdropPlugin.(*artdrop.Plugin)
-	if !ok {
-		return nil, nil, fmt.Errorf("register artdrop plugin: unexpected type %T", artdropPlugin)
+		return nil, fmt.Errorf("register artdrop plugin: %w", err)
 	}
 
 	return []plugins.Plugin{
 		example.NewPlugin(deps),
 		artdropPlugin,
-	}, concreteArtdropPlugin, nil
+	}, nil
 }
 
 func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugins.Plugin, deps plugins.PluginDeps) *mux.Router {

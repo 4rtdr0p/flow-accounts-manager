@@ -134,8 +134,11 @@ func projectionRowToSummary(row *escrow_projection.Escrow) *EscrowSummary {
 // BackfillEscrowProjection populates the escrows projection from current
 // on-chain state, one time, self-healing: it is a no-op unless the
 // projection table is still completely empty, so it is safe to call on
-// every process boot (see main.go) — it only ever does real work the very
-// first time it finds an empty table. Returns the number of rows written.
+// every process boot (triggered from Plugin.RegisterRoutes, see plugin.go
+// — kept inside this package rather than main.go, which only wires the
+// chain_events listener/handler registration) — it only ever does real
+// work the very first time it finds an empty table. Returns the number of
+// rows written.
 //
 // It sizes the id range with get_total_escrows.cdc, then walks it in
 // escrowBackfillChunkSize chunks via get_all_escrow_summaries.cdc, reusing
