@@ -118,9 +118,54 @@ func TestListCertificatesRejectsUnexpectedType(t *testing.T) {
 	}
 }
 
-func TestGetEscrowReturnsStatus(t *testing.T) {
+// escrowSummaryScriptResult builds the {String: AnyStruct}? optional
+// dictionary get_escrow_summary.cdc returns, matching the fields decoded by
+// Service.GetEscrow. Shared by the tests below.
+func escrowSummaryScriptResult(t *testing.T, id, editionId, nonce, certificateId uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) cadence.Value {
+	t.Helper()
+
+	unlockAt, err := cadence.NewUFix64("4102444800.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	releaseReasonValue := cadence.NewOptional(nil)
+	if releaseReason != nil {
+		releaseReasonValue = cadence.NewOptional(cadence.NewUInt8(*releaseReason))
+	}
+
+	claimedAtValue := cadence.NewOptional(nil)
+	if claimedAt != nil {
+		ufix, err := cadence.NewUFix64(*claimedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		claimedAtValue = cadence.NewOptional(ufix)
+	}
+
+	return cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+		{Key: cadence.String("id"), Value: cadence.NewUInt64(id)},
+		{Key: cadence.String("buyer"), Value: cadence.NewAddress(flow.HexToAddress("0x179b6b1cb6755e31"))},
+		{Key: cadence.String("seller"), Value: cadence.NewAddress(flow.HexToAddress("0xf3fcd2c1a78f5eee"))},
+		{Key: cadence.String("editionId"), Value: cadence.NewUInt64(editionId)},
+		{Key: cadence.String("chipId"), Value: cadence.String("chip-1")},
+		{Key: cadence.String("unlockAt"), Value: unlockAt},
+		{Key: cadence.String("nonce"), Value: cadence.NewUInt64(nonce)},
+		{Key: cadence.String("certificateId"), Value: cadence.NewUInt64(certificateId)},
+		{Key: cadence.String("status"), Value: cadence.NewUInt8(status)},
+		{Key: cadence.String("releaseReason"), Value: releaseReasonValue},
+		{Key: cadence.String("claimed"), Value: cadence.NewBool(claimed)},
+		{Key: cadence.String("claimedAt"), Value: claimedAtValue},
+	}))
+}
+
+// TestGetEscrowReturnsFullSummary pins issue #98: get_escrow_summary.cdc now
+// returns ArtDropCore.EscrowSummary's full field set (buyer, seller,
+// editionId, chipId, unlockAt, nonce, certificateId, status, releaseReason,
+// claimed, claimedAt), not just a bare status byte.
+func TestGetEscrowReturnsFullSummary(t *testing.T) {
 	txSvc := &queryTxService{
-		scriptResult: cadence.NewUInt8(3),
+		scriptResult: escrowSummaryScriptResult(t, 7, 42, 1, 99, 3, nil, false, nil),
 	}
 	svc := mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
@@ -134,14 +179,94 @@ func TestGetEscrowReturnsStatus(t *testing.T) {
 	if summary.Id != 7 {
 		t.Fatalf("expected escrow id 7, got %d", summary.Id)
 	}
+	if summary.Buyer != "0x179b6b1cb6755e31" {
+		t.Fatalf("unexpected buyer: %s", summary.Buyer)
+	}
+	if summary.Seller != "0xf3fcd2c1a78f5eee" {
+		t.Fatalf("unexpected seller: %s", summary.Seller)
+	}
+	if summary.EditionId != 42 {
+		t.Fatalf("expected editionId 42, got %d", summary.EditionId)
+	}
+	if summary.ChipId != "chip-1" {
+		t.Fatalf("unexpected chipId: %s", summary.ChipId)
+	}
+	if summary.UnlockAt != "4102444800.00000000" {
+		t.Fatalf("unexpected unlockAt: %s", summary.UnlockAt)
+	}
+	if summary.Nonce != 1 {
+		t.Fatalf("expected nonce 1, got %d", summary.Nonce)
+	}
+	if summary.CertificateId != 99 {
+		t.Fatalf("expected certificateId 99, got %d", summary.CertificateId)
+	}
 	if summary.Status != 3 {
 		t.Fatalf("expected status 3, got %d", summary.Status)
+	}
+	if summary.ReleaseReason != nil {
+		t.Fatalf("expected nil releaseReason, got %v", *summary.ReleaseReason)
+	}
+	if summary.Claimed {
+		t.Fatal("expected claimed=false")
+	}
+	if summary.ClaimedAt != nil {
+		t.Fatalf("expected nil claimedAt, got %v", *summary.ClaimedAt)
 	}
 	if len(txSvc.args) != 1 {
 		t.Fatalf("expected 1 script arg, got %d", len(txSvc.args))
 	}
 	if txSvc.args[0] != cadence.NewUInt64(7) {
 		t.Fatalf("expected escrow id as arg, got %#v", txSvc.args[0])
+	}
+}
+
+// TestGetEscrowReturnsReleasedFields covers the optional releaseReason/
+// claimedAt fields once an escrow is Released and claimed.
+func TestGetEscrowReturnsReleasedFields(t *testing.T) {
+	reason := uint8(0) // ClaimedByBuyer
+	claimedAt := "4102444900.00000000"
+	txSvc := &queryTxService{
+		scriptResult: escrowSummaryScriptResult(t, 7, 42, 1, 99, 1, &reason, true, &claimedAt),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetEscrow(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("GetEscrow returned error: %v", err)
+	}
+	if summary.ReleaseReason == nil || *summary.ReleaseReason != 0 {
+		t.Fatalf("expected releaseReason 0, got %v", summary.ReleaseReason)
+	}
+	if !summary.Claimed {
+		t.Fatal("expected claimed=true")
+	}
+	if summary.ClaimedAt == nil || *summary.ClaimedAt != claimedAt {
+		t.Fatalf("expected claimedAt %s, got %v", claimedAt, summary.ClaimedAt)
+	}
+}
+
+// TestGetEscrowReturnsNilWhenNotFound mirrors GetCertificateDetail's
+// nil-means-404 convention: ArtDropCore.getEscrowSummary returns nil for an
+// unknown escrow id, and get_escrow_summary.cdc passes that straight
+// through as Optional(nil).
+func TestGetEscrowReturnsNilWhenNotFound(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewOptional(nil),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	summary, err := svc.GetEscrow(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("expected nil error when script returns Optional(nil), got %v", err)
+	}
+	if summary != nil {
+		t.Fatalf("expected nil summary, got %+v", summary)
 	}
 }
 
@@ -168,6 +293,135 @@ func TestGetEscrowRejectsUnexpectedType(t *testing.T) {
 	})
 
 	_, err := svc.GetEscrow(context.Background(), 7)
+	if err == nil {
+		t.Fatal("expected error for unexpected script result type, got nil")
+	}
+}
+
+// TestListEscrowsByBuyerReturnsIds pins issue #98's listing endpoint: with
+// expand=false, it returns exactly the escrow ids from
+// ArtDropRegistry.EscrowsByBuyerIndex and makes a single script call — no
+// N+1 GetEscrow lookups.
+func TestListEscrowsByBuyerReturnsIds(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(7),
+			cadence.NewUInt64(9),
+		}),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsByBuyer(context.Background(), "0xf8d6e0586b0a20c7", false)
+	if err != nil {
+		t.Fatalf("ListEscrowsByBuyer returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 2 || res.EscrowIds[0] != 7 || res.EscrowIds[1] != 9 {
+		t.Fatalf("unexpected escrow ids: %+v", res.EscrowIds)
+	}
+	if res.Escrows != nil {
+		t.Fatalf("expected no expanded escrows when expand=false, got %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 script call, got %d", len(txSvc.calls))
+	}
+	if len(txSvc.calls[0]) != 2 {
+		t.Fatalf("expected 2 args (buyer, registryOwner), got %d", len(txSvc.calls[0]))
+	}
+	if txSvc.calls[0][0] != cadence.NewAddress(flow.HexToAddress("0xf8d6e0586b0a20c7")) {
+		t.Fatalf("expected buyer as first arg, got %#v", txSvc.calls[0][0])
+	}
+}
+
+// TestListEscrowsByBuyerReturnsEmpty covers both a buyer with no escrows and
+// an unpublished EscrowsByBuyerIndex — the script can't tell those apart, so
+// this is also the shape returned if the index was never set up on the
+// configured registry account.
+func TestListEscrowsByBuyerReturnsEmpty(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{}),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsByBuyer(context.Background(), "0xf8d6e0586b0a20c7", false)
+	if err != nil {
+		t.Fatalf("ListEscrowsByBuyer returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 0 {
+		t.Fatalf("expected 0 escrow ids, got %d", len(res.EscrowIds))
+	}
+}
+
+// TestListEscrowsByBuyerExpandsSummaries covers ?expand=summary: one script
+// call for the id list, then one GetEscrow-shaped call per id, in order.
+func TestListEscrowsByBuyerExpandsSummaries(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewArray([]cadence.Value{
+				cadence.NewUInt64(7),
+				cadence.NewUInt64(9),
+			}),
+			escrowSummaryScriptResult(t, 7, 42, 1, 99, 0, nil, false, nil),
+			escrowSummaryScriptResult(t, 9, 43, 2, 100, 1, nil, true, nil),
+		},
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsByBuyer(context.Background(), "0xf8d6e0586b0a20c7", true)
+	if err != nil {
+		t.Fatalf("ListEscrowsByBuyer returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 2 {
+		t.Fatalf("expected 2 escrow ids, got %d", len(res.EscrowIds))
+	}
+	if len(res.Escrows) != 2 {
+		t.Fatalf("expected 2 expanded escrows, got %d", len(res.Escrows))
+	}
+	if res.Escrows[0].Id != 7 || res.Escrows[0].EditionId != 42 {
+		t.Fatalf("unexpected first expanded escrow: %+v", res.Escrows[0])
+	}
+	if res.Escrows[1].Id != 9 || res.Escrows[1].EditionId != 43 {
+		t.Fatalf("unexpected second expanded escrow: %+v", res.Escrows[1])
+	}
+	if len(txSvc.calls) != 3 {
+		t.Fatalf("expected 3 script calls (list + 2 expansions), got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsByBuyerPropagatesScriptError covers the listing script's
+// own failure path.
+func TestListEscrowsByBuyerPropagatesScriptError(t *testing.T) {
+	txSvc := &queryTxService{err: errors.New("script execution failed")}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.ListEscrowsByBuyer(context.Background(), "0xf8d6e0586b0a20c7", false)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestListEscrowsByBuyerRejectsUnexpectedType covers a malformed script
+// result for the id-list call.
+func TestListEscrowsByBuyerRejectsUnexpectedType(t *testing.T) {
+	strVal, _ := cadence.NewString("not-an-array")
+	txSvc := &queryTxService{scriptResult: strVal}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.ListEscrowsByBuyer(context.Background(), "0xf8d6e0586b0a20c7", false)
 	if err == nil {
 		t.Fatal("expected error for unexpected script result type, got nil")
 	}

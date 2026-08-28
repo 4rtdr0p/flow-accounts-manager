@@ -31,24 +31,36 @@ const (
 // charged, in what, and at what exchange rate" without going back to Mongo or
 // the oracle.
 type PurchaseCharge struct {
-	ID                  uint      `json:"id" gorm:"column:id;primary_key;autoIncrement"`
-	UserID              string    `json:"userId" gorm:"column:user_id;index"`
-	ArtworkKind         string    `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
-	ArtworkID           string    `json:"artworkId" gorm:"column:artwork_id;index"`
-	AmountCents         int64     `json:"amountCents" gorm:"column:amount_cents"`
-	PlatformFeeCents    int64     `json:"platformFeeCents" gorm:"column:platform_fee_cents"`
-	Currency            string    `json:"currency" gorm:"column:currency;size:3;default:usd"`
-	FlowAmount          float64   `json:"flowAmount" gorm:"column:flow_amount"`
-	FlowPriceUSD        float64   `json:"flowPriceUsd" gorm:"column:flow_price_usd"`
-	StripePaymentIntent string    `json:"stripePaymentIntentId" gorm:"column:stripe_payment_intent_id;uniqueIndex"`
-	Buyer               string    `json:"buyer" gorm:"column:buyer"`
-	Seller              string    `json:"seller" gorm:"column:seller"`
-	EditionID           uint64    `json:"editionId" gorm:"column:edition_id"`
-	ChipID              string    `json:"chipId" gorm:"column:chip_id"`
-	UnlockAt            float64   `json:"unlockAt" gorm:"column:unlock_at"`
-	Nonce               uint64    `json:"nonce" gorm:"column:nonce"`
-	Metadata            string    `json:"metadata" gorm:"column:metadata;type:text"`
-	CreatedAt           time.Time `json:"createdAt" gorm:"column:created_at"`
+	ID                  uint    `json:"id" gorm:"column:id;primary_key;autoIncrement"`
+	UserID              string  `json:"userId" gorm:"column:user_id;index"`
+	ArtworkKind         string  `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
+	ArtworkID           string  `json:"artworkId" gorm:"column:artwork_id;index"`
+	AmountCents         int64   `json:"amountCents" gorm:"column:amount_cents"`
+	PlatformFeeCents    int64   `json:"platformFeeCents" gorm:"column:platform_fee_cents"`
+	Currency            string  `json:"currency" gorm:"column:currency;size:3;default:usd"`
+	FlowAmount          float64 `json:"flowAmount" gorm:"column:flow_amount"`
+	FlowPriceUSD        float64 `json:"flowPriceUsd" gorm:"column:flow_price_usd"`
+	StripePaymentIntent string  `json:"stripePaymentIntentId" gorm:"column:stripe_payment_intent_id;uniqueIndex"`
+	Buyer               string  `json:"buyer" gorm:"column:buyer"`
+	Seller              string  `json:"seller" gorm:"column:seller"`
+	EditionID           uint64  `json:"editionId" gorm:"column:edition_id"`
+	ChipID              string  `json:"chipId" gorm:"column:chip_id"`
+	UnlockAt            float64 `json:"unlockAt" gorm:"column:unlock_at"`
+	Nonce               uint64  `json:"nonce" gorm:"column:nonce"`
+	Metadata            string  `json:"metadata" gorm:"column:metadata;type:text"`
+
+	// EscrowJobID is the wallet-api async job UUID for the CreateEscrow
+	// transaction this charge triggered (see ServiceImpl.CreatePurchaseCharge
+	// step 5 and jobs.Job.ID) — set at charge time, before the on-chain
+	// transaction has necessarily confirmed. EscrowID is the on-chain escrow
+	// id itself, resolved from that job's Result once the async transaction
+	// completes (see extractEscrowCreatedResult in the artdrop package); it
+	// is NULL until something backfills it — this migration and this flow do
+	// not do that backfill (issue #98).
+	EscrowJobID string  `json:"escrowJobId,omitempty" gorm:"column:escrow_job_id;index"`
+	EscrowID    *uint64 `json:"escrowId,omitempty" gorm:"column:escrow_id"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"column:created_at"`
 }
 
 // TableName returns the table name for the audit record.

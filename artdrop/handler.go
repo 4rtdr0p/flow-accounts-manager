@@ -489,6 +489,27 @@ func (h *Handler) GetEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	handlers.HandleJsonResponse(rw, http.StatusOK, summary)
 }
 
+func (h *Handler) ListEscrows() http.Handler {
+	return http.HandlerFunc(h.ListEscrowsFunc)
+}
+
+// ListEscrowsFunc lists the escrow ids opened for the account in the path
+// (as buyer), via ArtDropRegistry.EscrowsByBuyerIndex. Pass ?expand=summary
+// to additionally resolve each id to its full GetEscrow summary — omitted by
+// default to avoid an N+1 script call per id on every request.
+func (h *Handler) ListEscrowsFunc(rw http.ResponseWriter, r *http.Request) {
+	address := mux.Vars(r)["address"]
+	expand := r.URL.Query().Get("expand") == "summary"
+
+	res, err := h.svc.ListEscrowsByBuyer(r.Context(), address, expand)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, res)
+}
+
 func (h *Handler) decodeBody(rw http.ResponseWriter, r *http.Request, dst interface{}) bool {
 	if r.Body == nil || r.Body == http.NoBody {
 		handlers.HandleError(rw, r, handlers.EmptyBodyError)

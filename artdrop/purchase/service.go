@@ -197,9 +197,20 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	if s.escrow == nil {
 		return nil, ErrEscrowDisabled
 	}
-	_, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+	// sync=false: this only schedules the on-chain transaction, it does not
+	// wait for it to confirm (unchanged behavior). job.ID is the wallet-api's
+	// own async job UUID, available immediately regardless of whether the
+	// transaction has run yet — it's what lets the audit record be traced
+	// forward to the escrow the job eventually creates (see
+	// PurchaseCharge.EscrowJobID; resolving the on-chain escrowId from the
+	// job's Result is a separate step, not done here).
+	job, _, err := s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
 	if err != nil {
 		return nil, fmt.Errorf("create escrow: %w", err)
+	}
+	var escrowJobID string
+	if job != nil {
+		escrowJobID = job.ID.String()
 	}
 
 	// 6. Persist the audit record with the server-computed values.
@@ -220,6 +231,7 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		UnlockAt:            in.UnlockAt,
 		Nonce:               in.Nonce,
 		Metadata:            in.Metadata,
+		EscrowJobID:         escrowJobID,
 	}
 	if err := s.store.CreatePurchaseCharge(charge); err != nil {
 		if isDuplicateKeyError(err) {

@@ -10,6 +10,7 @@ import (
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -82,10 +83,19 @@ func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in studio.Strip
 // mockEscrowCreator is a scripted EscrowCreator for tests. It records the
 // server-computed FLOW amount passed to the escrow so tests can assert that
 // the amount is derived from the Mongo price + Pyth, never from the client.
+// It returns a *jobs.Job with a real (random) ID by default, mirroring what
+// Service.CreateEscrow always returns for sync=false on success — see
+// transactions.ServiceImpl.Create — so tests exercise the same job.ID
+// capture path CreatePurchaseCharge uses in production (issue #98).
+// returnNilJob forces a (nil, nil, nil) return instead, for
+// TestCreatePurchaseCharge_SurvivesNilEscrowJob — the EscrowCreator
+// interface doesn't itself guarantee a non-nil job on success.
 type mockEscrowCreator struct {
-	amount float64
-	err    error
-	called bool
+	amount       float64
+	err          error
+	called       bool
+	job          *jobs.Job
+	returnNilJob bool
 }
 
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
@@ -94,7 +104,13 @@ func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address
 	if m.err != nil {
 		return nil, nil, m.err
 	}
-	return nil, nil, nil
+	if m.returnNilJob {
+		return nil, nil, nil
+	}
+	if m.job == nil {
+		m.job = &jobs.Job{ID: uuid.New()}
+	}
+	return m.job, nil, nil
 }
 
 // mockStore is a scripted Store for simulating audit write failures and
@@ -181,6 +197,43 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	// The escrow must receive only the fee-only FLOW amount.
 	if escrow.amount != 10.0 {
 		t.Errorf("escrow amount = %f, want 10.0", escrow.amount)
+	}
+	// The audit record must capture the async escrow-creation job's id
+	// (issue #98) — sync stays false; only the job return value changes
+	// from discarded to captured.
+	if got.EscrowJobID == "" {
+		t.Error("expected EscrowJobID to be captured from the escrow-creation job")
+	}
+	if escrow.job == nil || got.EscrowJobID != escrow.job.ID.String() {
+		t.Errorf("EscrowJobID = %q, want %v", got.EscrowJobID, escrow.job)
+	}
+	// EscrowID is intentionally not resolved by this flow — see #98.
+	if got.EscrowID != nil {
+		t.Errorf("expected EscrowID to stay nil (resolved separately), got %v", *got.EscrowID)
+	}
+}
+
+// TestCreatePurchaseCharge_SurvivesNilEscrowJob covers an EscrowCreator that
+// returns a nil job alongside a nil error (not what production code does —
+// transactions.ServiceImpl.Create always returns a non-nil job for
+// sync=false on success — but not guaranteed by the EscrowCreator interface
+// itself). CreatePurchaseCharge must still record the charge, with an empty
+// EscrowJobID, rather than panicking on a nil dereference.
+func TestCreatePurchaseCharge_SurvivesNilEscrowJob(t *testing.T) {
+	prices := &mockArtworkPriceReader{
+		editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100.0},
+	}
+	oracle := &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}
+	charge := &mockChargeClient{}
+	escrow := &mockEscrowCreator{returnNilJob: true}
+	svc := newPurchaseTestService(t, prices, oracle, charge, escrow, 500)
+
+	got, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+	if got.EscrowJobID != "" {
+		t.Errorf("expected empty EscrowJobID when the escrow creator returns a nil job, got %q", got.EscrowJobID)
 	}
 }
 

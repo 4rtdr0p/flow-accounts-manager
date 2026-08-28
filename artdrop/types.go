@@ -128,10 +128,39 @@ type CertificateInfo struct {
 	FinalMultiplier *string `json:"final_multiplier,omitempty"`
 }
 
-// EscrowSummary is the minimal representation of an escrow returned by the get endpoint.
+// EscrowSummary is the full escrow read model returned by the get endpoint,
+// mirroring ArtDropCore.EscrowSummary (see artdrop-protocol/contracts/core/
+// ArtDropCore.cdc). It used to carry only Id/Status — the contract's struct
+// always had the rest; get_escrow_summary.cdc just wasn't asking for it
+// (issue #98).
+//
+// UnlockAt and ClaimedAt are UFix64 rendered as decimal strings, the same
+// convention as every other UFix64 field in this package (see
+// optionalUFix64String). Status and ReleaseReason are the Cadence enums'
+// rawValue: Status 0=Pending/1=Released; ReleaseReason (only meaningful once
+// Released) 0=ClaimedByBuyer/1=WindowExpired.
 type EscrowSummary struct {
-	Id     uint64 `json:"id"`
-	Status uint8  `json:"status"`
+	Id            uint64  `json:"id"`
+	Buyer         string  `json:"buyer"`
+	Seller        string  `json:"seller"`
+	EditionId     uint64  `json:"edition_id"`
+	ChipId        string  `json:"chip_id"`
+	UnlockAt      string  `json:"unlock_at"`
+	Nonce         uint64  `json:"nonce"`
+	CertificateId uint64  `json:"certificate_id"`
+	Status        uint8   `json:"status"`
+	ReleaseReason *uint8  `json:"release_reason,omitempty"`
+	Claimed       bool    `json:"claimed"`
+	ClaimedAt     *string `json:"claimed_at,omitempty"`
+}
+
+// EscrowListResponse is the response shape of the escrow listing endpoint
+// (GET /accounts/{address}/artdrop/escrows). EscrowIds is always populated;
+// Escrows is only populated when the caller asked for ?expand=summary — see
+// Handler.ListEscrowsFunc.
+type EscrowListResponse struct {
+	EscrowIds []uint64        `json:"escrow_ids"`
+	Escrows   []EscrowSummary `json:"escrows,omitempty"`
 }
 
 // OriginalSummary contains the metadata of an ArtDrop Original.

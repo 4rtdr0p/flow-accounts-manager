@@ -32,6 +32,9 @@ var getCertificatesCDC string
 //go:embed cdc/get_escrow_summary.cdc
 var getEscrowSummaryCDC string
 
+//go:embed cdc/get_escrows_by_buyer.cdc
+var getEscrowsByBuyerCDC string
+
 //go:embed cdc/create_escrow.cdc
 var createEscrowCDC string
 
@@ -90,6 +93,7 @@ type Service struct {
 	getCertificateDetailCDC       string
 	getCertificatesCDC            string
 	getEscrowSummaryCDC           string
+	getEscrowsByBuyerCDC          string
 	createEscrowCDC               string
 	reEscrowCDC                   string
 	activateChipAndSettleCDC      string
@@ -132,6 +136,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		getCertificateDetailCDC:       sub(getCertificateDetailCDC),
 		getCertificatesCDC:            sub(getCertificatesCDC),
 		getEscrowSummaryCDC:           sub(getEscrowSummaryCDC),
+		getEscrowsByBuyerCDC:          sub(getEscrowsByBuyerCDC),
 		createEscrowCDC:               sub(createEscrowCDC),
 		reEscrowCDC:                   sub(reEscrowCDC),
 		activateChipAndSettleCDC:      sub(activateChipAndSettleCDC),
@@ -157,6 +162,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 	if deps.Transactions != nil {
 		deps.Transactions.RegisterResultExtractor(TxTypeCreateOriginal, extractOriginalCreatedResult)
 		deps.Transactions.RegisterResultExtractor(TxTypeCreateEdition, extractEditionCreatedResult)
+		deps.Transactions.RegisterResultExtractor(TxTypeCreateEscrow, extractEscrowCreatedResult)
 	}
 
 	return svc, nil
@@ -545,7 +551,10 @@ func (s *Service) GetCollectionLength(ctx context.Context, address string) (*Col
 	return &CollectionLengthResponse{Length: len(certs)}, nil
 }
 
-// GetEscrow returns a summary of the requested escrow.
+// GetEscrow returns the full summary of the requested escrow (see
+// EscrowSummary), or (nil, nil) when the escrow id doesn't exist —
+// ArtDropCore.getEscrowSummary returns nil in that case, matching the
+// GetCertificateDetail/GetEditionSummary nil-means-404 convention.
 func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
 	args := []transactions.Argument{
 		cadence.NewUInt64(escrowId),
@@ -556,15 +565,121 @@ func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummar
 		return nil, fmt.Errorf("execute get_escrow_summary script: %w", err)
 	}
 
-	status, ok := val.(cadence.UInt8)
+	fields, ok, err := optionalDictionaryFields(val)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.UInt8", val)
+		return nil, nil
 	}
 
-	return &EscrowSummary{
-		Id:     escrowId,
-		Status: uint8(status),
-	}, nil
+	summary := &EscrowSummary{Id: escrowId}
+
+	if id, ok := fields["id"].(cadence.UInt64); ok {
+		summary.Id = uint64(id)
+	}
+	if buyer, ok := fields["buyer"].(cadence.Address); ok {
+		summary.Buyer = flow_helpers.FormatAddress(flow.BytesToAddress(buyer.Bytes()))
+	}
+	if seller, ok := fields["seller"].(cadence.Address); ok {
+		summary.Seller = flow_helpers.FormatAddress(flow.BytesToAddress(seller.Bytes()))
+	}
+	if editionId, ok := fields["editionId"].(cadence.UInt64); ok {
+		summary.EditionId = uint64(editionId)
+	}
+	if chipId, ok := fields["chipId"].(cadence.String); ok {
+		summary.ChipId = string(chipId)
+	}
+	if unlockAt, ok := fields["unlockAt"].(cadence.UFix64); ok {
+		summary.UnlockAt = unlockAt.String()
+	} else {
+		return nil, fmt.Errorf("unexpected script result type %T for unlockAt, expected cadence.UFix64", fields["unlockAt"])
+	}
+	if nonce, ok := fields["nonce"].(cadence.UInt64); ok {
+		summary.Nonce = uint64(nonce)
+	}
+	if certificateId, ok := fields["certificateId"].(cadence.UInt64); ok {
+		summary.CertificateId = uint64(certificateId)
+	}
+	if status, ok := fields["status"].(cadence.UInt8); ok {
+		summary.Status = uint8(status)
+	} else {
+		return nil, fmt.Errorf("unexpected script result type %T for status, expected cadence.UInt8", fields["status"])
+	}
+	if releaseReason, err := optionalUInt8(fields["releaseReason"]); err != nil {
+		return nil, fmt.Errorf("decode escrow release reason: %w", err)
+	} else {
+		summary.ReleaseReason = releaseReason
+	}
+	if claimed, ok := fields["claimed"].(cadence.Bool); ok {
+		summary.Claimed = bool(claimed)
+	}
+	if claimedAt, err := optionalUFix64String(fields["claimedAt"]); err != nil {
+		return nil, fmt.Errorf("decode escrow claimed at: %w", err)
+	} else {
+		summary.ClaimedAt = claimedAt
+	}
+
+	return summary, nil
+}
+
+// ListEscrowsByBuyer returns the escrow ids opened for a given buyer, via
+// ArtDropRegistry.EscrowsByBuyerIndex (see get_escrows_by_buyer.cdc). When
+// expand is true, each id is additionally resolved to its full GetEscrow
+// summary — one script call per escrow, so callers that only need the ids
+// should leave expand false to avoid the N+1 cost.
+//
+// Returns an empty (never nil) EscrowIds slice both when the buyer has no
+// escrows and when ArtDropRegistry.EscrowsByBuyerIndex isn't published yet
+// on the configured registry account — the script can't tell those apart
+// (see get_escrows_by_buyer.cdc), so neither can this.
+func (s *Service) ListEscrowsByBuyer(ctx context.Context, buyer string, expand bool) (*EscrowListResponse, error) {
+	buyer, err := flow_helpers.ValidateAddress(buyer, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(buyer)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
+	}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowsByBuyerCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrows_by_buyer script: %w", err)
+	}
+
+	arr, ok := val.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
+	}
+
+	ids := make([]uint64, 0, len(arr.Values))
+	for i, v := range arr.Values {
+		id, ok := v.(cadence.UInt64)
+		if !ok {
+			return nil, fmt.Errorf("unexpected escrow id type %T at index %d, expected cadence.UInt64", v, i)
+		}
+		ids = append(ids, uint64(id))
+	}
+
+	res := &EscrowListResponse{EscrowIds: ids}
+	if !expand {
+		return res, nil
+	}
+
+	res.Escrows = make([]EscrowSummary, 0, len(ids))
+	for _, id := range ids {
+		summary, err := s.GetEscrow(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get escrow %d summary: %w", id, err)
+		}
+		if summary != nil {
+			res.Escrows = append(res.Escrows, *summary)
+		}
+	}
+
+	return res, nil
 }
 
 // GetCertificateDetail returns consolidated metadata for a single certificate.
@@ -899,6 +1014,25 @@ func optionalUFix64String(value cadence.Value) (*string, error) {
 		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.UFix64", opt.Value)
 	}
 	result := ufix.String()
+	return &result, nil
+}
+
+// optionalUInt8 decodes a Cadence `UInt8?` (e.g. an optional enum's
+// rawValue, as returned for EscrowSummary.releaseReason) into a *uint8, nil
+// when the optional itself is nil.
+func optionalUInt8(value cadence.Value) (*uint8, error) {
+	opt, ok := value.(cadence.Optional)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Optional", value)
+	}
+	if opt.Value == nil {
+		return nil, nil
+	}
+	u8, ok := opt.Value.(cadence.UInt8)
+	if !ok {
+		return nil, fmt.Errorf("unexpected optional inner type %T, expected cadence.UInt8", opt.Value)
+	}
+	result := uint8(u8)
 	return &result, nil
 }
 

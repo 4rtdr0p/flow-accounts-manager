@@ -29,6 +29,15 @@ type editionCreatedResult struct {
 	OriginalId uint64 `json:"originalId"`
 }
 
+// escrowCreatedResult mirrors originalCreatedResult/editionCreatedResult for
+// TxTypeCreateEscrow (issue #98): it lets the purchase flow (and any other
+// caller of Service.CreateEscrow) resolve the on-chain escrowId from the
+// async job's Result instead of a separate query, once the job completes.
+type escrowCreatedResult struct {
+	EscrowId      uint64 `json:"escrowId"`
+	CertificateId uint64 `json:"certificateId"`
+}
+
 // findArtDropEvent returns the Value of the first event among events whose
 // qualified type ends in ".<name>" (e.g. "A.ec581a0282d99a1a.ArtDropCore.
 // OriginalCreated"), regardless of which address ArtDropCore is currently
@@ -90,6 +99,37 @@ func extractEditionCreatedResult(events []flow.Event) (string, error) {
 	})
 	if err != nil {
 		return "", fmt.Errorf("artdrop: marshal EditionCreated result: %w", err)
+	}
+	return string(b), nil
+}
+
+// extractEscrowCreatedResult implements transactions.ResultExtractorFunc for
+// TxTypeCreateEscrow. See ArtDropCore.EscrowCreated (escrowId, certificateId:
+// UInt64, among other fields) in artdrop-protocol/contracts/core/
+// ArtDropCore.cdc — note the event field is "escrowId", not "id" (unlike
+// OriginalCreated/EditionCreated above).
+func extractEscrowCreatedResult(events []flow.Event) (string, error) {
+	evt, ok := findArtDropEvent(events, "EscrowCreated")
+	if !ok {
+		return "", fmt.Errorf("artdrop: EscrowCreated event not found among %d event(s)", len(events))
+	}
+
+	fields := evt.FieldsMappedByName()
+	escrowId, ok := fields["escrowId"].(cadence.UInt64)
+	if !ok {
+		return "", fmt.Errorf("artdrop: EscrowCreated.escrowId missing or wrong type (got %T)", fields["escrowId"])
+	}
+	certificateId, ok := fields["certificateId"].(cadence.UInt64)
+	if !ok {
+		return "", fmt.Errorf("artdrop: EscrowCreated.certificateId missing or wrong type (got %T)", fields["certificateId"])
+	}
+
+	b, err := json.Marshal(escrowCreatedResult{
+		EscrowId:      uint64(escrowId),
+		CertificateId: uint64(certificateId),
+	})
+	if err != nil {
+		return "", fmt.Errorf("artdrop: marshal EscrowCreated result: %w", err)
 	}
 	return string(b), nil
 }

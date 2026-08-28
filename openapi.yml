@@ -790,6 +790,30 @@ paths:
       responses:
         '201':
           description: Created
+    get:
+      summary: List ArtDrop escrows opened for an account (as buyer)
+      description: >-
+        Returns the escrow ids from ArtDropRegistry.EscrowsByBuyerIndex for
+        the account in the path. Pass ?expand=summary to additionally
+        resolve each id to its full escrow summary (one on-chain query per
+        id) instead of just the id list.
+      operationId: listArtDropEscrows
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: expand
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary]
+          description: When set to "summary", each escrow id is expanded to its full summary.
+      responses:
+        '200':
+          description: OK
   '/accounts/{address}/artdrop/escrows/re-escrow':
     post:
       summary: Open an ArtDrop escrow against an existing certificate
@@ -879,6 +903,11 @@ paths:
   '/accounts/{address}/artdrop/escrows/{escrowId}':
     get:
       summary: Get an ArtDrop escrow summary
+      description: >-
+        Returns the full ArtDropCore.EscrowSummary: id, buyer, seller,
+        edition_id, chip_id, unlock_at, nonce, certificate_id, status,
+        release_reason (present once released), claimed, and claimed_at
+        (present once claimed). Previously returned only id/status.
       operationId: getArtDropEscrow
       x-required-scopes:
         - account.read

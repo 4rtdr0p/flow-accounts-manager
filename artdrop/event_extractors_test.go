@@ -137,3 +137,78 @@ func TestExtractEditionCreatedResult(t *testing.T) {
 		}
 	})
 }
+
+func TestExtractEscrowCreatedResult(t *testing.T) {
+	t.Run("returns escrowId and certificateId as JSON", func(t *testing.T) {
+		events := []flow.Event{
+			newTestEvent("EscrowCreated", map[string]cadence.Value{
+				"escrowId":      cadence.NewUInt64(7),
+				"certificateId": cadence.NewUInt64(99),
+			}, []string{"escrowId", "certificateId"}),
+		}
+
+		got, err := extractEscrowCreatedResult(events)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := `{"escrowId":7,"certificateId":99}`
+		if got != want {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("ignores unrelated events and finds EscrowCreated among them", func(t *testing.T) {
+		events := []flow.Event{
+			newTestEvent("SomeOtherEvent", nil, nil),
+			newTestEvent("EscrowCreated", map[string]cadence.Value{
+				"escrowId":      cadence.NewUInt64(3),
+				"certificateId": cadence.NewUInt64(4),
+			}, []string{"escrowId", "certificateId"}),
+		}
+
+		got, err := extractEscrowCreatedResult(events)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := `{"escrowId":3,"certificateId":4}`
+		if got != want {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("errors when EscrowCreated is not among the events", func(t *testing.T) {
+		events := []flow.Event{
+			newTestEvent("SomeOtherEvent", nil, nil),
+		}
+
+		if _, err := extractEscrowCreatedResult(events); err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("errors when escrowId is missing or wrong-typed", func(t *testing.T) {
+		events := []flow.Event{
+			newTestEvent("EscrowCreated", map[string]cadence.Value{
+				"certificateId": cadence.NewUInt64(99),
+			}, []string{"certificateId"}),
+		}
+
+		if _, err := extractEscrowCreatedResult(events); err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("errors when certificateId is missing or wrong-typed", func(t *testing.T) {
+		events := []flow.Event{
+			newTestEvent("EscrowCreated", map[string]cadence.Value{
+				"escrowId": cadence.NewUInt64(7),
+			}, []string{"escrowId"}),
+		}
+
+		if _, err := extractEscrowCreatedResult(events); err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+}
