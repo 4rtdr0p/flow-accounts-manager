@@ -35,6 +35,18 @@ var getEscrowSummaryCDC string
 //go:embed cdc/get_escrows_by_buyer.cdc
 var getEscrowsByBuyerCDC string
 
+//go:embed cdc/get_escrows_by_buyer_expanded.cdc
+var getEscrowsByBuyerExpandedCDC string
+
+//go:embed cdc/get_escrows_by_edition.cdc
+var getEscrowsByEditionCDC string
+
+//go:embed cdc/get_escrows_by_edition_expanded.cdc
+var getEscrowsByEditionExpandedCDC string
+
+//go:embed cdc/get_escrows_by_seller_expanded.cdc
+var getEscrowsBySellerExpandedCDC string
+
 //go:embed cdc/create_escrow.cdc
 var createEscrowCDC string
 
@@ -88,25 +100,36 @@ type Service struct {
 	deps plugins.PluginDeps
 	cfg  Config
 
-	setupCollectionCDC            string
-	registerProviderCDC           string
-	getCertificateDetailCDC       string
-	getCertificatesCDC            string
-	getEscrowSummaryCDC           string
-	getEscrowsByBuyerCDC          string
-	createEscrowCDC               string
-	reEscrowCDC                   string
-	activateChipAndSettleCDC      string
-	getOriginalExtendedSummaryCDC string
-	getEditionSummaryCDC          string
-	getEditionIDsByOriginalCDC    string
-	getPlatformFeeCDC             string
-	getMarketModeNameCDC          string
-	isArtistCDC                   string
-	onboardArtistCDC              string
-	setupArtistDirectClaimCDC     string
-	createOriginalCDC             string
-	createEditionCDC              string
+	setupCollectionCDC             string
+	registerProviderCDC            string
+	getCertificateDetailCDC        string
+	getCertificatesCDC             string
+	getEscrowSummaryCDC            string
+	getEscrowsByBuyerCDC           string
+	getEscrowsByBuyerExpandedCDC   string
+	getEscrowsByEditionCDC         string
+	getEscrowsByEditionExpandedCDC string
+	getEscrowsBySellerExpandedCDC  string
+	createEscrowCDC                string
+	reEscrowCDC                    string
+	activateChipAndSettleCDC       string
+	getOriginalExtendedSummaryCDC  string
+	getEditionSummaryCDC           string
+	getEditionIDsByOriginalCDC     string
+	getPlatformFeeCDC              string
+	getMarketModeNameCDC           string
+	isArtistCDC                    string
+	onboardArtistCDC               string
+	setupArtistDirectClaimCDC      string
+	createOriginalCDC              string
+	createEditionCDC               string
+
+	// escrowCache short-circuits GetEscrow for repeat/concurrent lookups of
+	// the same escrow id — see escrow_cache.go and issue #100. It is not
+	// consulted by the ListEscrowsBy*(expand=true) paths above: those get
+	// their own N+1 fix from the combined *_expanded.cdc scripts, which
+	// already cost one access-node round trip regardless of size.
+	escrowCache *escrowCache
 }
 
 // NewService creates a new artdrop service using the shared plugin
@@ -131,25 +154,31 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		deps: deps,
 		cfg:  validated,
 
-		setupCollectionCDC:            sub(setupCollectionCDC),
-		registerProviderCDC:           sub(registerProviderCDC),
-		getCertificateDetailCDC:       sub(getCertificateDetailCDC),
-		getCertificatesCDC:            sub(getCertificatesCDC),
-		getEscrowSummaryCDC:           sub(getEscrowSummaryCDC),
-		getEscrowsByBuyerCDC:          sub(getEscrowsByBuyerCDC),
-		createEscrowCDC:               sub(createEscrowCDC),
-		reEscrowCDC:                   sub(reEscrowCDC),
-		activateChipAndSettleCDC:      sub(activateChipAndSettleCDC),
-		getOriginalExtendedSummaryCDC: sub(getOriginalExtendedSummaryCDC),
-		getEditionSummaryCDC:          sub(getEditionSummaryCDC),
-		getEditionIDsByOriginalCDC:    sub(getEditionIDsByOriginalCDC),
-		getPlatformFeeCDC:             sub(getPlatformFeeCDC),
-		getMarketModeNameCDC:          sub(getMarketModeNameCDC),
-		isArtistCDC:                   sub(isArtistCDC),
-		onboardArtistCDC:              sub(onboardArtistCDC),
-		setupArtistDirectClaimCDC:     sub(setupArtistDirectClaimCDC),
-		createOriginalCDC:             sub(createOriginalCDC),
-		createEditionCDC:              sub(createEditionCDC),
+		setupCollectionCDC:             sub(setupCollectionCDC),
+		registerProviderCDC:            sub(registerProviderCDC),
+		getCertificateDetailCDC:        sub(getCertificateDetailCDC),
+		getCertificatesCDC:             sub(getCertificatesCDC),
+		getEscrowSummaryCDC:            sub(getEscrowSummaryCDC),
+		getEscrowsByBuyerCDC:           sub(getEscrowsByBuyerCDC),
+		getEscrowsByBuyerExpandedCDC:   sub(getEscrowsByBuyerExpandedCDC),
+		getEscrowsByEditionCDC:         sub(getEscrowsByEditionCDC),
+		getEscrowsByEditionExpandedCDC: sub(getEscrowsByEditionExpandedCDC),
+		getEscrowsBySellerExpandedCDC:  sub(getEscrowsBySellerExpandedCDC),
+		createEscrowCDC:                sub(createEscrowCDC),
+		reEscrowCDC:                    sub(reEscrowCDC),
+		activateChipAndSettleCDC:       sub(activateChipAndSettleCDC),
+		getOriginalExtendedSummaryCDC:  sub(getOriginalExtendedSummaryCDC),
+		getEditionSummaryCDC:           sub(getEditionSummaryCDC),
+		getEditionIDsByOriginalCDC:     sub(getEditionIDsByOriginalCDC),
+		getPlatformFeeCDC:              sub(getPlatformFeeCDC),
+		getMarketModeNameCDC:           sub(getMarketModeNameCDC),
+		isArtistCDC:                    sub(isArtistCDC),
+		onboardArtistCDC:               sub(onboardArtistCDC),
+		setupArtistDirectClaimCDC:      sub(setupArtistDirectClaimCDC),
+		createOriginalCDC:              sub(createOriginalCDC),
+		createEditionCDC:               sub(createEditionCDC),
+
+		escrowCache: newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
 	}
 
 	// Expose the new Original/Edition id on the async job's Result field
@@ -555,7 +584,20 @@ func (s *Service) GetCollectionLength(ctx context.Context, address string) (*Col
 // EscrowSummary), or (nil, nil) when the escrow id doesn't exist —
 // ArtDropCore.getEscrowSummary returns nil in that case, matching the
 // GetCertificateDetail/GetEditionSummary nil-means-404 convention.
+//
+// Backed by s.escrowCache (issue #100): a repeat lookup of a Released
+// escrow is served from memory indefinitely, a repeat lookup of a Pending
+// one for up to 60s, and concurrent callers racing to look up the same
+// uncached id share a single script execution instead of one each.
 func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
+	return s.escrowCache.getOrFetch(escrowId, func() (*EscrowSummary, error) {
+		return s.fetchEscrow(ctx, escrowId)
+	})
+}
+
+// fetchEscrow is GetEscrow's uncached script call + decode — the cache/
+// singleflight wrapper in GetEscrow calls this at most once per miss.
+func (s *Service) fetchEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
 	args := []transactions.Argument{
 		cadence.NewUInt64(escrowId),
 	}
@@ -573,6 +615,17 @@ func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummar
 		return nil, nil
 	}
 
+	return decodeEscrowSummary(escrowId, fields)
+}
+
+// decodeEscrowSummary decodes one escrow's flat field dictionary — the
+// shape shared by get_escrow_summary.cdc and every get_escrows_by_*_
+// expanded.cdc script — into an EscrowSummary. escrowId seeds the Id field
+// so a value is still present even if the "id" key were ever missing or
+// mistyped; every caller currently has an authoritative id to pass (the
+// query param for a single lookup, or the id decoded from the same
+// dictionary for a batch one).
+func decodeEscrowSummary(escrowId uint64, fields map[string]cadence.Value) (*EscrowSummary, error) {
 	summary := &EscrowSummary{Id: escrowId}
 
 	if id, ok := fields["id"].(cadence.UInt64); ok {
@@ -623,11 +676,68 @@ func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummar
 	return summary, nil
 }
 
+// decodeEscrowSummaryArray decodes the `[{String: AnyStruct}]` result of a
+// get_escrows_by_*_expanded.cdc script into a slice of EscrowSummary, in
+// script order. Unlike GetEscrow's result, elements here are plain
+// dictionaries (not optionals) — the script itself already skips any id
+// whose summary came back nil.
+func decodeEscrowSummaryArray(val cadence.Value) ([]EscrowSummary, error) {
+	arr, ok := val.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
+	}
+
+	summaries := make([]EscrowSummary, 0, len(arr.Values))
+	for i, v := range arr.Values {
+		dict, ok := v.(cadence.Dictionary)
+		if !ok {
+			return nil, fmt.Errorf("unexpected escrow summary type %T at index %d, expected cadence.Dictionary", v, i)
+		}
+
+		fields := dictionaryStringFields(dict)
+		var id uint64
+		if idVal, ok := fields["id"].(cadence.UInt64); ok {
+			id = uint64(idVal)
+		}
+
+		summary, err := decodeEscrowSummary(id, fields)
+		if err != nil {
+			return nil, fmt.Errorf("decode escrow summary at index %d: %w", i, err)
+		}
+		summaries = append(summaries, *summary)
+	}
+
+	return summaries, nil
+}
+
+// decodeUInt64Array decodes a plain `[UInt64]` script result (the shape
+// get_escrows_by_buyer.cdc / get_escrows_by_edition.cdc return) into a
+// []uint64.
+func decodeUInt64Array(val cadence.Value) ([]uint64, error) {
+	arr, ok := val.(cadence.Array)
+	if !ok {
+		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
+	}
+
+	ids := make([]uint64, 0, len(arr.Values))
+	for i, v := range arr.Values {
+		id, ok := v.(cadence.UInt64)
+		if !ok {
+			return nil, fmt.Errorf("unexpected escrow id type %T at index %d, expected cadence.UInt64", v, i)
+		}
+		ids = append(ids, uint64(id))
+	}
+
+	return ids, nil
+}
+
 // ListEscrowsByBuyer returns the escrow ids opened for a given buyer, via
 // ArtDropRegistry.EscrowsByBuyerIndex (see get_escrows_by_buyer.cdc). When
-// expand is true, each id is additionally resolved to its full GetEscrow
-// summary — one script call per escrow, so callers that only need the ids
-// should leave expand false to avoid the N+1 cost.
+// expand is true, EscrowIds is followed by one additional script call to
+// get_escrows_by_buyer_expanded.cdc, which resolves every id to its full
+// summary server-side in one execution — issue #100 replaced the previous
+// per-id GetEscrow loop here (an N+1 that rate-limited the public testnet
+// access node at just 9 escrows) with this single combined call.
 //
 // Returns an empty (never nil) EscrowIds slice both when the buyer has no
 // escrows and when ArtDropRegistry.EscrowsByBuyerIndex isn't published yet
@@ -649,18 +759,9 @@ func (s *Service) ListEscrowsByBuyer(ctx context.Context, buyer string, expand b
 		return nil, fmt.Errorf("execute get_escrows_by_buyer script: %w", err)
 	}
 
-	arr, ok := val.(cadence.Array)
-	if !ok {
-		return nil, fmt.Errorf("unexpected script result type %T, expected cadence.Array", val)
-	}
-
-	ids := make([]uint64, 0, len(arr.Values))
-	for i, v := range arr.Values {
-		id, ok := v.(cadence.UInt64)
-		if !ok {
-			return nil, fmt.Errorf("unexpected escrow id type %T at index %d, expected cadence.UInt64", v, i)
-		}
-		ids = append(ids, uint64(id))
+	ids, err := decodeUInt64Array(val)
+	if err != nil {
+		return nil, err
 	}
 
 	res := &EscrowListResponse{EscrowIds: ids}
@@ -668,15 +769,104 @@ func (s *Service) ListEscrowsByBuyer(ctx context.Context, buyer string, expand b
 		return res, nil
 	}
 
-	res.Escrows = make([]EscrowSummary, 0, len(ids))
-	for _, id := range ids {
-		summary, err := s.GetEscrow(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("get escrow %d summary: %w", id, err)
-		}
-		if summary != nil {
-			res.Escrows = append(res.Escrows, *summary)
-		}
+	expVal, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowsByBuyerExpandedCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrows_by_buyer_expanded script: %w", err)
+	}
+
+	res.Escrows, err = decodeEscrowSummaryArray(expVal)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// ListEscrowsByEdition returns the escrow ids opened against a given
+// edition, via ArtDropRegistry.EscrowsByEditionIndex (see
+// get_escrows_by_edition.cdc) — same shape and same combined-script
+// expand=true path as ListEscrowsByBuyer, added alongside it for issue
+// #100's query-surface work.
+//
+// Returns an empty (never nil) EscrowIds slice both when the edition has no
+// escrows and when the index isn't published yet, for the same reason as
+// ListEscrowsByBuyer.
+func (s *Service) ListEscrowsByEdition(ctx context.Context, editionId uint64, expand bool) (*EscrowListResponse, error) {
+	args := []transactions.Argument{
+		cadence.NewUInt64(editionId),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
+	}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowsByEditionCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrows_by_edition script: %w", err)
+	}
+
+	ids, err := decodeUInt64Array(val)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &EscrowListResponse{EscrowIds: ids}
+	if !expand {
+		return res, nil
+	}
+
+	expVal, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowsByEditionExpandedCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrows_by_edition_expanded script: %w", err)
+	}
+
+	res.Escrows, err = decodeEscrowSummaryArray(expVal)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// ListEscrowsBySeller returns every escrow open against an edition created
+// by the given seller/artist — see get_escrows_by_seller_expanded.cdc for
+// the three-index walk (ArtistIndex -> editions-per-original ->
+// EscrowsByEditionIndex) this composes in one script execution. Added for
+// issue #100: the contract has no direct seller -> escrow index, and
+// composing the existing ones server-side costs the same one round trip a
+// dedicated index would, without a contract or storage change.
+//
+// Unlike ListEscrowsByBuyer/ListEscrowsByEdition there is no separate
+// ids-only script here — the three-level walk is the expensive part, not
+// resolving each id's summary, so this always calls the one combined
+// script and derives EscrowIds from its result; expand=false simply omits
+// Escrows from the response.
+func (s *Service) ListEscrowsBySeller(ctx context.Context, seller string, expand bool) (*EscrowListResponse, error) {
+	seller, err := flow_helpers.ValidateAddress(seller, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []transactions.Argument{
+		cadence.NewAddress(flow.HexToAddress(seller)),
+		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
+	}
+
+	val, err := s.deps.Transactions.ExecuteScript(ctx, s.getEscrowsBySellerExpandedCDC, args)
+	if err != nil {
+		return nil, fmt.Errorf("execute get_escrows_by_seller_expanded script: %w", err)
+	}
+
+	summaries, err := decodeEscrowSummaryArray(val)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint64, 0, len(summaries))
+	for _, summary := range summaries {
+		ids = append(ids, summary.Id)
+	}
+
+	res := &EscrowListResponse{EscrowIds: ids}
+	if expand {
+		res.Escrows = summaries
 	}
 
 	return res, nil
@@ -1052,6 +1242,23 @@ func uint8ArrayBytes(value cadence.Value) ([]byte, error) {
 	return bytes, nil
 }
 
+// dictionaryStringFields converts a Cadence `{String: AnyStruct}` dictionary
+// into a plain Go map, dropping any pair whose key isn't a String (none are
+// expected to occur — every *.cdc script that returns this shape builds it
+// from bare "fieldName": value literals). Shared by optionalDictionaryFields
+// (an optional dictionary, e.g. get_escrow_summary.cdc's single-escrow
+// result) and decodeEscrowSummaryArray (a non-optional dictionary, one per
+// element of a get_escrows_by_*_expanded.cdc array result).
+func dictionaryStringFields(dict cadence.Dictionary) map[string]cadence.Value {
+	fields := map[string]cadence.Value{}
+	for _, kv := range dict.Pairs {
+		if k, ok := kv.Key.(cadence.String); ok {
+			fields[string(k)] = kv.Value
+		}
+	}
+	return fields
+}
+
 func optionalDictionaryFields(value cadence.Value) (map[string]cadence.Value, bool, error) {
 	opt, ok := value.(cadence.Optional)
 	if !ok {
@@ -1066,13 +1273,7 @@ func optionalDictionaryFields(value cadence.Value) (map[string]cadence.Value, bo
 		return nil, false, fmt.Errorf("unexpected optional inner type %T, expected cadence.Dictionary", opt.Value)
 	}
 
-	fields := map[string]cadence.Value{}
-	for _, kv := range dict.Pairs {
-		if k, ok := kv.Key.(cadence.String); ok {
-			fields[string(k)] = kv.Value
-		}
-	}
-	return fields, true, nil
+	return dictionaryStringFields(dict), true, nil
 }
 
 func ufix64Dictionary(dict cadence.Dictionary) map[string]string {

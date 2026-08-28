@@ -154,10 +154,16 @@ type EscrowSummary struct {
 	ClaimedAt     *string `json:"claimed_at,omitempty"`
 }
 
-// EscrowListResponse is the response shape of the escrow listing endpoint
-// (GET /accounts/{address}/artdrop/escrows). EscrowIds is always populated;
-// Escrows is only populated when the caller asked for ?expand=summary — see
-// Handler.ListEscrowsFunc.
+// EscrowListResponse is the shared response shape of all three escrow
+// listing endpoints added across issues #98/#100:
+//
+//	GET /accounts/{address}/artdrop/escrows                       (by buyer)
+//	GET /accounts/{address}/artdrop/escrows/by-edition/{editionId}
+//	GET /accounts/{address}/artdrop/escrows/by-seller
+//
+// EscrowIds is always populated; Escrows is only populated when the caller
+// asked for ?expand=summary — see Handler.ListEscrowsFunc /
+// ListEscrowsByEditionFunc / ListEscrowsBySellerFunc.
 type EscrowListResponse struct {
 	EscrowIds []uint64        `json:"escrow_ids"`
 	Escrows   []EscrowSummary `json:"escrows,omitempty"`

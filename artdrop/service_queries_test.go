@@ -118,10 +118,12 @@ func TestListCertificatesRejectsUnexpectedType(t *testing.T) {
 	}
 }
 
-// escrowSummaryScriptResult builds the {String: AnyStruct}? optional
-// dictionary get_escrow_summary.cdc returns, matching the fields decoded by
-// Service.GetEscrow. Shared by the tests below.
-func escrowSummaryScriptResult(t *testing.T, id, editionId, nonce, certificateId uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) cadence.Value {
+// escrowSummaryDict builds the raw {String: AnyStruct} dictionary shared by
+// get_escrow_summary.cdc's (optional) result and every
+// get_escrows_by_*_expanded.cdc script's per-element (non-optional) result,
+// matching the fields decoded by decodeEscrowSummary. Shared by the tests
+// below.
+func escrowSummaryDict(t *testing.T, id, editionId, nonce, certificateId uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) cadence.Dictionary {
 	t.Helper()
 
 	unlockAt, err := cadence.NewUFix64("4102444800.00000000")
@@ -143,7 +145,7 @@ func escrowSummaryScriptResult(t *testing.T, id, editionId, nonce, certificateId
 		claimedAtValue = cadence.NewOptional(ufix)
 	}
 
-	return cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+	return cadence.NewDictionary([]cadence.KeyValuePair{
 		{Key: cadence.String("id"), Value: cadence.NewUInt64(id)},
 		{Key: cadence.String("buyer"), Value: cadence.NewAddress(flow.HexToAddress("0x179b6b1cb6755e31"))},
 		{Key: cadence.String("seller"), Value: cadence.NewAddress(flow.HexToAddress("0xf3fcd2c1a78f5eee"))},
@@ -156,7 +158,26 @@ func escrowSummaryScriptResult(t *testing.T, id, editionId, nonce, certificateId
 		{Key: cadence.String("releaseReason"), Value: releaseReasonValue},
 		{Key: cadence.String("claimed"), Value: cadence.NewBool(claimed)},
 		{Key: cadence.String("claimedAt"), Value: claimedAtValue},
-	}))
+	})
+}
+
+// escrowSummaryScriptResult wraps escrowSummaryDict as the `{String:
+// AnyStruct}?` optional get_escrow_summary.cdc returns.
+func escrowSummaryScriptResult(t *testing.T, id, editionId, nonce, certificateId uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) cadence.Value {
+	t.Helper()
+	return cadence.NewOptional(escrowSummaryDict(t, id, editionId, nonce, certificateId, status, releaseReason, claimed, claimedAt))
+}
+
+// escrowSummaryExpandedArrayResult builds the `[{String: AnyStruct}]` array
+// a get_escrows_by_*_expanded.cdc script returns, one escrowSummaryDict per
+// id — the shape decodeEscrowSummaryArray expects.
+func escrowSummaryExpandedArrayResult(t *testing.T, dicts ...cadence.Dictionary) cadence.Value {
+	t.Helper()
+	values := make([]cadence.Value, 0, len(dicts))
+	for _, d := range dicts {
+		values = append(values, d)
+	}
+	return cadence.NewArray(values)
 }
 
 // TestGetEscrowReturnsFullSummary pins issue #98: get_escrow_summary.cdc now
@@ -358,7 +379,11 @@ func TestListEscrowsByBuyerReturnsEmpty(t *testing.T) {
 }
 
 // TestListEscrowsByBuyerExpandsSummaries covers ?expand=summary: one script
-// call for the id list, then one GetEscrow-shaped call per id, in order.
+// call for the id list, then exactly one further call to
+// get_escrows_by_buyer_expanded.cdc that resolves every id's summary in a
+// single execution — issue #100 replaced the previous per-id GetEscrow loop
+// (one script call per escrow) with this combined call specifically because
+// that loop rate-limited the public testnet access node at just 9 escrows.
 func TestListEscrowsByBuyerExpandsSummaries(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
@@ -366,8 +391,10 @@ func TestListEscrowsByBuyerExpandsSummaries(t *testing.T) {
 				cadence.NewUInt64(7),
 				cadence.NewUInt64(9),
 			}),
-			escrowSummaryScriptResult(t, 7, 42, 1, 99, 0, nil, false, nil),
-			escrowSummaryScriptResult(t, 9, 43, 2, 100, 1, nil, true, nil),
+			escrowSummaryExpandedArrayResult(t,
+				escrowSummaryDict(t, 7, 42, 1, 99, 0, nil, false, nil),
+				escrowSummaryDict(t, 9, 43, 2, 100, 1, nil, true, nil),
+			),
 		},
 	}
 	svc := mustNewService(t, plugins.PluginDeps{
@@ -391,8 +418,127 @@ func TestListEscrowsByBuyerExpandsSummaries(t *testing.T) {
 	if res.Escrows[1].Id != 9 || res.Escrows[1].EditionId != 43 {
 		t.Fatalf("unexpected second expanded escrow: %+v", res.Escrows[1])
 	}
-	if len(txSvc.calls) != 3 {
-		t.Fatalf("expected 3 script calls (list + 2 expansions), got %d", len(txSvc.calls))
+	if len(txSvc.calls) != 2 {
+		t.Fatalf("expected 2 script calls (id list + combined expansion), got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsByEditionReturnsIds mirrors
+// TestListEscrowsByBuyerReturnsIds for the by-edition listing added
+// alongside it for issue #100.
+func TestListEscrowsByEditionReturnsIds(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+		}),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsByEdition(context.Background(), 42, false)
+	if err != nil {
+		t.Fatalf("ListEscrowsByEdition returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 2 || res.EscrowIds[0] != 11 || res.EscrowIds[1] != 12 {
+		t.Fatalf("unexpected escrow ids: %+v", res.EscrowIds)
+	}
+	if res.Escrows != nil {
+		t.Fatalf("expected no expanded escrows when expand=false, got %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected 1 script call, got %d", len(txSvc.calls))
+	}
+	if txSvc.calls[0][0] != cadence.NewUInt64(42) {
+		t.Fatalf("expected editionId as first arg, got %#v", txSvc.calls[0][0])
+	}
+}
+
+// TestListEscrowsByEditionExpandsSummaries mirrors
+// TestListEscrowsByBuyerExpandsSummaries: id-list call plus exactly one
+// combined-expansion call, never a per-id loop.
+func TestListEscrowsByEditionExpandsSummaries(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewArray([]cadence.Value{cadence.NewUInt64(11)}),
+			escrowSummaryExpandedArrayResult(t,
+				escrowSummaryDict(t, 11, 42, 1, 99, 0, nil, false, nil),
+			),
+		},
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsByEdition(context.Background(), 42, true)
+	if err != nil {
+		t.Fatalf("ListEscrowsByEdition returned error: %v", err)
+	}
+	if len(res.Escrows) != 1 || res.Escrows[0].Id != 11 {
+		t.Fatalf("unexpected expanded escrows: %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 2 {
+		t.Fatalf("expected 2 script calls (id list + combined expansion), got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsBySellerWalksThreeIndicesInOneCall covers the by-seller
+// listing (issue #100): unlike buyer/edition there is no separate ids-only
+// script, so even expand=false makes exactly one call to
+// get_escrows_by_seller_expanded.cdc and derives EscrowIds from its result.
+func TestListEscrowsBySellerWalksThreeIndicesInOneCall(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: escrowSummaryExpandedArrayResult(t,
+			escrowSummaryDict(t, 21, 5, 1, 60, 0, nil, false, nil),
+			escrowSummaryDict(t, 22, 6, 2, 61, 1, nil, true, nil),
+		),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf8d6e0586b0a20c7", false)
+	if err != nil {
+		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 2 || res.EscrowIds[0] != 21 || res.EscrowIds[1] != 22 {
+		t.Fatalf("unexpected escrow ids: %+v", res.EscrowIds)
+	}
+	if res.Escrows != nil {
+		t.Fatalf("expected no expanded escrows when expand=false, got %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected exactly 1 script call regardless of expand, got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsBySellerExpandsSummaries covers ?expand=summary for
+// by-seller: same single call, but the response now also carries the full
+// summaries.
+func TestListEscrowsBySellerExpandsSummaries(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: escrowSummaryExpandedArrayResult(t,
+			escrowSummaryDict(t, 21, 5, 1, 60, 0, nil, false, nil),
+		),
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf8d6e0586b0a20c7", true)
+	if err != nil {
+		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+	}
+	if len(res.Escrows) != 1 || res.Escrows[0].Id != 21 || res.Escrows[0].EditionId != 5 {
+		t.Fatalf("unexpected expanded escrows: %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected exactly 1 script call, got %d", len(txSvc.calls))
 	}
 }
 

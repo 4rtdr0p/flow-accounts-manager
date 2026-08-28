@@ -140,6 +140,15 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/accounts/{address}/artdrop/certificates", h.ListCertificates()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/certificates/{certId}", h.GetCertificateDetail()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/collection-length", h.GetCollectionLength()).Methods(http.MethodGet)
+	// by-edition and by-seller (#100) MUST be registered before the
+	// /escrows/{escrowId} catch-all below: gorilla/mux matches routes in
+	// registration order, and both "/escrows/by-edition/..." (extra path
+	// segment, no real conflict) and especially "/escrows/by-seller" (same
+	// single-segment shape as {escrowId}) would otherwise be swallowed by
+	// GetEscrowFunc with escrowId="by-seller", failing ParseUint with a 400
+	// instead of ever reaching ListEscrowsBySellerFunc.
+	router.Handle("/accounts/{address}/artdrop/escrows/by-edition/{editionId}", h.ListEscrowsByEdition()).Methods(http.MethodGet)
+	router.Handle("/accounts/{address}/artdrop/escrows/by-seller", h.ListEscrowsBySeller()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}", h.GetEscrow()).Methods(http.MethodGet)
 	router.Handle("/artdrop/originals/{origId}", h.GetOriginalSummary()).Methods(http.MethodGet)
 	router.Handle("/artdrop/originals/{origId}/edition-ids", h.GetEditionIDsByOriginal()).Methods(http.MethodGet)

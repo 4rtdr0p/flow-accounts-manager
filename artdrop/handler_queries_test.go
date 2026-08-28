@@ -442,13 +442,16 @@ func TestListEscrowsHandlerReturnsIds(t *testing.T) {
 	}
 }
 
-// TestListEscrowsHandlerExpandsSummaries covers ?expand=summary.
+// TestListEscrowsHandlerExpandsSummaries covers ?expand=summary. The second
+// script call returns get_escrows_by_buyer_expanded.cdc's shape — a
+// non-optional array of summary dicts, resolved in one combined call
+// instead of one GetEscrow-shaped call per id (issue #100).
 func TestListEscrowsHandlerExpandsSummaries(t *testing.T) {
 	unlockAt, err := cadence.NewUFix64("4102444800.00000000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	summaryDict := cadence.NewOptional(cadence.NewDictionary([]cadence.KeyValuePair{
+	summaryDict := cadence.NewDictionary([]cadence.KeyValuePair{
 		{Key: cadence.String("id"), Value: cadence.NewUInt64(7)},
 		{Key: cadence.String("buyer"), Value: cadence.NewAddress(flow.HexToAddress("0x179b6b1cb6755e31"))},
 		{Key: cadence.String("seller"), Value: cadence.NewAddress(flow.HexToAddress("0xf3fcd2c1a78f5eee"))},
@@ -461,11 +464,11 @@ func TestListEscrowsHandlerExpandsSummaries(t *testing.T) {
 		{Key: cadence.String("releaseReason"), Value: cadence.NewOptional(nil)},
 		{Key: cadence.String("claimed"), Value: cadence.NewBool(false)},
 		{Key: cadence.String("claimedAt"), Value: cadence.NewOptional(nil)},
-	}))
+	})
 	txSvc := &queryTxService{
 		scriptResults: []cadence.Value{
 			cadence.NewArray([]cadence.Value{cadence.NewUInt64(7)}),
-			summaryDict,
+			cadence.NewArray([]cadence.Value{summaryDict}),
 		},
 	}
 	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
@@ -487,6 +490,105 @@ func TestListEscrowsHandlerExpandsSummaries(t *testing.T) {
 	}
 	if !strings.Contains(rw.Body.String(), `"certificate_id":99`) {
 		t.Fatalf("expected expanded escrow to contain certificate_id 99, got %s", rw.Body.String())
+	}
+}
+
+// TestListEscrowsByEditionHandlerReturnsIds covers the by-edition listing
+// endpoint added for issue #100, without ?expand.
+func TestListEscrowsByEditionHandlerReturnsIds(t *testing.T) {
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewUInt64(11),
+			cadence.NewUInt64(12),
+		}),
+	}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/by-edition/42", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address":   "0xf8d6e0586b0a20c7",
+		"editionId": "42",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.ListEscrowsByEdition().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"escrow_ids":[11,12]`) {
+		t.Fatalf("expected response to contain escrow_ids [11,12], got %s", rw.Body.String())
+	}
+}
+
+// TestListEscrowsByEditionHandlerRejectsInvalidEditionId mirrors
+// TestGetEscrowHandlerRejectsInvalidEscrowId for the editionId path param.
+func TestListEscrowsByEditionHandlerRejectsInvalidEditionId(t *testing.T) {
+	handler := NewHandler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/by-edition/abc", nil)
+	req = mux.SetURLVars(req, map[string]string{
+		"address":   "0xf8d6e0586b0a20c7",
+		"editionId": "abc",
+	})
+	rw := httptest.NewRecorder()
+
+	handler.ListEscrowsByEdition().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid editionId, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+// TestListEscrowsBySellerHandlerReturnsIds covers the by-seller listing
+// endpoint added for issue #100. Unlike by-edition/by-buyer, a single
+// script call always resolves full summaries; without ?expand the handler
+// still reports only escrow_ids.
+func TestListEscrowsBySellerHandlerReturnsIds(t *testing.T) {
+	unlockAt, err := cadence.NewUFix64("4102444800.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSvc := &queryTxService{
+		scriptResult: cadence.NewArray([]cadence.Value{
+			cadence.NewDictionary([]cadence.KeyValuePair{
+				{Key: cadence.String("id"), Value: cadence.NewUInt64(21)},
+				{Key: cadence.String("buyer"), Value: cadence.NewAddress(flow.HexToAddress("0x179b6b1cb6755e31"))},
+				{Key: cadence.String("seller"), Value: cadence.NewAddress(flow.HexToAddress("0xf3fcd2c1a78f5eee"))},
+				{Key: cadence.String("editionId"), Value: cadence.NewUInt64(5)},
+				{Key: cadence.String("chipId"), Value: cadence.String("chip-1")},
+				{Key: cadence.String("unlockAt"), Value: unlockAt},
+				{Key: cadence.String("nonce"), Value: cadence.NewUInt64(1)},
+				{Key: cadence.String("certificateId"), Value: cadence.NewUInt64(60)},
+				{Key: cadence.String("status"), Value: cadence.NewUInt8(0)},
+				{Key: cadence.String("releaseReason"), Value: cadence.NewOptional(nil)},
+				{Key: cadence.String("claimed"), Value: cadence.NewBool(false)},
+				{Key: cadence.String("claimedAt"), Value: cadence.NewOptional(nil)},
+			}),
+		}),
+	}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/by-seller", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.ListEscrowsBySeller().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"escrow_ids":[21]`) {
+		t.Fatalf("expected response to contain escrow_ids [21], got %s", rw.Body.String())
+	}
+	if strings.Contains(rw.Body.String(), `"escrows"`) {
+		t.Fatalf("expected no expanded escrows without ?expand=summary, got %s", rw.Body.String())
 	}
 }
 

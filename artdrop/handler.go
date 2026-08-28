@@ -510,6 +510,59 @@ func (h *Handler) ListEscrowsFunc(rw http.ResponseWriter, r *http.Request) {
 	handlers.HandleJsonResponse(rw, http.StatusOK, res)
 }
 
+func (h *Handler) ListEscrowsByEdition() http.Handler {
+	return http.HandlerFunc(h.ListEscrowsByEditionFunc)
+}
+
+// ListEscrowsByEditionFunc lists the escrow ids opened against the edition
+// in the path, via ArtDropRegistry.EscrowsByEditionIndex. Pass
+// ?expand=summary for the same combined-script summary expansion as
+// ListEscrowsFunc. The {address} path segment is unused — this query isn't
+// account-scoped — kept only so the route lives alongside the other escrow
+// endpoints under /accounts/{address}/artdrop/escrows/..., matching
+// GetEscrowFunc's precedent (see its logic_owner comment).
+func (h *Handler) ListEscrowsByEditionFunc(rw http.ResponseWriter, r *http.Request) {
+	editionId, err := strconv.ParseUint(mux.Vars(r)["editionId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid editionId: %w", err),
+		})
+		return
+	}
+	expand := r.URL.Query().Get("expand") == "summary"
+
+	res, err := h.svc.ListEscrowsByEdition(r.Context(), editionId, expand)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, res)
+}
+
+func (h *Handler) ListEscrowsBySeller() http.Handler {
+	return http.HandlerFunc(h.ListEscrowsBySellerFunc)
+}
+
+// ListEscrowsBySellerFunc lists every escrow open against an edition
+// created by the seller/artist in the path — see
+// Service.ListEscrowsBySeller and get_escrows_by_seller_expanded.cdc for
+// the three-index walk. Pass ?expand=summary for full summaries; omitted,
+// the response carries only escrow_ids.
+func (h *Handler) ListEscrowsBySellerFunc(rw http.ResponseWriter, r *http.Request) {
+	address := mux.Vars(r)["address"]
+	expand := r.URL.Query().Get("expand") == "summary"
+
+	res, err := h.svc.ListEscrowsBySeller(r.Context(), address, expand)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, res)
+}
+
 func (h *Handler) decodeBody(rw http.ResponseWriter, r *http.Request, dst interface{}) bool {
 	if r.Body == nil || r.Body == http.NoBody {
 		handlers.HandleError(rw, r, handlers.EmptyBodyError)
