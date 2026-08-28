@@ -58,6 +58,15 @@ func (p *Plugin) Name() string {
 	return "artdrop"
 }
 
+// Service exposes the underlying *Service so main.go can wire it into the
+// shared chain_events listener (escrow_projection.ArtDropEscrowEventHandler,
+// issue #102) and trigger the one-time escrow projection backfill at
+// startup — neither of which fits the plugins.Plugin interface, which only
+// deals in HTTP route registration.
+func (p *Plugin) Service() *Service {
+	return p.svc
+}
+
 // RegisterRoutes adds the artdrop plugin routes to the API router.
 func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	h := NewHandler(p.svc)

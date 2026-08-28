@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
@@ -46,6 +47,12 @@ var getEscrowsByEditionExpandedCDC string
 
 //go:embed cdc/get_escrows_by_seller_expanded.cdc
 var getEscrowsBySellerExpandedCDC string
+
+//go:embed cdc/get_total_escrows.cdc
+var getTotalEscrowsCDC string
+
+//go:embed cdc/get_all_escrow_summaries.cdc
+var getAllEscrowSummariesCDC string
 
 //go:embed cdc/create_escrow.cdc
 var createEscrowCDC string
@@ -110,6 +117,8 @@ type Service struct {
 	getEscrowsByEditionCDC         string
 	getEscrowsByEditionExpandedCDC string
 	getEscrowsBySellerExpandedCDC  string
+	getTotalEscrowsCDC             string
+	getAllEscrowSummariesCDC       string
 	createEscrowCDC                string
 	reEscrowCDC                    string
 	activateChipAndSettleCDC       string
@@ -129,7 +138,21 @@ type Service struct {
 	// consulted by the ListEscrowsBy*(expand=true) paths above: those get
 	// their own N+1 fix from the combined *_expanded.cdc scripts, which
 	// already cost one access-node round trip regardless of size.
+	//
+	// Superseded as the hot path by escrowStore (issue #102) whenever a row
+	// is projected: GetEscrow only falls through to escrowCache/the chain
+	// when escrowStore is nil, empty, or doesn't have the row (yet). Kept
+	// as-is rather than removed — it's still the right tool for whatever
+	// stays on the chain-fallback path.
 	escrowCache *escrowCache
+
+	// escrowStore is the local read-model projection of ArtDropCore escrows
+	// (issue #102, package escrow_projection) — nil when deps.DB is nil
+	// (e.g. some test constructions that never touch escrow reads), in
+	// which case GetEscrow/ListEscrowsBy* behave exactly as before #102,
+	// always reading the chain. See escrow_projection/escrow.go for the
+	// full design rationale and escrow_read_swap.go for how it's consulted.
+	escrowStore escrow_projection.Store
 }
 
 // NewService creates a new artdrop service using the shared plugin
@@ -164,6 +187,8 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		getEscrowsByEditionCDC:         sub(getEscrowsByEditionCDC),
 		getEscrowsByEditionExpandedCDC: sub(getEscrowsByEditionExpandedCDC),
 		getEscrowsBySellerExpandedCDC:  sub(getEscrowsBySellerExpandedCDC),
+		getTotalEscrowsCDC:             sub(getTotalEscrowsCDC),
+		getAllEscrowSummariesCDC:       sub(getAllEscrowSummariesCDC),
 		createEscrowCDC:                sub(createEscrowCDC),
 		reEscrowCDC:                    sub(reEscrowCDC),
 		activateChipAndSettleCDC:       sub(activateChipAndSettleCDC),
@@ -179,6 +204,16 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		createEditionCDC:               sub(createEditionCDC),
 
 		escrowCache: newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
+	}
+
+	// escrowStore is only wired when a DB is available — deps.DB is nil in
+	// some test constructions that never exercise escrow reads (see
+	// service_helpers_test.go's mustNewService callers that don't set DB).
+	// Leaving it nil there preserves every pre-#102 GetEscrow/ListEscrowsBy*
+	// test unchanged: the read-swap always falls through to the chain when
+	// escrowStore is nil.
+	if deps.DB != nil {
+		svc.escrowStore = escrow_projection.NewGormStore(deps.DB)
 	}
 
 	// Expose the new Original/Edition id on the async job's Result field
@@ -585,11 +620,17 @@ func (s *Service) GetCollectionLength(ctx context.Context, address string) (*Col
 // ArtDropCore.getEscrowSummary returns nil in that case, matching the
 // GetCertificateDetail/GetEditionSummary nil-means-404 convention.
 //
-// Backed by s.escrowCache (issue #100): a repeat lookup of a Released
-// escrow is served from memory indefinitely, a repeat lookup of a Pending
-// one for up to 60s, and concurrent callers racing to look up the same
-// uncached id share a single script execution instead of one each.
+// Read-swap (issue #102): tries the local escrows projection first — see
+// escrow_read_swap.go — and only falls through to the chain (via
+// s.escrowCache, issue #100) when escrowStore is nil, the row isn't
+// projected yet, the row is Incomplete (see escrow_projection.Escrow's doc
+// comment), or the projection lookup itself errors. This is a per-row
+// fallback: a cold/missing row for one id never affects any other id.
 func (s *Service) GetEscrow(ctx context.Context, escrowId uint64) (*EscrowSummary, error) {
+	if summary, ok := s.getEscrowFromProjection(ctx, escrowId); ok {
+		return summary, nil
+	}
+
 	return s.escrowCache.getOrFetch(escrowId, func() (*EscrowSummary, error) {
 		return s.fetchEscrow(ctx, escrowId)
 	})
@@ -743,12 +784,29 @@ func decodeUInt64Array(val cadence.Value) ([]uint64, error) {
 // escrows and when ArtDropRegistry.EscrowsByBuyerIndex isn't published yet
 // on the configured registry account — the script can't tell those apart
 // (see get_escrows_by_buyer.cdc), so neither can this.
+//
+// Read-swap (issue #102): tries the local escrows projection first (see
+// escrow_read_swap.go) and only calls the chain (fetchEscrowsByBuyerFromChain,
+// below) when the projection isn't ready yet.
 func (s *Service) ListEscrowsByBuyer(ctx context.Context, buyer string, expand bool) (*EscrowListResponse, error) {
 	buyer, err := flow_helpers.ValidateAddress(buyer, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, err
 	}
 
+	if res, ok := s.listEscrowsFromProjection(ctx, expand, func() ([]escrow_projection.Escrow, error) {
+		return s.escrowStore.ListByBuyer(ctx, buyer)
+	}); ok {
+		return res, nil
+	}
+
+	return s.fetchEscrowsByBuyerFromChain(ctx, buyer, expand)
+}
+
+// fetchEscrowsByBuyerFromChain is ListEscrowsByBuyer's chain fallback —
+// unchanged from its pre-#102 body other than taking an already-validated
+// buyer address.
+func (s *Service) fetchEscrowsByBuyerFromChain(ctx context.Context, buyer string, expand bool) (*EscrowListResponse, error) {
 	args := []transactions.Argument{
 		cadence.NewAddress(flow.HexToAddress(buyer)),
 		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
@@ -791,7 +849,22 @@ func (s *Service) ListEscrowsByBuyer(ctx context.Context, buyer string, expand b
 // Returns an empty (never nil) EscrowIds slice both when the edition has no
 // escrows and when the index isn't published yet, for the same reason as
 // ListEscrowsByBuyer.
+//
+// Read-swap (issue #102): same projection-first, chain-fallback pattern as
+// ListEscrowsByBuyer — see escrow_read_swap.go.
 func (s *Service) ListEscrowsByEdition(ctx context.Context, editionId uint64, expand bool) (*EscrowListResponse, error) {
+	if res, ok := s.listEscrowsFromProjection(ctx, expand, func() ([]escrow_projection.Escrow, error) {
+		return s.escrowStore.ListByEdition(ctx, editionId)
+	}); ok {
+		return res, nil
+	}
+
+	return s.fetchEscrowsByEditionFromChain(ctx, editionId, expand)
+}
+
+// fetchEscrowsByEditionFromChain is ListEscrowsByEdition's chain fallback —
+// unchanged from its pre-#102 body.
+func (s *Service) fetchEscrowsByEditionFromChain(ctx context.Context, editionId uint64, expand bool) (*EscrowListResponse, error) {
 	args := []transactions.Argument{
 		cadence.NewUInt64(editionId),
 		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
@@ -838,12 +911,28 @@ func (s *Service) ListEscrowsByEdition(ctx context.Context, editionId uint64, ex
 // resolving each id's summary, so this always calls the one combined
 // script and derives EscrowIds from its result; expand=false simply omits
 // Escrows from the response.
+//
+// Read-swap (issue #102): same projection-first, chain-fallback pattern as
+// ListEscrowsByBuyer — see escrow_read_swap.go.
 func (s *Service) ListEscrowsBySeller(ctx context.Context, seller string, expand bool) (*EscrowListResponse, error) {
 	seller, err := flow_helpers.ValidateAddress(seller, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, err
 	}
 
+	if res, ok := s.listEscrowsFromProjection(ctx, expand, func() ([]escrow_projection.Escrow, error) {
+		return s.escrowStore.ListBySeller(ctx, seller)
+	}); ok {
+		return res, nil
+	}
+
+	return s.fetchEscrowsBySellerFromChain(ctx, seller, expand)
+}
+
+// fetchEscrowsBySellerFromChain is ListEscrowsBySeller's chain fallback —
+// unchanged from its pre-#102 body other than taking an already-validated
+// seller address.
+func (s *Service) fetchEscrowsBySellerFromChain(ctx context.Context, seller string, expand bool) (*EscrowListResponse, error) {
 	args := []transactions.Argument{
 		cadence.NewAddress(flow.HexToAddress(seller)),
 		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
