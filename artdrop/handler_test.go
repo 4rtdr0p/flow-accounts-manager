@@ -361,3 +361,6 @@ func (s *captureTransactionService) UpdateTransaction(t *transactions.Transactio
 func (s *captureTransactionService) GetOrCreateTransaction(transactionId string) *transactions.Transaction {
 	return nil
 }
+
+func (s *captureTransactionService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
+}

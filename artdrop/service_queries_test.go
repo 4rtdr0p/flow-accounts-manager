@@ -691,3 +691,6 @@ func (s *queryTxService) UpdateTransaction(t *transactions.Transaction) error {
 func (s *queryTxService) GetOrCreateTransaction(transactionId string) *transactions.Transaction {
 	panic("not used by queries")
 }
+
+func (s *queryTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
+}

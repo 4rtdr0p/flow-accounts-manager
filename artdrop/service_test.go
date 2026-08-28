@@ -607,3 +607,6 @@ func (s *setupTxService) UpdateTransaction(t *transactions.Transaction) error {
 func (s *setupTxService) GetOrCreateTransaction(transactionId string) *transactions.Transaction {
 	panic("not used")
 }
+
+func (s *setupTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
+}

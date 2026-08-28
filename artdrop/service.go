@@ -123,7 +123,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 
 	sub := func(script string) string { return substituteAddresses(script, validated) }
 
-	return &Service{
+	svc := &Service{
 		deps: deps,
 		cfg:  validated,
 
@@ -145,7 +145,21 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		setupArtistDirectClaimCDC:     sub(setupArtistDirectClaimCDC),
 		createOriginalCDC:             sub(createOriginalCDC),
 		createEditionCDC:              sub(createEditionCDC),
-	}, nil
+	}
+
+	// Expose the new Original/Edition id on the async job's Result field
+	// (see event_extractors.go) so the front end can read it straight from
+	// pollJob instead of falling back to the public Flow REST API. This is
+	// the plugin registering itself with the core's generic per-Type hook —
+	// the core transactions package never learns about ArtDrop event shapes.
+	// deps.Transactions is nil in some test constructions (see
+	// service_helpers_test.go) that never exercise transaction creation.
+	if deps.Transactions != nil {
+		deps.Transactions.RegisterResultExtractor(TxTypeCreateOriginal, extractOriginalCreatedResult)
+		deps.Transactions.RegisterResultExtractor(TxTypeCreateEdition, extractEditionCreatedResult)
+	}
+
+	return svc, nil
 }
 
 // Transfer executes an ArtDrop protocol transfer of a certificate NFT.

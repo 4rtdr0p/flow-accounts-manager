@@ -266,6 +266,9 @@ func (s *graduateTxService) GetOrCreateTransaction(transactionId string) *transa
 	panic("not used")
 }
 
+func (s *graduateTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
+}
+
 type graduateFlowClient struct {
 	userPublicKey     crypto.PublicKey
 	revokedKeyIndices []uint32

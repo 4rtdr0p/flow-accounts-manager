@@ -28,6 +28,12 @@ type Service interface {
 	ExecuteScript(ctx context.Context, code string, args []Argument) (cadence.Value, error)
 	UpdateTransaction(t *Transaction) error
 	GetOrCreateTransaction(transactionId string) *Transaction
+
+	// RegisterResultExtractor lets a plugin expose plugin-specific data (e.g.
+	// an on-chain entity id) on the async job Result for one of its own
+	// transaction Types, without the core knowing anything about that
+	// plugin's event shapes. See ResultExtractorFunc.
+	RegisterResultExtractor(tType Type, fn ResultExtractorFunc)
 }
 
 // ServiceImpl defines the API for transaction HTTP handlers.
@@ -39,6 +45,7 @@ type ServiceImpl struct {
 	wp                    jobs.WorkerPool
 	cfg                   *configs.Config
 	txRateLimiter         ratelimit.Limiter
+	resultExtractors      map[Type]ResultExtractorFunc
 }
 
 // NewService initiates a new transaction service.
@@ -54,12 +61,13 @@ func NewService(
 
 	// TODO(latenssi): safeguard against nil config?
 	svc := &ServiceImpl{
-		store:         store,
-		km:            km,
-		fc:            fc,
-		wp:            wp,
-		cfg:           cfg,
-		txRateLimiter: defaultTxRatelimiter,
+		store:            store,
+		km:               km,
+		fc:               fc,
+		wp:               wp,
+		cfg:              cfg,
+		txRateLimiter:    defaultTxRatelimiter,
+		resultExtractors: make(map[Type]ResultExtractorFunc),
 	}
 
 	for _, opt := range opts {
@@ -74,6 +82,11 @@ func NewService(
 	wp.RegisterExecutor(TransactionJobType, svc.executeTransactionJob)
 
 	return svc
+}
+
+// RegisterResultExtractor implements Service.
+func (s *ServiceImpl) RegisterResultExtractor(tType Type, fn ResultExtractorFunc) {
+	s.resultExtractors[tType] = fn
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, sync bool, proposerAddress string, code string, args []Argument, tType Type) (*jobs.Job, *Transaction, error) {
