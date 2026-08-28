@@ -141,15 +141,22 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/accounts/{address}/artdrop/certificates", h.ListCertificates()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/certificates/{certId}", h.GetCertificateDetail()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/collection-length", h.GetCollectionLength()).Methods(http.MethodGet)
-	// by-edition and by-seller (#100) MUST be registered before the
-	// /escrows/{escrowId} catch-all below: gorilla/mux matches routes in
-	// registration order, and both "/escrows/by-edition/..." (extra path
-	// segment, no real conflict) and especially "/escrows/by-seller" (same
-	// single-segment shape as {escrowId}) would otherwise be swallowed by
-	// GetEscrowFunc with escrowId="by-seller", failing ParseUint with a 400
-	// instead of ever reaching ListEscrowsBySellerFunc.
+	// by-edition, by-seller and by-artist (#100/#102) MUST be registered
+	// before the /escrows/{escrowId} catch-all below: gorilla/mux matches
+	// routes in registration order, and "/escrows/by-edition/..." (extra
+	// path segment, no real conflict) and especially "/escrows/by-seller"
+	// / "/escrows/by-artist" (same single-segment shape as {escrowId})
+	// would otherwise be swallowed by GetEscrowFunc with
+	// escrowId="by-seller"/"by-artist", failing ParseUint with a 400
+	// instead of ever reaching the intended handler.
 	router.Handle("/accounts/{address}/artdrop/escrows/by-edition/{editionId}", h.ListEscrowsByEdition()).Methods(http.MethodGet)
+	// by-seller = literal "escrows where {address} is the seller"
+	// (projection-served, WHERE seller = address) vs. by-artist = "escrows
+	// on editions {address} created as an artist" (chain-served three-index
+	// walk) — split for issue #102, see Service.ListEscrowsBySeller's doc
+	// comment for the full reasoning; both share the EscrowSummary shape.
 	router.Handle("/accounts/{address}/artdrop/escrows/by-seller", h.ListEscrowsBySeller()).Methods(http.MethodGet)
+	router.Handle("/accounts/{address}/artdrop/escrows/by-artist", h.ListEscrowsByArtist()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}", h.GetEscrow()).Methods(http.MethodGet)
 	router.Handle("/artdrop/originals/{origId}", h.GetOriginalSummary()).Methods(http.MethodGet)
 	router.Handle("/artdrop/originals/{origId}/edition-ids", h.GetEditionIDsByOriginal()).Methods(http.MethodGet)

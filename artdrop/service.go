@@ -898,22 +898,30 @@ func (s *Service) fetchEscrowsByEditionFromChain(ctx context.Context, editionId 
 	return res, nil
 }
 
-// ListEscrowsBySeller returns every escrow open against an edition created
-// by the given seller/artist — see get_escrows_by_seller_expanded.cdc for
-// the three-index walk (ArtistIndex -> editions-per-original ->
-// EscrowsByEditionIndex) this composes in one script execution. Added for
-// issue #100: the contract has no direct seller -> escrow index, and
-// composing the existing ones server-side costs the same one round trip a
-// dedicated index would, without a contract or storage change.
+// ListEscrowsBySeller returns every escrow whose seller field is literally
+// the given address — "escrows where {address} is the seller", the same
+// address CreateEscrow/ReEscrow record as `seller`. This is a DIFFERENT
+// question from ListEscrowsByArtist below ("escrows on editions {address}
+// created as an artist") — the two were conflated behind one endpoint
+// through issue #100 (whose get_escrows_by_seller_expanded.cdc actually
+// answers the artist question) and split into separate endpoints for issue
+// #102, once the projection made the literal seller question answerable
+// without a three-index chain walk.
 //
-// Unlike ListEscrowsByBuyer/ListEscrowsByEdition there is no separate
-// ids-only script here — the three-level walk is the expensive part, not
-// resolving each id's summary, so this always calls the one combined
-// script and derives EscrowIds from its result; expand=false simply omits
-// Escrows from the response.
-//
-// Read-swap (issue #102): same projection-first, chain-fallback pattern as
-// ListEscrowsByBuyer — see escrow_read_swap.go.
+// Projection-served ONLY (issue #102) — there is deliberately no chain
+// fallback here. The only chain-backed answer to "escrows where address is
+// literally the seller" would itself require a new indexed query (no
+// existing index or script answers it), and falling back to
+// ListEscrowsByArtist's walk would silently return a DIFFERENT, wrong
+// answer for any address that is a seller but not the artist (e.g. a
+// gallery reselling on an artist's behalf) — worse than returning an
+// empty, honestly-labeled result. So: if the projection is nil (no DB
+// configured) or hasn't been backfilled/hasn't seen an event yet (see
+// listEscrowsFromProjection's Count()==0 check), this returns an empty
+// (never nil) EscrowIds slice rather than any chain data. In steady state
+// (DB configured, backfill has run) this is indistinguishable from a fully
+// accurate answer; only the narrow boot window before the one-time
+// backfill completes can under-report, and only transiently.
 func (s *Service) ListEscrowsBySeller(ctx context.Context, seller string, expand bool) (*EscrowListResponse, error) {
 	seller, err := flow_helpers.ValidateAddress(seller, s.deps.Config.ChainID)
 	if err != nil {
@@ -926,15 +934,40 @@ func (s *Service) ListEscrowsBySeller(ctx context.Context, seller string, expand
 		return res, nil
 	}
 
-	return s.fetchEscrowsBySellerFromChain(ctx, seller, expand)
+	return &EscrowListResponse{EscrowIds: []uint64{}}, nil
 }
 
-// fetchEscrowsBySellerFromChain is ListEscrowsBySeller's chain fallback —
-// unchanged from its pre-#102 body other than taking an already-validated
-// seller address.
-func (s *Service) fetchEscrowsBySellerFromChain(ctx context.Context, seller string, expand bool) (*EscrowListResponse, error) {
+// ListEscrowsByArtist returns every escrow open against an edition created
+// by the given address as an artist — "escrows on the editions {address}
+// created", answered by walking three existing public indices in one
+// script execution (see get_escrows_by_seller_expanded.cdc — file/script
+// unchanged from issue #100, reused as-is; only the HTTP endpoint name
+// changed from by-seller to by-artist for issue #102, see
+// ListEscrowsBySeller's doc comment for why the two questions were split):
+//
+//	ArtDropRegistry.ArtistIndex        artist -> [originalId]
+//	ArtDropCore.getEditionIdsByOriginal originalId -> [editionId]
+//	ArtDropRegistry.EscrowsByEditionIndex editionId -> [escrowId]
+//	ArtDropCore.getEscrowSummary        escrowId -> EscrowSummary?
+//
+// Chain-served only, deliberately not projected (issue #102): this is a
+// low-frequency query (an artist checking their own editions, not a
+// buyer-facing hot path), the contract has no direct artist -> escrow
+// index so a dedicated column would need its own event-driven maintenance
+// with no event currently carrying "which artist owns this escrow's
+// edition", and one combined script call costs the same one round trip
+// regardless of how many originals/editions/escrows the artist has. If
+// this ever becomes a hot path, projecting it needs an `artist` column
+// resolved via EditionId -> Original -> artist (not available from any
+// escrow-lifecycle event today) — not attempted here.
+func (s *Service) ListEscrowsByArtist(ctx context.Context, artist string, expand bool) (*EscrowListResponse, error) {
+	artist, err := flow_helpers.ValidateAddress(artist, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
 	args := []transactions.Argument{
-		cadence.NewAddress(flow.HexToAddress(seller)),
+		cadence.NewAddress(flow.HexToAddress(artist)),
 		cadence.NewAddress(flow.HexToAddress(s.cfg.ArtDropRegistryAddress)),
 	}
 

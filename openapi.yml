@@ -845,12 +845,40 @@ paths:
           description: OK
   '/accounts/{address}/artdrop/escrows/by-seller':
     get:
-      summary: List ArtDrop escrows where the account is the seller
+      summary: List ArtDrop escrows where the account is literally the seller
+      description: >-
+        Returns every escrow whose seller field is this address, served from
+        the local escrow projection. This is a different question from
+        by-artist below (which editions this account created) — see two
+        addresses apart if a gallery resells on an artist's behalf. Pass
+        ?expand=summary to include each escrow's full summary. Before the
+        projection's one-time startup backfill completes, this may return an
+        empty result rather than an inaccurate one.
+      operationId: listArtDropEscrowsBySeller
+      x-required-scopes:
+        - account.read
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - name: expand
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary]
+          description: When set to "summary", each escrow id is expanded to its full summary.
+      responses:
+        '200':
+          description: OK
+  '/accounts/{address}/artdrop/escrows/by-artist':
+    get:
+      summary: List ArtDrop escrows opened against editions the account created as an artist
       description: >-
         Walks the account's originals and editions to collect every escrow
         opened against them, in a single combined on-chain query. Pass
         ?expand=summary to include each escrow's full summary.
-      operationId: listArtDropEscrowsBySeller
+      operationId: listArtDropEscrowsByArtist
       x-required-scopes:
         - account.read
       tags:

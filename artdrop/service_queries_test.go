@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
@@ -489,7 +490,14 @@ func TestListEscrowsByEditionExpandsSummaries(t *testing.T) {
 // listing (issue #100): unlike buyer/edition there is no separate ids-only
 // script, so even expand=false makes exactly one call to
 // get_escrows_by_seller_expanded.cdc and derives EscrowIds from its result.
-func TestListEscrowsBySellerWalksThreeIndicesInOneCall(t *testing.T) {
+//
+// This walk moved from ListEscrowsBySeller to ListEscrowsByArtist in issue
+// #102 — "which editions did this address create as an artist" is a
+// different question from the new ListEscrowsBySeller's literal
+// WHERE-seller-field query (projection-served, tested separately below in
+// TestListEscrowsBySeller*). See Service.ListEscrowsBySeller's doc comment
+// for the full split rationale.
+func TestListEscrowsByArtistWalksThreeIndicesInOneCall(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: escrowSummaryExpandedArrayResult(t,
 			escrowSummaryDict(t, 21, 5, 1, 60, 0, nil, false, nil),
@@ -501,9 +509,9 @@ func TestListEscrowsBySellerWalksThreeIndicesInOneCall(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf8d6e0586b0a20c7", false)
+	res, err := svc.ListEscrowsByArtist(context.Background(), "0xf8d6e0586b0a20c7", false)
 	if err != nil {
-		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+		t.Fatalf("ListEscrowsByArtist returned error: %v", err)
 	}
 	if len(res.EscrowIds) != 2 || res.EscrowIds[0] != 21 || res.EscrowIds[1] != 22 {
 		t.Fatalf("unexpected escrow ids: %+v", res.EscrowIds)
@@ -516,10 +524,10 @@ func TestListEscrowsBySellerWalksThreeIndicesInOneCall(t *testing.T) {
 	}
 }
 
-// TestListEscrowsBySellerExpandsSummaries covers ?expand=summary for
-// by-seller: same single call, but the response now also carries the full
+// TestListEscrowsByArtistExpandsSummaries covers ?expand=summary for
+// by-artist: same single call, but the response now also carries the full
 // summaries.
-func TestListEscrowsBySellerExpandsSummaries(t *testing.T) {
+func TestListEscrowsByArtistExpandsSummaries(t *testing.T) {
 	txSvc := &queryTxService{
 		scriptResult: escrowSummaryExpandedArrayResult(t,
 			escrowSummaryDict(t, 21, 5, 1, 60, 0, nil, false, nil),
@@ -530,15 +538,117 @@ func TestListEscrowsBySellerExpandsSummaries(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	})
 
-	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf8d6e0586b0a20c7", true)
+	res, err := svc.ListEscrowsByArtist(context.Background(), "0xf8d6e0586b0a20c7", true)
 	if err != nil {
-		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+		t.Fatalf("ListEscrowsByArtist returned error: %v", err)
 	}
 	if len(res.Escrows) != 1 || res.Escrows[0].Id != 21 || res.Escrows[0].EditionId != 5 {
 		t.Fatalf("unexpected expanded escrows: %+v", res.Escrows)
 	}
 	if len(txSvc.calls) != 1 {
 		t.Fatalf("expected exactly 1 script call, got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsByArtistPropagatesScriptError covers by-artist's script
+// failure path (its own scripted TxService.err, distinct from
+// TestListEscrowsByBuyerPropagatesScriptError below).
+func TestListEscrowsByArtistPropagatesScriptError(t *testing.T) {
+	txSvc := &queryTxService{err: errors.New("script execution failed")}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	_, err := svc.ListEscrowsByArtist(context.Background(), "0xf8d6e0586b0a20c7", false)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestListEscrowsBySeller_ServesFromProjectionOnly pins issue #102's split:
+// ListEscrowsBySeller now answers "escrows where address is literally the
+// seller field" from the local projection, never from
+// get_escrows_by_seller_expanded.cdc's artist walk (that's
+// ListEscrowsByArtist above, a different question).
+func TestListEscrowsBySeller_ServesFromProjectionOnly(t *testing.T) {
+	db := newProjectionTestDB(t)
+	txSvc := &queryTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+		DB:           db,
+	})
+
+	seller := "0xf3fcd2c1a78f5eee"
+	if err := svc.escrowStore.UpsertCreated(context.Background(), escrow_projection.CreateFields{
+		EscrowID: 21, Buyer: "0x179b6b1cb6755e31", Seller: seller,
+		EditionID: editionPtr(5), CertificateID: 60, SourceEvent: "EscrowCreated",
+	}); err != nil {
+		t.Fatalf("seed projection: %v", err)
+	}
+
+	res, err := svc.ListEscrowsBySeller(context.Background(), seller, true)
+	if err != nil {
+		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 1 || res.EscrowIds[0] != 21 {
+		t.Fatalf("unexpected escrow ids: %+v", res.EscrowIds)
+	}
+	if len(res.Escrows) != 1 || res.Escrows[0].Seller != seller {
+		t.Fatalf("unexpected expanded escrows: %+v", res.Escrows)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected zero chain calls — by-seller must never fall back to the artist walk, got %d calls", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsBySeller_ReturnsEmptyNotChainDataWhenProjectionIsCold
+// pins the explicit tech-lead decision: an unready projection returns an
+// empty (never nil) result for by-seller — it must NEVER fall back to
+// ListEscrowsByArtist's walk, which would silently answer a different
+// question (e.g. a gallery reselling on an artist's behalf is a seller but
+// not the artist).
+func TestListEscrowsBySeller_ReturnsEmptyNotChainDataWhenProjectionIsCold(t *testing.T) {
+	db := newProjectionTestDB(t) // migrated, but empty — projection not backfilled yet
+	txSvc := &queryTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+		DB:           db,
+	})
+
+	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf3fcd2c1a78f5eee", false)
+	if err != nil {
+		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+	}
+	if res.EscrowIds == nil || len(res.EscrowIds) != 0 {
+		t.Fatalf("expected an empty (never nil) EscrowIds slice, got %+v", res.EscrowIds)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected zero chain calls when the projection is cold, got %d", len(txSvc.calls))
+	}
+}
+
+// TestListEscrowsBySeller_ReturnsEmptyWhenNoDBConfigured covers the
+// deps.DB==nil case (no chain fallback ever, same reasoning as the cold
+// projection case above).
+func TestListEscrowsBySeller_ReturnsEmptyWhenNoDBConfigured(t *testing.T) {
+	txSvc := &queryTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	res, err := svc.ListEscrowsBySeller(context.Background(), "0xf3fcd2c1a78f5eee", false)
+	if err != nil {
+		t.Fatalf("ListEscrowsBySeller returned error: %v", err)
+	}
+	if len(res.EscrowIds) != 0 {
+		t.Fatalf("expected an empty EscrowIds slice, got %+v", res.EscrowIds)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected zero chain calls, got %d", len(txSvc.calls))
 	}
 }
 

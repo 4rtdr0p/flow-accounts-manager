@@ -21,10 +21,20 @@
 ///
 /// Unlike get_escrows_by_buyer.cdc / get_escrows_by_edition.cdc, there is no
 /// separate ids-only sibling script for this query: the expensive part is
-/// the three-level walk itself, not resolving each id's summary, so
-/// Service.ListEscrowsBySeller always calls this one script and derives the
-/// plain id list from the summaries it returns when the caller didn't ask
-/// for ?expand=summary.
+/// the three-level walk itself, not resolving each id's summary, so this
+/// one script is always called and the plain id list is derived from the
+/// summaries it returns when the caller didn't ask for ?expand=summary.
+///
+/// Issue #102 update: this script/parameter name is unchanged (still
+/// "seller"), but the Go-level caller is now Service.ListEscrowsByArtist,
+/// exposed at GET .../escrows/by-artist — "editions this address created
+/// as an artist" is a different question from "escrows where this address
+/// is literally the seller field" (now Service.ListEscrowsBySeller,
+/// projection-served, WHERE seller = address). The two were conflated
+/// behind one by-seller endpoint through issue #100; #102 split them once
+/// the projection made the literal-seller question answerable without this
+/// walk. See ListEscrowsBySeller's doc comment in service.go for the full
+/// reasoning.
 import ArtDropRegistry from 0xec581a0282d99a1a
 import ArtDropCore from 0xec581a0282d99a1a
 

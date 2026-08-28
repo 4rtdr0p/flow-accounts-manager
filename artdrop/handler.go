@@ -545,16 +545,41 @@ func (h *Handler) ListEscrowsBySeller() http.Handler {
 	return http.HandlerFunc(h.ListEscrowsBySellerFunc)
 }
 
-// ListEscrowsBySellerFunc lists every escrow open against an edition
-// created by the seller/artist in the path — see
-// Service.ListEscrowsBySeller and get_escrows_by_seller_expanded.cdc for
-// the three-index walk. Pass ?expand=summary for full summaries; omitted,
-// the response carries only escrow_ids.
+// ListEscrowsBySellerFunc lists every escrow whose seller field is
+// literally the address in the path — see Service.ListEscrowsBySeller's
+// doc comment for why this is a different question from
+// ListEscrowsByArtistFunc below, and why this one is projection-served
+// with no chain fallback (issue #102). Pass ?expand=summary for full
+// summaries; omitted, the response carries only escrow_ids.
 func (h *Handler) ListEscrowsBySellerFunc(rw http.ResponseWriter, r *http.Request) {
 	address := mux.Vars(r)["address"]
 	expand := r.URL.Query().Get("expand") == "summary"
 
 	res, err := h.svc.ListEscrowsBySeller(r.Context(), address, expand)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, res)
+}
+
+func (h *Handler) ListEscrowsByArtist() http.Handler {
+	return http.HandlerFunc(h.ListEscrowsByArtistFunc)
+}
+
+// ListEscrowsByArtistFunc lists every escrow open against an edition
+// created by the address in the path AS AN ARTIST — see
+// Service.ListEscrowsByArtist and get_escrows_by_seller_expanded.cdc for
+// the three-index walk (unchanged from issue #100; only this endpoint's
+// name is new, issue #102 — see ListEscrowsBySeller's doc comment for why
+// it was split off). Pass ?expand=summary for full summaries; omitted, the
+// response carries only escrow_ids.
+func (h *Handler) ListEscrowsByArtistFunc(rw http.ResponseWriter, r *http.Request) {
+	address := mux.Vars(r)["address"]
+	expand := r.URL.Query().Get("expand") == "summary"
+
+	res, err := h.svc.ListEscrowsByArtist(r.Context(), address, expand)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return

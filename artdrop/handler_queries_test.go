@@ -1,12 +1,14 @@
 package artdrop
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/gorilla/mux"
@@ -543,11 +545,13 @@ func TestListEscrowsByEditionHandlerRejectsInvalidEditionId(t *testing.T) {
 	}
 }
 
-// TestListEscrowsBySellerHandlerReturnsIds covers the by-seller listing
-// endpoint added for issue #100. Unlike by-edition/by-buyer, a single
-// script call always resolves full summaries; without ?expand the handler
-// still reports only escrow_ids.
-func TestListEscrowsBySellerHandlerReturnsIds(t *testing.T) {
+// TestListEscrowsByArtistHandlerReturnsIds covers the by-artist listing
+// endpoint (the three-index artist walk added for issue #100, moved from
+// the by-seller endpoint to its own by-artist endpoint in issue #102 — see
+// Service.ListEscrowsBySeller's doc comment). Unlike by-edition/by-buyer, a
+// single script call always resolves full summaries; without ?expand the
+// handler still reports only escrow_ids.
+func TestListEscrowsByArtistHandlerReturnsIds(t *testing.T) {
 	unlockAt, err := cadence.NewUFix64("4102444800.00000000")
 	if err != nil {
 		t.Fatal(err)
@@ -575,6 +579,42 @@ func TestListEscrowsBySellerHandlerReturnsIds(t *testing.T) {
 		Config:       &configs.Config{ChainID: flow.Emulator},
 	}))
 
+	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/by-artist", nil)
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.ListEscrowsByArtist().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if !strings.Contains(rw.Body.String(), `"escrow_ids":[21]`) {
+		t.Fatalf("expected response to contain escrow_ids [21], got %s", rw.Body.String())
+	}
+	if strings.Contains(rw.Body.String(), `"escrows"`) {
+		t.Fatalf("expected no expanded escrows without ?expand=summary, got %s", rw.Body.String())
+	}
+}
+
+// TestListEscrowsBySellerHandlerServesFromProjection covers the by-seller
+// endpoint's new semantics (issue #102): literal WHERE seller = address,
+// served from the projection, never from the by-artist walk script.
+func TestListEscrowsBySellerHandlerServesFromProjection(t *testing.T) {
+	db := newProjectionTestDB(t)
+	txSvc := &queryTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+		DB:           db,
+	})
+	if err := svc.escrowStore.UpsertCreated(context.Background(), escrow_projection.CreateFields{
+		EscrowID: 21, Buyer: "0x179b6b1cb6755e31", Seller: "0xf8d6e0586b0a20c7",
+		EditionID: editionPtr(5), CertificateID: 60, SourceEvent: "EscrowCreated",
+	}); err != nil {
+		t.Fatalf("seed projection: %v", err)
+	}
+	handler := NewHandler(svc)
+
 	req := httptest.NewRequest(http.MethodGet, "/accounts/0xf8d6e0586b0a20c7/artdrop/escrows/by-seller", nil)
 	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
 	rw := httptest.NewRecorder()
@@ -587,8 +627,8 @@ func TestListEscrowsBySellerHandlerReturnsIds(t *testing.T) {
 	if !strings.Contains(rw.Body.String(), `"escrow_ids":[21]`) {
 		t.Fatalf("expected response to contain escrow_ids [21], got %s", rw.Body.String())
 	}
-	if strings.Contains(rw.Body.String(), `"escrows"`) {
-		t.Fatalf("expected no expanded escrows without ?expand=summary, got %s", rw.Body.String())
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected zero chain calls, got %d", len(txSvc.calls))
 	}
 }
 
