@@ -195,14 +195,34 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	// here would be pointless and would still cost a chain call in setups
 	// that deliberately asked for none.
 	if deps.Config == nil || !deps.Config.DisableChainEvents {
+		// resync is gated by its own flag (see Config.EscrowProjectionResync):
+		// the backfill runs every boot (self-healing no-op once seeded), but
+		// the resync re-reads the chain and rewrites existing rows' status, so
+		// it only runs when an operator explicitly asks for it — typically for
+		// one boot after deploying the EscrowVoided handler (issue #109).
+		resync := p.svc.cfg.EscrowProjectionResync
 		go func() {
 			written, err := p.svc.BackfillEscrowProjection(context.Background())
 			if err != nil {
 				log.WithError(err).Warn("escrow projection: backfill failed, will retry next boot")
+			} else if written > 0 {
+				log.WithField("written", written).Info("escrow projection: backfill wrote rows")
+			}
+
+			if !resync {
 				return
 			}
-			if written > 0 {
-				log.WithField("written", written).Info("escrow projection: backfill wrote rows")
+			// Run after the backfill so a first-ever boot (empty table) seeds
+			// then reconciles in one pass. On an already-seeded table the
+			// backfill was a no-op and this repairs the stale rows (e.g. the
+			// escrows voided before #109 subscribed to EscrowVoided).
+			updated, err := p.svc.ResyncEscrowProjection(context.Background())
+			if err != nil {
+				log.WithError(err).Warn("escrow projection: resync failed, will retry next boot")
+				return
+			}
+			if updated > 0 {
+				log.WithField("updated", updated).Info("escrow projection: resync updated stale rows")
 			}
 		}()
 	}

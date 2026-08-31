@@ -56,6 +56,7 @@ func testAddress(hex string) cadence.Address {
 type fakeStore struct {
 	createCalls   []CreateFields
 	releaseCalls  []releaseCall
+	voidCalls     []voidCall
 	claimCalls    []claimCall
 	editionByCert map[uint64]*uint64
 }
@@ -65,6 +66,12 @@ type releaseCall struct {
 	status        uint8
 	releaseReason uint8
 	height        uint64
+}
+
+type voidCall struct {
+	escrowID uint64
+	status   uint8
+	height   uint64
 }
 
 type claimCall struct {
@@ -81,9 +88,16 @@ func (f *fakeStore) UpsertReleased(ctx context.Context, escrowID uint64, status,
 	f.releaseCalls = append(f.releaseCalls, releaseCall{escrowID, status, releaseReason, height})
 	return nil
 }
+func (f *fakeStore) UpsertVoided(ctx context.Context, escrowID uint64, status uint8, height uint64) error {
+	f.voidCalls = append(f.voidCalls, voidCall{escrowID, status, height})
+	return nil
+}
 func (f *fakeStore) UpsertClaimed(ctx context.Context, escrowID uint64, claimed bool, claimedAt *string) error {
 	f.claimCalls = append(f.claimCalls, claimCall{escrowID, claimed, claimedAt})
 	return nil
+}
+func (f *fakeStore) ResyncFromChain(ctx context.Context, escrowID uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) (bool, error) {
+	return false, nil
 }
 func (f *fakeStore) UpsertBackfillRow(ctx context.Context, row Escrow) error { return nil }
 func (f *fakeStore) EditionIDForCertificate(ctx context.Context, certificateID uint64) (*uint64, error) {
@@ -234,6 +248,40 @@ func TestHandleEscrowReleased_Decodes(t *testing.T) {
 	}
 }
 
+// TestHandleEscrowVoided_WritesVoidedStatus pins issue #109: an EscrowVoided
+// event (admin annulment, #185) must set status=Voided(2) via UpsertVoided,
+// carrying no releaseReason (the event has none — see ArtDropCore.cdc).
+func TestHandleEscrowVoided_WritesVoidedStatus(t *testing.T) {
+	store := &fakeStore{}
+	h := &ArtDropEscrowEventHandler{Store: store}
+
+	event := newTestEvent("EscrowVoided", map[string]cadence.Value{
+		"envelope": newEnvelopeStruct(777),
+		"escrowId": cadence.NewUInt64(8),
+		"releaser": testAddress("0x179b6b1cb6755e31"),
+	}, []string{"envelope", "escrowId", "releaser"})
+
+	h.Handle(context.Background(), event)
+
+	if len(store.voidCalls) != 1 {
+		t.Fatalf("expected 1 UpsertVoided call, got %d", len(store.voidCalls))
+	}
+	got := store.voidCalls[0]
+	if got.escrowID != 8 {
+		t.Fatalf("expected escrowId 8, got %d", got.escrowID)
+	}
+	if got.status != 2 {
+		t.Fatalf("expected status 2 (Voided), got %d", got.status)
+	}
+	if got.height != 777 {
+		t.Fatalf("expected height 777 from envelope, got %d", got.height)
+	}
+	// EscrowVoided must not be misrouted to the release/claim handlers.
+	if len(store.releaseCalls) != 0 || len(store.claimCalls) != 0 {
+		t.Fatal("EscrowVoided must only touch UpsertVoided")
+	}
+}
+
 // TestHandleEscrowClaimed_HasNoEnvelope pins that EscrowClaimed is the one
 // escrow event without an envelope (see ArtDropCore.cdc) — the handler
 // must still apply claimed=true without a blockHeight.
@@ -274,7 +322,7 @@ func TestHandle_IgnoresUnrelatedEventType(t *testing.T) {
 
 	h.Handle(context.Background(), event)
 
-	if len(store.createCalls)+len(store.releaseCalls)+len(store.claimCalls) != 0 {
+	if len(store.createCalls)+len(store.releaseCalls)+len(store.voidCalls)+len(store.claimCalls) != 0 {
 		t.Fatal("expected no store calls for an unrelated event type")
 	}
 }
@@ -295,17 +343,18 @@ func TestHandle_MissingEscrowIdIsANoOp(t *testing.T) {
 	}
 }
 
-func TestEventTypes_ReturnsTheFourLiveEventsOnly(t *testing.T) {
+func TestEventTypes_ReturnsTheLiveEventsOnly(t *testing.T) {
 	types := EventTypes("0xec581a0282d99a1a")
 
 	want := map[string]bool{
 		"A.ec581a0282d99a1a.ArtDropCore.EscrowCreated":         false,
 		"A.ec581a0282d99a1a.ArtDropCore.CertificateReEscrowed": false,
 		"A.ec581a0282d99a1a.ArtDropCore.EscrowReleased":        false,
+		"A.ec581a0282d99a1a.ArtDropCore.EscrowVoided":          false,
 		"A.ec581a0282d99a1a.ArtDropCore.EscrowClaimed":         false,
 	}
-	if len(types) != 4 {
-		t.Fatalf("expected exactly 4 event types, got %d: %v", len(types), types)
+	if len(types) != len(want) {
+		t.Fatalf("expected exactly %d event types, got %d: %v", len(want), len(types), types)
 	}
 	for _, ty := range types {
 		if _, ok := want[ty]; !ok {

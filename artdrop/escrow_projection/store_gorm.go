@@ -74,6 +74,31 @@ func (s *GormStore) UpsertReleased(ctx context.Context, escrowID uint64, status 
 	}).Create(&row).Error
 }
 
+// UpsertVoided applies EscrowVoided (issue #109). Like UpsertReleased it is a
+// terminal status write with the same stub-on-insert / out-of-order safety,
+// but its DoUpdates covers ONLY status (and bookkeeping) — never
+// release_reason, since EscrowVoided carries no releaseReason. status is
+// co-owned by the two mutually-exclusive terminal events (EscrowReleased /
+// EscrowVoided); neither can fire for an escrow the other already terminated
+// (markReleased/markVoided both require status==Pending on-chain), so there is
+// no write race between them.
+func (s *GormStore) UpsertVoided(ctx context.Context, escrowID uint64, status uint8, height uint64) error {
+	row := Escrow{
+		EscrowID:        escrowID,
+		Status:          status,
+		LastEventHeight: height,
+		// See UpsertReleased — Incomplete=true only takes effect on INSERT
+		// (an EscrowVoided that beat its own Created), and is deliberately
+		// absent from DoUpdates so an already-complete row is never reopened.
+		Incomplete: true,
+	}
+
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "escrow_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"status", "last_event_height", "updated_at"}),
+	}).Create(&row).Error
+}
+
 func (s *GormStore) UpsertClaimed(ctx context.Context, escrowID uint64, claimed bool, claimedAt *string) error {
 	row := Escrow{
 		EscrowID:  escrowID,
@@ -112,6 +137,58 @@ func (s *GormStore) EditionIDForCertificate(ctx context.Context, certificateID u
 		return nil, err
 	}
 	return row.EditionID, nil
+}
+
+// ResyncFromChain reconciles one existing row's terminal state against the
+// authoritative on-chain summary (issue #109). It reads the current row
+// first: absent → (false, nil), it never inserts (backfill / the live
+// listener own row creation); already matching → (false, nil), no write. Only
+// on a real difference does it issue the UPDATE, via a map (not a struct) so
+// zero/false values are written rather than skipped by gorm's zero-value
+// omission. Returns whether the row's terminal state changed.
+func (s *GormStore) ResyncFromChain(ctx context.Context, escrowID uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) (bool, error) {
+	var row Escrow
+	err := s.db.WithContext(ctx).Where("escrow_id = ?", escrowID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	if row.Status == status &&
+		uint8PtrEqual(row.ReleaseReason, releaseReason) &&
+		row.Claimed == claimed &&
+		strPtrEqual(row.ClaimedAt, claimedAt) {
+		return false, nil
+	}
+
+	res := s.db.WithContext(ctx).Model(&Escrow{}).
+		Where("escrow_id = ?", escrowID).
+		Updates(map[string]interface{}{
+			"status":         status,
+			"release_reason": releaseReason,
+			"claimed":        claimed,
+			"claimed_at":     claimedAt,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+func uint8PtrEqual(a, b *uint8) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func (s *GormStore) GetByID(ctx context.Context, escrowID uint64) (*Escrow, error) {

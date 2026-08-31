@@ -160,16 +160,78 @@ func (s *Service) BackfillEscrowProjection(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
+	written := 0
+	err = s.forEachOnChainEscrowSummary(ctx, func(summary EscrowSummary) error {
+		if err := s.escrowStore.UpsertBackfillRow(ctx, escrowSummaryToBackfillRow(summary)); err != nil {
+			return fmt.Errorf("upsert backfilled escrow %d: %w", summary.Id, err)
+		}
+		written++
+		return nil
+	})
+	if err != nil {
+		return written, err
+	}
+
+	log.WithField("written", written).Info("escrow projection: backfill complete")
+	return written, nil
+}
+
+// ResyncEscrowProjection reconciles the terminal state (status,
+// releaseReason, claimed, claimedAt) of EXISTING projected rows against
+// current on-chain state (issue #109), returning the number of rows whose
+// state actually changed. Unlike the backfill it never inserts and does not
+// short-circuit on a non-empty table: its whole purpose is to repair drift in
+// rows that ARE projected but went stale because the live listener missed a
+// terminal event — chiefly EscrowVoided, which the #102 projection did not
+// subscribe to until #109, so escrows voided on-chain (e.g. testnet escrows 8
+// and 2) stayed Pending in the read-model.
+//
+// It reuses the same on-chain summary walk as the backfill
+// (forEachOnChainEscrowSummary → getEscrowSummary values), but writes through
+// Store.ResyncFromChain (update-existing-only) instead of UpsertBackfillRow
+// (insert-if-empty). Triggered once on boot behind the
+// ARTDROP_ESCROW_PROJECTION_RESYNC flag (see Config and plugin.go); a no-op
+// when escrowStore is nil.
+func (s *Service) ResyncEscrowProjection(ctx context.Context) (int, error) {
+	if s.escrowStore == nil {
+		return 0, nil
+	}
+
+	updated := 0
+	err := s.forEachOnChainEscrowSummary(ctx, func(summary EscrowSummary) error {
+		changed, err := s.escrowStore.ResyncFromChain(ctx, summary.Id, summary.Status, summary.ReleaseReason, summary.Claimed, summary.ClaimedAt)
+		if err != nil {
+			return fmt.Errorf("resync escrow %d: %w", summary.Id, err)
+		}
+		if changed {
+			updated++
+		}
+		return nil
+	})
+	if err != nil {
+		return updated, err
+	}
+
+	log.WithField("updated", updated).Info("escrow projection: resync complete")
+	return updated, nil
+}
+
+// forEachOnChainEscrowSummary walks the full on-chain escrow id range
+// (1..get_total_escrows) in escrowBackfillChunkSize chunks via
+// get_all_escrow_summaries.cdc, decoding each chunk with the shared
+// decodeEscrowSummaryArray and invoking fn for every EscrowSummary. Shared by
+// BackfillEscrowProjection (insert-if-empty) and ResyncEscrowProjection
+// (reconcile-existing, issue #109); fn's error aborts the walk and propagates.
+func (s *Service) forEachOnChainEscrowSummary(ctx context.Context, fn func(EscrowSummary) error) error {
 	totalVal, err := s.deps.Transactions.ExecuteScript(ctx, s.getTotalEscrowsCDC, nil)
 	if err != nil {
-		return 0, fmt.Errorf("execute get_total_escrows script: %w", err)
+		return fmt.Errorf("execute get_total_escrows script: %w", err)
 	}
 	total, ok := totalVal.(cadence.UInt64)
 	if !ok {
-		return 0, fmt.Errorf("unexpected script result type %T, expected cadence.UInt64", totalVal)
+		return fmt.Errorf("unexpected script result type %T, expected cadence.UInt64", totalVal)
 	}
 
-	written := 0
 	for start := uint64(1); start <= uint64(total); start += escrowBackfillChunkSize {
 		end := start + escrowBackfillChunkSize - 1
 		if end > uint64(total) {
@@ -182,24 +244,22 @@ func (s *Service) BackfillEscrowProjection(ctx context.Context) (int, error) {
 		}
 		val, err := s.deps.Transactions.ExecuteScript(ctx, s.getAllEscrowSummariesCDC, args)
 		if err != nil {
-			return written, fmt.Errorf("execute get_all_escrow_summaries script (ids %d-%d): %w", start, end, err)
+			return fmt.Errorf("execute get_all_escrow_summaries script (ids %d-%d): %w", start, end, err)
 		}
 
 		summaries, err := decodeEscrowSummaryArray(val)
 		if err != nil {
-			return written, fmt.Errorf("decode get_all_escrow_summaries result (ids %d-%d): %w", start, end, err)
+			return fmt.Errorf("decode get_all_escrow_summaries result (ids %d-%d): %w", start, end, err)
 		}
 
 		for _, summary := range summaries {
-			if err := s.escrowStore.UpsertBackfillRow(ctx, escrowSummaryToBackfillRow(summary)); err != nil {
-				return written, fmt.Errorf("upsert backfilled escrow %d: %w", summary.Id, err)
+			if err := fn(summary); err != nil {
+				return err
 			}
-			written++
 		}
 	}
 
-	log.WithFields(log.Fields{"total": total, "written": written}).Info("escrow projection: backfill complete")
-	return written, nil
+	return nil
 }
 
 // escrowSummaryToBackfillRow converts a chain-decoded EscrowSummary into a

@@ -19,12 +19,18 @@ import (
 //   - CertificateReEscrowed (~L2165-2173): envelope, escrowId,
 //     certificateId, chipId, buyer, seller, unlockAt. No editionId — see
 //     EditionIDForCertificate.
-//   - EscrowReleased (~L2177-2182): envelope, escrowId, releaser,
+//   - EscrowReleased (~L2251-2256): envelope, escrowId, releaser,
 //     releaseReason.
-//   - EscrowClaimed (~L2153-2157): escrowId, certificateId, claimant. The
-//     only one of the four with NO envelope — no blockHeight, no
-//     timestamp. See Escrow.ClaimedAt's doc comment for how that gap is
-//     handled.
+//   - EscrowVoided (~L2262-2266): envelope, escrowId, releaser. Emitted by
+//     Escrow.markVoided (admin annulment, issue #185) — a SECOND terminal
+//     event alongside EscrowReleased. It carries no releaseReason (voiding
+//     is not a ReleaseReason), so its handler writes only status=Voided(2),
+//     never release_reason. Added to the projection in #109: the read-model
+//     was built in #102, before #185 introduced this event, so a voided
+//     escrow used to stay stuck at Pending(0) in the projection.
+//   - EscrowClaimed (~L2227-2231): escrowId, certificateId, claimant. The
+//     only one with NO envelope — no blockHeight, no timestamp. See
+//     Escrow.ClaimedAt's doc comment for how that gap is handled.
 //
 // Deliberately NOT subscribed: EscrowSettled / EscrowForceRefunded /
 // EscrowForceCancelled, defined in artdrop-protocol/contracts/core/
@@ -38,6 +44,7 @@ const (
 	eventSuffixEscrowCreated         = ".ArtDropCore.EscrowCreated"
 	eventSuffixCertificateReEscrowed = ".ArtDropCore.CertificateReEscrowed"
 	eventSuffixEscrowReleased        = ".ArtDropCore.EscrowReleased"
+	eventSuffixEscrowVoided          = ".ArtDropCore.EscrowVoided"
 	eventSuffixEscrowClaimed         = ".ArtDropCore.EscrowClaimed"
 )
 
@@ -60,6 +67,7 @@ func EventTypes(coreAddress string) []string {
 		qualify(eventSuffixEscrowCreated),
 		qualify(eventSuffixCertificateReEscrowed),
 		qualify(eventSuffixEscrowReleased),
+		qualify(eventSuffixEscrowVoided),
 		qualify(eventSuffixEscrowClaimed),
 	}
 }
@@ -85,6 +93,8 @@ func (h *ArtDropEscrowEventHandler) Handle(ctx context.Context, event flow.Event
 		h.handleReEscrowed(ctx, event)
 	case strings.HasSuffix(event.Type, eventSuffixEscrowReleased):
 		h.handleReleased(ctx, event)
+	case strings.HasSuffix(event.Type, eventSuffixEscrowVoided):
+		h.handleVoided(ctx, event)
 	case strings.HasSuffix(event.Type, eventSuffixEscrowClaimed):
 		h.handleClaimed(ctx, event)
 	}
@@ -177,6 +187,27 @@ func (h *ArtDropEscrowEventHandler) handleReleased(ctx context.Context, event fl
 
 	if err := h.Store.UpsertReleased(ctx, escrowID, statusReleased, releaseReason, envelopeBlockHeight(event)); err != nil {
 		log.WithError(err).WithField("escrowId", escrowID).Warn("escrow_projection: failed to apply EscrowReleased")
+	}
+}
+
+// handleVoided applies EscrowVoided (admin annulment, issue #185 — added to
+// the projection in #109). It is the second terminal event for an escrow,
+// mutually exclusive with EscrowReleased on-chain (markVoided requires
+// status==Pending, same as markReleased). The event carries no releaseReason
+// (voiding is not a ReleaseReason — see ArtDropCore.cdc's EscrowVoided event
+// vs. EscrowReleased), so this writes only status=Voided(2), never
+// release_reason. Follows EscrowReleased's column-ownership discipline: a
+// terminal status write with the same stub-on-insert / out-of-order safety.
+func (h *ArtDropEscrowEventHandler) handleVoided(ctx context.Context, event flow.Event) {
+	escrowID, ok := fieldUInt64(event.Value.SearchFieldByName("escrowId"))
+	if !ok {
+		log.WithField("eventType", event.Type).Warn("escrow_projection: EscrowVoided missing escrowId")
+		return
+	}
+	const statusVoided = uint8(2) // ArtDropCore.EscrowStatus.Voided.rawValue
+
+	if err := h.Store.UpsertVoided(ctx, escrowID, statusVoided, envelopeBlockHeight(event)); err != nil {
+		log.WithError(err).WithField("escrowId", escrowID).Warn("escrow_projection: failed to apply EscrowVoided")
 	}
 }
 

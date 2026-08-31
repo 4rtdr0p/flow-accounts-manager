@@ -69,6 +69,24 @@ type Config struct {
 	// path. Tunable per deployment; the purchase flow's server-computed amount
 	// remains the real guarantee.
 	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"50000000"`
+
+	// EscrowProjectionResync, when true, runs a one-time on-boot
+	// reconciliation of the escrows projection's terminal state against
+	// on-chain state (issue #109) — see Service.ResyncEscrowProjection. It
+	// re-reads on-chain escrow summaries and updates the status (and other
+	// terminal fields) of EXISTING projected rows only; it never inserts
+	// (backfill owns seeding). Its purpose is to repair drift the live
+	// listener missed, chiefly escrows voided via EscrowVoided before the
+	// projection subscribed to that event (added in #109).
+	//
+	// Off by default. Operational usage: set
+	// FLOW_WALLET_ARTDROP_ESCROW_PROJECTION_RESYNC=true for ONE boot after
+	// deploying the EscrowVoided handler, confirm the "escrow projection:
+	// resync complete" log line, then unset it — leaving it on just re-reads
+	// the chain and writes nothing new on every subsequent boot. Gated
+	// together with the backfill on DISABLE_CHAIN_EVENTS (see plugin.go): with
+	// no listener there is no live projection to keep reconciled.
+	EscrowProjectionResync bool `env:"ARTDROP_ESCROW_PROJECTION_RESYNC" envDefault:"false"`
 }
 
 // defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback

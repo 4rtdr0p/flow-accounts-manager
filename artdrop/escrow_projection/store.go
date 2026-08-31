@@ -33,6 +33,14 @@ type Store interface {
 	// completes.
 	UpsertReleased(ctx context.Context, escrowID uint64, status uint8, releaseReason uint8, height uint64) error
 
+	// UpsertVoided applies an EscrowVoided event (issue #109): writes status
+	// (always Voided=2) and last_event_height only — never release_reason,
+	// which EscrowVoided does not carry (voiding is not a ReleaseReason).
+	// Same stub-insert-on-missing-row behavior as UpsertReleased for
+	// out-of-order delivery; the analogue of MarkReleased for the annulment
+	// terminal state.
+	UpsertVoided(ctx context.Context, escrowID uint64, status uint8, height uint64) error
+
 	// UpsertClaimed applies an EscrowClaimed event: writes claimed/
 	// claimed_at only. Same stub-insert behavior as UpsertReleased when the
 	// row doesn't exist yet.
@@ -50,6 +58,18 @@ type Store interface {
 	// never changes across re-escrows), or nil if no such row is projected
 	// yet.
 	EditionIDForCertificate(ctx context.Context, certificateID uint64) (*uint64, error)
+
+	// ResyncFromChain reconciles the terminal state of an EXISTING projected
+	// row against an authoritative on-chain summary (issue #109): it updates
+	// status, release_reason, claimed and claimed_at to the given values and
+	// returns whether any of them actually changed. It never inserts — a row
+	// the projection hasn't seen is left to backfill / the live listener, not
+	// created here. Used by Service.ResyncEscrowProjection to repair drift the
+	// live listener missed (chiefly EscrowVoided before #109 subscribed to
+	// it). Unlike the event-handler upserts it is not scoped to one event's
+	// column group: the on-chain summary is the source of truth for the whole
+	// terminal state, so reconciling all of it at once is correct.
+	ResyncFromChain(ctx context.Context, escrowID uint64, status uint8, releaseReason *uint8, claimed bool, claimedAt *string) (bool, error)
 
 	// GetByID returns the projected row, or (nil, nil) if absent.
 	GetByID(ctx context.Context, escrowID uint64) (*Escrow, error)

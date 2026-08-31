@@ -364,6 +364,91 @@ func TestBackfillEscrowProjection_NeverOverwritesRowsTheListenerAlreadyWrote(t *
 	}
 }
 
+// --- Resync (issue #109) ---
+
+// TestResyncEscrowProjection_UpdatesStaleVoidedRow is the end-to-end
+// reconciliation for issue #109: an escrow projected as Pending(0) because its
+// EscrowVoided was never processed (the projection didn't subscribe to it
+// until #109) is updated to Voided(2) from the on-chain summary, while a row
+// already matching on-chain state is left untouched (updated count = 1).
+func TestResyncEscrowProjection_UpdatesStaleVoidedRow(t *testing.T) {
+	db := newProjectionTestDB(t)
+	// On-chain: escrow 8 is Voided(2); escrow 9 is genuinely Pending(0).
+	dict8 := escrowSummaryDict(t, 8, 42, 1, 99, 2, nil, false, nil)
+	dict9 := escrowSummaryDict(t, 9, 42, 1, 100, 0, nil, false, nil)
+	txSvc := &queryTxService{
+		scriptResults: []cadence.Value{
+			cadence.NewUInt64(9),                              // get_total_escrows
+			escrowSummaryExpandedArrayResult(t, dict8, dict9), // get_all_escrow_summaries
+		},
+	}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+		DB:           db,
+	})
+
+	ctx := context.Background()
+	// Both rows are seeded stale at Pending (the drift the listener left behind).
+	if err := svc.escrowStore.UpsertCreated(ctx, escrow_projection.CreateFields{
+		EscrowID: 8, Buyer: "0x179b6b1cb6755e31", Seller: "0xf3fcd2c1a78f5eee",
+		EditionID: editionPtr(42), CertificateID: 99, SourceEvent: "EscrowCreated",
+	}); err != nil {
+		t.Fatalf("seed 8: %v", err)
+	}
+	if err := svc.escrowStore.UpsertCreated(ctx, escrow_projection.CreateFields{
+		EscrowID: 9, Buyer: "0x179b6b1cb6755e31", Seller: "0xf3fcd2c1a78f5eee",
+		EditionID: editionPtr(42), CertificateID: 100, SourceEvent: "EscrowCreated",
+	}); err != nil {
+		t.Fatalf("seed 9: %v", err)
+	}
+
+	updated, err := svc.ResyncEscrowProjection(ctx)
+	if err != nil {
+		t.Fatalf("ResyncEscrowProjection: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("expected exactly 1 stale row updated (escrow 8), got %d", updated)
+	}
+
+	row8, err := svc.escrowStore.GetByID(ctx, 8)
+	if err != nil {
+		t.Fatalf("GetByID(8): %v", err)
+	}
+	if row8.Status != 2 {
+		t.Fatalf("expected escrow 8 to be Voided(2) after resync, got %d", row8.Status)
+	}
+	row9, err := svc.escrowStore.GetByID(ctx, 9)
+	if err != nil {
+		t.Fatalf("GetByID(9): %v", err)
+	}
+	if row9.Status != 0 {
+		t.Fatalf("expected escrow 9 to stay Pending(0), got %d", row9.Status)
+	}
+}
+
+func TestResyncEscrowProjection_NoOpWhenDBIsNil(t *testing.T) {
+	// Deliberately zero-value: if resync wrongly touched the chain with no
+	// store wired, ExecuteScript would record the call and the assertion below
+	// would catch it.
+	txSvc := &queryTxService{}
+	svc := mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	})
+
+	updated, err := svc.ResyncEscrowProjection(context.Background())
+	if err != nil {
+		t.Fatalf("ResyncEscrowProjection: %v", err)
+	}
+	if updated != 0 {
+		t.Fatalf("expected 0 updated when escrowStore is nil, got %d", updated)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected zero chain calls when escrowStore is nil, got %d", len(txSvc.calls))
+	}
+}
+
 func TestBackfillEscrowProjection_NoOpWhenDBIsNil(t *testing.T) {
 	// Deliberately zero-value: if the projection path has a bug and falls
 	// through to the chain anyway, ExecuteScript records the call (so the
