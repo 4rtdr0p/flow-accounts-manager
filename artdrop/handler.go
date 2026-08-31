@@ -252,6 +252,26 @@ func (h *Handler) ReEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
+func (h *Handler) VoidEscrow() http.Handler {
+	return http.HandlerFunc(h.VoidEscrowFunc)
+}
+
+func (h *Handler) VoidEscrowFunc(rw http.ResponseWriter, r *http.Request) {
+	escrowId, ok := h.parseEscrowID(rw, r)
+	if !ok {
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.VoidEscrow(r.Context(), sync, escrowId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
 func (h *Handler) ActivateChip() http.Handler {
 	return handlers.UseJson(http.HandlerFunc(h.ActivateChipFunc))
 }

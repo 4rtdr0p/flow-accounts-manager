@@ -60,6 +60,9 @@ var createEscrowCDC string
 //go:embed cdc/re_escrow.cdc
 var reEscrowCDC string
 
+//go:embed cdc/void_escrow.cdc
+var voidEscrowCDC string
+
 //go:embed cdc/activate_chip_and_settle.cdc
 var activateChipAndSettleCDC string
 
@@ -121,6 +124,7 @@ type Service struct {
 	getAllEscrowSummariesCDC       string
 	createEscrowCDC                string
 	reEscrowCDC                    string
+	voidEscrowCDC                  string
 	activateChipAndSettleCDC       string
 	getOriginalExtendedSummaryCDC  string
 	getEditionSummaryCDC           string
@@ -191,6 +195,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		getAllEscrowSummariesCDC:       sub(getAllEscrowSummariesCDC),
 		createEscrowCDC:                sub(createEscrowCDC),
 		reEscrowCDC:                    sub(reEscrowCDC),
+		voidEscrowCDC:                  sub(voidEscrowCDC),
 		activateChipAndSettleCDC:       sub(activateChipAndSettleCDC),
 		getOriginalExtendedSummaryCDC:  sub(getOriginalExtendedSummaryCDC),
 		getEditionSummaryCDC:           sub(getEditionSummaryCDC),
@@ -514,6 +519,37 @@ func (s *Service) ReEscrow(ctx context.Context, sync bool, address string, req R
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.reEscrowCDC, args, TxTypeReEscrow)
+}
+
+// VoidEscrow admin-annuls a still-Pending escrow (issue #185's Voided
+// status) — used when the physical piece has been returned and the escrow
+// must be explicitly annulled rather than left to time out, so a
+// subsequent re-escrow is later permitted (createReEscrow requires
+// Voided specifically, not merely "not Pending" — see
+// EscrowModule.EscrowLogic.voidEscrow's doc comment).
+//
+// voidEscrow is OperationalAdmin-gated and deliberately off the public
+// IEscrowLogic interface, so this can't go through the usual
+// getAccount(logicOwner).capabilities.borrow<&{IEscrowLogic}> path that
+// CreateEscrow/ReEscrow/ActivateChip use. Instead it signs with the
+// wallet-api's own admin account, which must hold a delegated
+// Capability<auth(ArtDropCore.OperationalAdmin) &EscrowModule.EscrowLogic>
+// claimed via inbox from logicOwner and saved at
+// /storage/artdropEscrowVoidAdminCap (see artdrop-protocol's
+// transactions/admin/grant_escrow_void_cap.cdc +
+// transactions/setup/claim_escrow_void_cap.cdc, and this plugin's
+// cdc/void_escrow.cdc). No EscrowModule signing key is ever held here.
+func (s *Service) VoidEscrow(ctx context.Context, sync bool, escrowId uint64) (*jobs.Job, *transactions.Transaction, error) {
+	adminAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("validate admin address: %w", err)
+	}
+
+	args := []transactions.Argument{
+		cadence.NewUInt64(escrowId),
+	}
+
+	return s.deps.Transactions.Create(ctx, sync, adminAddress, s.voidEscrowCDC, args, TxTypeVoidEscrow)
 }
 
 // ActivateChip validates a chip signature and settles the escrow.

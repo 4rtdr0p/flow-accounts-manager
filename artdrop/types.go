@@ -16,6 +16,7 @@ const (
 	TxTypeTransfer          transactions.Type = "ArtdropTransfer"
 	TxTypeCreateEscrow      transactions.Type = "ArtdropCreateEscrow"
 	TxTypeReEscrow          transactions.Type = "ArtdropReEscrow"
+	TxTypeVoidEscrow        transactions.Type = "ArtdropVoidEscrow"
 	TxTypeActivateChip      transactions.Type = "ArtdropActivateChip"
 	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"

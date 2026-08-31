@@ -939,6 +939,18 @@ paths:
       responses:
         '201':
           description: Created
+  '/accounts/{address}/artdrop/escrows/{escrowId}/void':
+    post:
+      summary: Admin-annul a Pending ArtDrop escrow
+      description: Voids a still-Pending escrow (issue #185) — the locked FLOW is released to ArtDrop's vault and the escrow's status is set to Voided rather than Released, which is what a subsequent re-escrow requires. Signs via a delegated OperationalAdmin capability, not the EscrowModule account's own key.
+      operationId: voidArtDropEscrow
+      x-required-scopes:
+        - account.transfer
+      tags:
+        - Account Transactions
+      responses:
+        '201':
+          description: Created
   '/accounts/{address}/artdrop/certificates':
     get:
       summary: List ArtDrop certificates for an account
