@@ -60,8 +60,10 @@ import (
 // own `account.artdrop.escrow.reescrow` scope) and CreateEscrow (as a
 // defense-in-depth backstop, since the purchase flow calls it internally)
 // now both reject any `amount` above Config.EscrowMaxAmountFlow
-// (ARTDROP_ESCROW_MAX_AMOUNT_FLOW, default 1000) — see
-// Service.validateEscrowAmount in service.go. This bounds how much an
+// (ARTDROP_ESCROW_MAX_AMOUNT_FLOW, default 500000). Note `amount` is the
+// escrow's FLOW gas reserve (the ~5% platform fee converted via Pyth), not
+// the artwork's sale price — see Config.EscrowMaxAmountFlow's doc comment in
+// config.go for how that default was sized. This bounds how much an
 // unvalidated/malformed amount can lock; it is not a pricing control, and
 // the purchase flow's server-computed amount remains the real guarantee.
 

@@ -51,14 +51,22 @@ type Config struct {
 	// backstop, Service.CreateEscrow. It exists because both accept `amount`
 	// as an argument rather than computing it server-side the way the
 	// purchase flow (#93) does — see escrow_amount_validation_test.go for the
-	// full history of that gap. 1000 FLOW is a generous default: FLOW/USD has
-	// stayed well under $1 historically, so it comfortably covers any
-	// plausible real sale while still bounding a malformed or hostile amount
-	// to a fixed, small multiple of realistic escrow sizes rather than
-	// leaving it unbounded. It's deliberately tunable per deployment rather
-	// than hardcoded, since it's a blunt safety net, not a pricing control —
-	// the purchase flow's server-computed amount is the real guarantee.
-	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"1000"`
+	// full history of that gap.
+	//
+	// IMPORTANT: `amount` is NOT the artwork's sale price — it's the escrow's
+	// gas reserve, which the purchase flow (#93) sets to the configured
+	// platform fee (~5% of the sale price) converted to FLOW via Pyth. At
+	// FLOW ≈ $0.4, a $10k artwork reserves ~1250 FLOW, a $50k one ~6250 FLOW —
+	// so the cap has to sit well above realistic *reserve* amounts, not
+	// artwork prices. 500000 FLOW covers the 5% reserve of an artwork priced
+	// near $4M (at $0.4/FLOW), comfortably above anything ArtDrop plausibly
+	// sells, while still catching an absurd/malformed/overflow amount. It's
+	// deliberately tunable per deployment rather than hardcoded, since it's a
+	// blunt safety net, not a pricing control — the purchase flow's
+	// server-computed amount is the real guarantee. Revisit this number if
+	// ArtDrop's real maximum artwork price or platform fee percentage ever
+	// changes materially.
+	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"500000"`
 }
 
 // defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback
@@ -66,7 +74,7 @@ type Config struct {
 // value — e.g. a Config literal built directly (bypassing env.Parse's own
 // envDefault handling), the same situation LogicOwner's empty-string fallback
 // below handles for the address fields.
-const defaultEscrowMaxAmountFlow = 1000
+const defaultEscrowMaxAmountFlow = 500000
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from
 // the environment (FLOW_WALLET_ prefix, matching configs.Parse) and
