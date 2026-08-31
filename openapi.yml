@@ -1782,6 +1782,15 @@ paths:
                 nonce:
                   type: integer
                   format: uint64
+                certificateId:
+                  type: integer
+                  format: uint64
+                  description: >-
+                    Optional (issue #107). Omit or 0 for a fresh purchase (a
+                    new certificate is minted against editionId). Non-zero
+                    re-offers an existing certificate whose prior escrow was
+                    Voided: the escrow is re-opened against that certificate
+                    with no re-mint, still with a fully server-computed amount.
       responses:
         '201':
           description: Created

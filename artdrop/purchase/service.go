@@ -9,6 +9,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
+	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -191,9 +192,17 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	}
 
 	// 5. Open the on-chain escrow with the server-computed FLOW amount (the
-	// fee-only gas reserve). The escrow is created by the artdrop service
+	// fee-only gas reserve). The escrow is opened by the artdrop service
 	// (via the EscrowCreator adapter), which owns the transaction submission
 	// and the server-controlled escrow arguments.
+	//
+	// Branch on in.CertificateID (issue #107): a fresh purchase (zero) opens a
+	// new escrow that mints a new certificate against EditionID; re-offering an
+	// existing certificate whose prior escrow was Voided (non-zero, protocol
+	// #185) re-escrows that certificate with no re-mint — the contract derives
+	// the edition from the certificate itself. Both receive the identical
+	// server-computed flowAmount above; only the escrow call and its
+	// certificate-vs-edition argument differ.
 	if s.escrow == nil {
 		return nil, ErrEscrowDisabled
 	}
@@ -204,7 +213,12 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	// forward to the escrow the job eventually creates (see
 	// PurchaseCharge.EscrowJobID; resolving the on-chain escrowId from the
 	// job's Result is a separate step, not done here).
-	job, _, err := s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+	var job *jobs.Job
+	if in.CertificateID != 0 {
+		job, _, err = s.escrow.ReEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.CertificateID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+	} else {
+		job, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("create escrow: %w", err)
 	}

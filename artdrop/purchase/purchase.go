@@ -100,4 +100,16 @@ type CreatePurchaseChargeInput struct {
 	ChipID    string
 	UnlockAt  float64
 	Nonce     uint64
+
+	// CertificateID selects the create-vs-reescrow branch (issue #107). Zero
+	// (the default) means a fresh purchase: a new escrow is opened and a new
+	// certificate minted against EditionID. Non-zero means re-offer this
+	// EXISTING, already-minted certificate whose prior escrow was Voided
+	// (protocol #185) — no re-mint; the on-chain edition is derived from the
+	// certificate itself, so EditionID is not used for the escrow call (it is
+	// still recorded on the audit row and, together with ArtworkKind/ArtworkID,
+	// still drives the Mongo price lookup that the server-computed amount comes
+	// from). Like every other amount input, this never lets the client set the
+	// escrow amount — only which certificate is re-escrowed.
+	CertificateID uint64
 }

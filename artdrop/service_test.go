@@ -531,44 +531,12 @@ func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
 	}
 }
 
-// TestServiceCreateEscrowRejectsAmountOverConfiguredMax mirrors
-// TestServiceReEscrowRejectsAmountOverConfiguredMax for CreateEscrow, which
-// keeps the same cap as a defense-in-depth backstop since the purchase flow
-// (#93) calls it directly (see purchaseEscrowCreator in plugin.go).
-func TestServiceCreateEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
-	txSvc := &setupTxService{}
-	cfg := ParseTestConfig(t)
-	cfg.EscrowMaxAmountFlow = 100
-	svc, err := NewService(plugins.PluginDeps{
-		Transactions: txSvc,
-		Config: &configs.Config{
-			AdminAddress: "0xf8d6e0586b0a20c7",
-			ChainID:      flow.Emulator,
-		},
-	}, cfg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	_, _, err = svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
-		Buyer:     "0xf8d6e0586b0a20c7",
-		Seller:    "0x0ae53cb6e3f42a79",
-		EditionId: 42,
-		ChipId:    "chip-1",
-		UnlockAt:  123.45,
-		Nonce:     7,
-		Amount:    100.01,
-	})
-	if err == nil {
-		t.Fatal("expected CreateEscrow to reject an amount over the configured max")
-	}
-	if !strings.Contains(err.Error(), "amount") {
-		t.Fatalf("expected error to name the 'amount' field, got: %v", err)
-	}
-	if len(txSvc.calls) != 0 {
-		t.Fatalf("expected no transaction to be submitted, got %d", len(txSvc.calls))
-	}
-}
+// CreateEscrow deliberately has NO amount-cap test as of issue #107: the
+// per-call ceiling was removed from CreateEscrow (see its doc comment and
+// validateEscrowAmount). CreateEscrow is unreachable over HTTP and its only
+// caller is the purchase flow (#93), which owns the amount server-side; the
+// anti-garbage ceiling now applies solely to ReEscrow's raw ops amount, pinned
+// by TestServiceReEscrowRejectsAmountOverConfiguredMax above.
 
 // TestServiceActivateChipUsesPathAddressAndServerLogicOwner also covers the
 // removal of ActivateChipRequest.LogicOwner, .CertificateId and

@@ -43,6 +43,23 @@ func (a purchaseEscrowCreator) CreateEscrow(ctx context.Context, sync bool, addr
 	})
 }
 
+// ReEscrow adapts *Service.ReEscrow for the purchase flow's re-escrow branch
+// (issue #107): it re-offers an EXISTING certificate (identified by
+// certificateID, no re-mint) with the server-computed amount, instead of
+// minting a new one. Same server-controlled logicOwner/vault discipline as
+// CreateEscrow — those come from Service, never this call.
+func (a purchaseEscrowCreator) ReEscrow(ctx context.Context, sync bool, address string, buyer, seller string, certificateID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
+	return a.svc.ReEscrow(ctx, sync, address, ReEscrowRequest{
+		Buyer:         buyer,
+		Seller:        seller,
+		CertificateId: certificateID,
+		ChipId:        chipID,
+		UnlockAt:      unlockAt,
+		Nonce:         nonce,
+		Amount:        amount,
+	})
+}
+
 // NewPlugin creates the artdrop plugin using the shared application
 // dependencies and the artdrop contract-address config (see LoadConfig).
 // Returns an error if cfg fails to validate — see NewService.

@@ -448,9 +448,13 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'unlock_at': %w", err)
 	}
-	if err := s.validateEscrowAmount(req.Amount); err != nil {
-		return nil, nil, err
-	}
+	// No amount ceiling here (issue #107): CreateEscrow is no longer reachable
+	// over HTTP (its raw route was removed in #105) — its only caller is the
+	// purchase flow (#93, purchaseEscrowCreator in plugin.go), which computes
+	// `amount` server-side from the Mongo artwork price + platform fee + Pyth
+	// FLOW/USD. That value is trusted, and capping it only rejected
+	// legitimately large artworks. The anti-garbage ceiling now lives solely
+	// on ReEscrow's raw ops amount — see validateEscrowAmount.
 	amount, err := newUFix64(req.Amount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'amount': %w", err)
@@ -474,12 +478,17 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.createEscrowCDC, args, TxTypeCreateEscrow)
 }
 
-// validateEscrowAmount enforces the server-side ceiling (issue #105,
-// Config.EscrowMaxAmountFlow) on the `amount` a single escrow-opening call is
-// allowed to lock. Both CreateEscrow and ReEscrow accept `amount` as a raw
-// request field rather than computing it server-side the way the purchase
-// flow (#93) does, so this is defense-in-depth: it bounds how much an
-// unvalidated/malformed amount can lock, not a pricing control.
+// validateEscrowAmount enforces the server-side anti-garbage ceiling
+// (Config.EscrowMaxAmountFlow) on ReEscrow's raw `amount`. The raw
+// /re-escrow route (issue #105's `account.artdrop.escrow.reescrow` scope) is
+// an ops-only path that still accepts `amount` as a request field, so this
+// bounds how much a malformed/overflow amount can lock. It is deliberately
+// NOT a pricing control: the live buyer re-escrow path goes through the
+// purchase flow (#93/#107), which computes `amount` server-side and reaches
+// ReEscrow via purchaseEscrowCreator — that server-computed value sits far
+// below this ceiling, which was raised to a pure anti-overflow guard in #107
+// (see Config.EscrowMaxAmountFlow). CreateEscrow no longer calls this: its
+// amount is always the trusted purchase-flow value (see CreateEscrow).
 func (s *Service) validateEscrowAmount(amount float64) error {
 	if amount > s.cfg.EscrowMaxAmountFlow {
 		return fmt.Errorf("field 'amount': %v exceeds the configured maximum of %v FLOW", amount, s.cfg.EscrowMaxAmountFlow)

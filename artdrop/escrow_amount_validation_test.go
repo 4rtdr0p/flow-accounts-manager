@@ -56,16 +56,26 @@ import (
 // /accounts/{address}/artdrop/escrows (the raw CreateEscrow HTTP route) is
 // removed entirely — Service.CreateEscrow itself is untouched and still
 // backs the purchase flow via purchaseEscrowCreator (plugin.go), but it is no
-// longer reachable directly over HTTP. ReEscrow (still exposed, behind its
-// own `account.artdrop.escrow.reescrow` scope) and CreateEscrow (as a
-// defense-in-depth backstop, since the purchase flow calls it internally)
-// now both reject any `amount` above Config.EscrowMaxAmountFlow
-// (ARTDROP_ESCROW_MAX_AMOUNT_FLOW, default 500000). Note `amount` is the
-// escrow's FLOW gas reserve (the ~5% platform fee converted via Pyth), not
-// the artwork's sale price — see Config.EscrowMaxAmountFlow's doc comment in
-// config.go for how that default was sized. This bounds how much an
-// unvalidated/malformed amount can lock; it is not a pricing control, and
-// the purchase flow's server-computed amount remains the real guarantee.
+// longer reachable directly over HTTP.
+//
+// RE-ESCROW CLOSURE (2026-08-31, issue #107): the live buyer re-escrow path
+// is now server-side too. The purchase flow (#93) branches create-vs-reescrow
+// on CreatePurchaseChargeInput.CertificateID: when a Voided certificate is
+// re-offered (protocol #185) it calls ReEscrow with the SAME server-computed
+// FLOW amount (Mongo artwork price -> platform fee -> Pyth), never a client
+// amount, reusing #93's whole pricing path with no re-mint. Consequently the
+// per-call amount ceiling was REMOVED from CreateEscrow (its amount is always
+// the trusted purchase-flow value) and now applies only to the raw ops
+// /re-escrow endpoint's `amount` (still exposed behind its own
+// `account.artdrop.escrow.reescrow` scope for ops use). That ceiling
+// (Config.EscrowMaxAmountFlow, ARTDROP_ESCROW_MAX_AMOUNT_FLOW) was raised to a
+// pure anti-overflow/anti-garbage guard (default 50000000) — the old 500000
+// was low enough to reject legitimately large artworks whenever FLOW's USD
+// price is low, since `amount` is the FLOW gas reserve (~5% fee via Pyth), not
+// the sale price. See Config.EscrowMaxAmountFlow's doc comment in config.go.
+// It is not a pricing control; the purchase flow's server-computed amount is
+// the real guarantee, pinned by artdrop/purchase/service_test.go
+// (TestCreatePurchaseCharge_ReEscrowBranchServerComputesAmount).
 
 // TestPurchaseFlowOwnsEscrowAmount documents that the amount-validation gap is
 // closed by the purchase flow, not by the raw CreateEscrow primitive. It

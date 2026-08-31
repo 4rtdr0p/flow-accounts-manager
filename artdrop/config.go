@@ -45,28 +45,30 @@ type Config struct {
 	// PaymentModuleAddress is the account PaymentModule is deployed to.
 	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x2edba2d63af095b8"`
 
-	// EscrowMaxAmountFlow is the server-side ceiling (issue #105) on the
-	// `amount` (whole FLOW, not centiFLOW) a single escrow-opening call is
-	// allowed to lock, enforced in Service.ReEscrow and, as a defense-in-depth
-	// backstop, Service.CreateEscrow. It exists because both accept `amount`
-	// as an argument rather than computing it server-side the way the
-	// purchase flow (#93) does — see escrow_amount_validation_test.go for the
-	// full history of that gap.
+	// EscrowMaxAmountFlow is the server-side anti-garbage ceiling (issue #105,
+	// re-scoped in #107) on the `amount` (whole FLOW, not centiFLOW) the raw
+	// ReEscrow ops path is allowed to lock, enforced in Service.ReEscrow.
 	//
-	// IMPORTANT: `amount` is NOT the artwork's sale price — it's the escrow's
-	// gas reserve, which the purchase flow (#93) sets to the configured
-	// platform fee (~5% of the sale price) converted to FLOW via Pyth. At
-	// FLOW ≈ $0.4, a $10k artwork reserves ~1250 FLOW, a $50k one ~6250 FLOW —
-	// so the cap has to sit well above realistic *reserve* amounts, not
-	// artwork prices. 500000 FLOW covers the 5% reserve of an artwork priced
-	// near $4M (at $0.4/FLOW), comfortably above anything ArtDrop plausibly
-	// sells, while still catching an absurd/malformed/overflow amount. It's
-	// deliberately tunable per deployment rather than hardcoded, since it's a
-	// blunt safety net, not a pricing control — the purchase flow's
-	// server-computed amount is the real guarantee. Revisit this number if
-	// ArtDrop's real maximum artwork price or platform fee percentage ever
-	// changes materially.
-	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"500000"`
+	// As of #107 CreateEscrow no longer enforces this: it is unreachable over
+	// HTTP (its raw route was removed in #105) and its only caller is the
+	// purchase flow (#93), which computes `amount` server-side from the Mongo
+	// artwork price + platform fee + Pyth FLOW/USD — a trusted value that a
+	// cap only got in the way of. The live buyer re-escrow path (#107) routes
+	// through that same purchase flow, so the ONLY untrusted `amount` left is
+	// the raw ops /re-escrow endpoint (behind account.artdrop.escrow.reescrow).
+	//
+	// IMPORTANT: this is a pure anti-overflow/anti-garbage guard, not a pricing
+	// control. `amount` is the escrow's FLOW gas reserve (the ~5% platform fee
+	// converted via Pyth), never the artwork's sale price. FLOW's USD price can
+	// be very low (e.g. ~$0.004), which inflates the FLOW reserve for a given
+	// USD fee: at $0.004/FLOW a $50k artwork's 5% fee ($2.5k) already reserves
+	// ~625000 FLOW, so the previous 500000 ceiling rejected legitimate large
+	// artworks flowing through the server-computed purchase path. The default
+	// is now 50000000 FLOW — well above any plausible server-computed reserve
+	// while still catching an absurd/malformed/overflow amount on the raw ops
+	// path. Tunable per deployment; the purchase flow's server-computed amount
+	// remains the real guarantee.
+	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"50000000"`
 }
 
 // defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback
@@ -74,7 +76,7 @@ type Config struct {
 // value — e.g. a Config literal built directly (bypassing env.Parse's own
 // envDefault handling), the same situation LogicOwner's empty-string fallback
 // below handles for the address fields.
-const defaultEscrowMaxAmountFlow = 500000
+const defaultEscrowMaxAmountFlow = 50000000
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from
 // the environment (FLOW_WALLET_ prefix, matching configs.Parse) and

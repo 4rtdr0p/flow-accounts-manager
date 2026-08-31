@@ -29,6 +29,13 @@ type createPurchaseChargeRequest struct {
 	ChipID    string  `json:"chipId"`
 	UnlockAt  float64 `json:"unlockAt"`
 	Nonce     uint64  `json:"nonce"`
+
+	// CertificateID selects the create-vs-reescrow branch (issue #107):
+	// omit/zero for a fresh purchase (mint a new certificate against
+	// editionId), non-zero to re-offer an existing certificate whose prior
+	// escrow was Voided. It does not let the client set the amount — only
+	// which certificate is re-escrowed; the amount stays server-computed.
+	CertificateID uint64 `json:"certificateId,omitempty"`
 }
 
 // CreatePurchaseChargeFunc handles POST /v1/purchases:charge.
@@ -58,6 +65,7 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		ChipID:           req.ChipID,
 		UnlockAt:         req.UnlockAt,
 		Nonce:            req.Nonce,
+		CertificateID:    req.CertificateID,
 	})
 	if err != nil {
 		switch {

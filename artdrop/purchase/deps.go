@@ -34,9 +34,18 @@ type ChargeClient interface {
 // (LogicOwner, vault identifier). The amount passed in is the server-computed
 // FLOW amount.
 //
+// CreateEscrow opens a fresh escrow that MINTS a new certificate against an
+// edition. ReEscrow (issue #107) opens an escrow against an EXISTING,
+// already-minted certificate whose prior escrow was Voided (protocol #185) —
+// no re-mint; the contract derives the edition from the certificate itself,
+// so it takes a certificateID in place of an editionID. Both receive the same
+// server-computed FLOW amount; the purchase flow (#93) picks which one to call
+// (see ServiceImpl.CreatePurchaseCharge).
+//
 // The interface deliberately uses only primitive types so the artdrop package
 // can satisfy it structurally without importing this package, keeping the
 // dependency graph acyclic.
 type EscrowCreator interface {
 	CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error)
+	ReEscrow(ctx context.Context, sync bool, address string, buyer, seller string, certificateID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error)
 }

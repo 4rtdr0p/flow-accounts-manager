@@ -96,10 +96,32 @@ type mockEscrowCreator struct {
 	called       bool
 	job          *jobs.Job
 	returnNilJob bool
+
+	// reEscrowCalled/certificateID record the issue #107 re-escrow branch: a
+	// non-zero CreatePurchaseChargeInput.CertificateID must route to ReEscrow
+	// (not CreateEscrow) with the same server-computed amount.
+	reEscrowCalled bool
+	certificateID  uint64
 }
 
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
 	m.called = true
+	m.amount = amount
+	if m.err != nil {
+		return nil, nil, m.err
+	}
+	if m.returnNilJob {
+		return nil, nil, nil
+	}
+	if m.job == nil {
+		m.job = &jobs.Job{ID: uuid.New()}
+	}
+	return m.job, nil, nil
+}
+
+func (m *mockEscrowCreator) ReEscrow(ctx context.Context, sync bool, address string, buyer, seller string, certificateID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
+	m.reEscrowCalled = true
+	m.certificateID = certificateID
 	m.amount = amount
 	if m.err != nil {
 		return nil, nil, m.err
@@ -210,6 +232,61 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	// EscrowID is intentionally not resolved by this flow — see #98.
 	if got.EscrowID != nil {
 		t.Errorf("expected EscrowID to stay nil (resolved separately), got %v", *got.EscrowID)
+	}
+}
+
+// TestCreatePurchaseCharge_ReEscrowBranchServerComputesAmount pins issue #107:
+// a non-zero CertificateID re-offers an EXISTING certificate via ReEscrow (no
+// re-mint), and the FLOW amount it re-escrows with is the SAME server-computed
+// value a fresh purchase would use — Mongo artwork price + platform fee + Pyth,
+// never a client amount. It must call ReEscrow, not CreateEscrow, and pass the
+// certificate id through unchanged.
+func TestCreatePurchaseCharge_ReEscrowBranchServerComputesAmount(t *testing.T) {
+	prices := &mockArtworkPriceReader{
+		editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100.0},
+	}
+	oracle := &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}} // 1 FLOW = $0.50
+	charge := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+
+	svc := newPurchaseTestService(t, prices, oracle, charge, escrow, 500) // 5% fee
+
+	in := validPurchaseInput()
+	in.CertificateID = 77 // re-offer an existing certificate
+
+	got, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+
+	// Must route to ReEscrow, not CreateEscrow.
+	if !escrow.reEscrowCalled {
+		t.Error("expected ReEscrow to be called for a non-zero CertificateID")
+	}
+	if escrow.called {
+		t.Error("CreateEscrow must not be called when re-escrowing an existing certificate")
+	}
+	// The certificate id must pass through untouched.
+	if escrow.certificateID != 77 {
+		t.Errorf("re-escrow certificate id = %d, want 77", escrow.certificateID)
+	}
+	// The re-escrow amount is the same server-computed fee-only FLOW reserve as
+	// a fresh purchase: $5 / $0.50 per FLOW = 10 FLOW. The client never set it.
+	if escrow.amount != 10.0 {
+		t.Errorf("re-escrow amount = %f, want 10.0", escrow.amount)
+	}
+	// Stripe is still charged the full artwork price, exactly like a fresh
+	// purchase — re-escrow only changes the escrow call, not the charge.
+	if charge.lastIn.AmountCents != 10000 {
+		t.Errorf("Stripe AmountCents = %d, want 10000", charge.lastIn.AmountCents)
+	}
+	if got.FlowAmount != 10.0 {
+		t.Errorf("FlowAmount = %f, want 10.0", got.FlowAmount)
+	}
+	// The audit record still captures the async job id (issue #98), regardless
+	// of which escrow call produced it.
+	if got.EscrowJobID == "" {
+		t.Error("expected EscrowJobID to be captured from the re-escrow job")
 	}
 }
 
