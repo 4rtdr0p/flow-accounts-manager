@@ -44,7 +44,29 @@ type Config struct {
 
 	// PaymentModuleAddress is the account PaymentModule is deployed to.
 	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x2edba2d63af095b8"`
+
+	// EscrowMaxAmountFlow is the server-side ceiling (issue #105) on the
+	// `amount` (whole FLOW, not centiFLOW) a single escrow-opening call is
+	// allowed to lock, enforced in Service.ReEscrow and, as a defense-in-depth
+	// backstop, Service.CreateEscrow. It exists because both accept `amount`
+	// as an argument rather than computing it server-side the way the
+	// purchase flow (#93) does — see escrow_amount_validation_test.go for the
+	// full history of that gap. 1000 FLOW is a generous default: FLOW/USD has
+	// stayed well under $1 historically, so it comfortably covers any
+	// plausible real sale while still bounding a malformed or hostile amount
+	// to a fixed, small multiple of realistic escrow sizes rather than
+	// leaving it unbounded. It's deliberately tunable per deployment rather
+	// than hardcoded, since it's a blunt safety net, not a pricing control —
+	// the purchase flow's server-computed amount is the real guarantee.
+	EscrowMaxAmountFlow float64 `env:"ARTDROP_ESCROW_MAX_AMOUNT_FLOW" envDefault:"1000"`
 }
+
+// defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback
+// normalizeAndValidate applies when EscrowMaxAmountFlow is left at its zero
+// value — e.g. a Config literal built directly (bypassing env.Parse's own
+// envDefault handling), the same situation LogicOwner's empty-string fallback
+// below handles for the address fields.
+const defaultEscrowMaxAmountFlow = 1000
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from
 // the environment (FLOW_WALLET_ prefix, matching configs.Parse) and
@@ -79,11 +101,15 @@ func ParseTestConfig(t *testing.T) *Config {
 	return cfg
 }
 
-// normalizeAndValidate defaults LogicOwner from EscrowModuleAddress when
-// unset, then validates and canonicalizes every address field in place.
+// normalizeAndValidate defaults LogicOwner from EscrowModuleAddress and
+// EscrowMaxAmountFlow to defaultEscrowMaxAmountFlow when unset, then
+// validates and canonicalizes every address field in place.
 func (c *Config) normalizeAndValidate() error {
 	if c.LogicOwner == "" {
 		c.LogicOwner = c.EscrowModuleAddress
+	}
+	if c.EscrowMaxAmountFlow <= 0 {
+		c.EscrowMaxAmountFlow = defaultEscrowMaxAmountFlow
 	}
 
 	fields := []struct {
@@ -103,6 +129,7 @@ func (c *Config) normalizeAndValidate() error {
 		}
 		*f.value = normalized
 	}
+
 	return nil
 }
 

@@ -45,14 +45,25 @@ import (
 // details; the server reads the artwork price from Mongo, applies the
 // configured platform fee, charges the full artwork price via Stripe, and
 // converts only that fee to FLOW via the Pyth oracle as the escrow's gas
-// reserve. The standalone CreateEscrow endpoint remains a low-level
-// operator/administrative primitive that still accepts an explicit `amount`;
-// the purchase flow is the path that guarantees a justified amount reaches the
-// chain. The server-computed-amount discipline is pinned by
+// reserve. The purchase flow is the path that guarantees a justified amount
+// reaches the chain. The server-computed-amount discipline is pinned by
 // artdrop/purchase/service_test.go (TestCreatePurchaseCharge_ServerComputesAmount
 // and TestCreatePurchaseCharge_RejectsClientAmount). The former t.Skip test
 // below is removed: it targeted the raw CreateEscrow primitive, which is
 // intentionally unchanged, and would have failed against it.
+//
+// FURTHER HARDENING (2026-08-31, issue #105): POST
+// /accounts/{address}/artdrop/escrows (the raw CreateEscrow HTTP route) is
+// removed entirely — Service.CreateEscrow itself is untouched and still
+// backs the purchase flow via purchaseEscrowCreator (plugin.go), but it is no
+// longer reachable directly over HTTP. ReEscrow (still exposed, behind its
+// own `account.artdrop.escrow.reescrow` scope) and CreateEscrow (as a
+// defense-in-depth backstop, since the purchase flow calls it internally)
+// now both reject any `amount` above Config.EscrowMaxAmountFlow
+// (ARTDROP_ESCROW_MAX_AMOUNT_FLOW, default 1000) — see
+// Service.validateEscrowAmount in service.go. This bounds how much an
+// unvalidated/malformed amount can lock; it is not a pricing control, and
+// the purchase flow's server-computed amount remains the real guarantee.
 
 // TestPurchaseFlowOwnsEscrowAmount documents that the amount-validation gap is
 // closed by the purchase flow, not by the raw CreateEscrow primitive. It

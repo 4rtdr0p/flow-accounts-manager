@@ -448,6 +448,9 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'unlock_at': %w", err)
 	}
+	if err := s.validateEscrowAmount(req.Amount); err != nil {
+		return nil, nil, err
+	}
 	amount, err := newUFix64(req.Amount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'amount': %w", err)
@@ -469,6 +472,19 @@ func (s *Service) CreateEscrow(ctx context.Context, sync bool, address string, r
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.createEscrowCDC, args, TxTypeCreateEscrow)
+}
+
+// validateEscrowAmount enforces the server-side ceiling (issue #105,
+// Config.EscrowMaxAmountFlow) on the `amount` a single escrow-opening call is
+// allowed to lock. Both CreateEscrow and ReEscrow accept `amount` as a raw
+// request field rather than computing it server-side the way the purchase
+// flow (#93) does, so this is defense-in-depth: it bounds how much an
+// unvalidated/malformed amount can lock, not a pricing control.
+func (s *Service) validateEscrowAmount(amount float64) error {
+	if amount > s.cfg.EscrowMaxAmountFlow {
+		return fmt.Errorf("field 'amount': %v exceeds the configured maximum of %v FLOW", amount, s.cfg.EscrowMaxAmountFlow)
+	}
+	return nil
 }
 
 // ReEscrow opens a new escrow against an EXISTING, already-minted
@@ -497,6 +513,9 @@ func (s *Service) ReEscrow(ctx context.Context, sync bool, address string, req R
 	unlockAt, err := newUFix64(req.UnlockAt)
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'unlock_at': %w", err)
+	}
+	if err := s.validateEscrowAmount(req.Amount); err != nil {
+		return nil, nil, err
 	}
 	amount, err := newUFix64(req.Amount)
 	if err != nil {

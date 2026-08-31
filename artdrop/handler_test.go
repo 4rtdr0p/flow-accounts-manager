@@ -83,39 +83,14 @@ func TestTransferRequiresCertificateID(t *testing.T) {
 	}
 }
 
-func TestCreateEscrowHandlerReturnsCreated(t *testing.T) {
-	txSvc := &captureTransactionService{}
-	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
-		Transactions: txSvc,
-		Config: &configs.Config{
-			AdminAddress: "0xf8d6e0586b0a20c7",
-			ChainID:      flow.Emulator,
-		},
-	}))
-
-	body := `{
-		"buyer":"0xf8d6e0586b0a20c7",
-		"seller":"0x0ae53cb6e3f42a79",
-		"edition_id":42,
-		"chip_id":"chip-1",
-		"unlock_at":123.45,
-		"nonce":7,
-		"amount":10.5
-	}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/escrows?sync=true", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
-	rw := httptest.NewRecorder()
-
-	handler.CreateEscrow().ServeHTTP(rw, req)
-
-	if rw.Code != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
-	}
-	if len(txSvc.args) != 9 {
-		t.Fatalf("expected 9 Cadence args (no chip public key), got %d", len(txSvc.args))
-	}
-}
+// TestCreateEscrowHandlerReturnsCreated / handler.CreateEscrow() were removed
+// with issue #105: POST /accounts/{address}/artdrop/escrows (the raw,
+// unvalidated-amount create-escrow primitive) is no longer exposed over HTTP.
+// Service.CreateEscrow itself is untouched — the purchase flow (#93) still
+// calls it directly via purchaseEscrowCreator in plugin.go — and remains
+// covered at the service level by
+// TestServiceCreateEscrowUsesAdminProposerAndCadenceArgs and
+// TestServiceCreateEscrowSendsNoChipPublicKey in service_test.go.
 
 func TestSetupArtistDirectFuncReturnsCreatedTransaction(t *testing.T) {
 	txSvc := &setupTxService{}

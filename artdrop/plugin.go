@@ -132,7 +132,6 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/accounts/{artistAddress}/artdrop/artist-direct/setup", h.SetupArtistDirect()).Methods(http.MethodPost)
 	router.Handle("/accounts/{artistAddress}/artdrop/originals", h.CreateOriginal()).Methods(http.MethodPost)
 	router.Handle("/accounts/{artistAddress}/artdrop/originals/{originalId}/editions", h.CreateEdition()).Methods(http.MethodPost)
-	router.Handle("/accounts/{address}/artdrop/escrows", h.CreateEscrow()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows", h.ListEscrows()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/escrows/re-escrow", h.ReEscrow()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/escrows/{escrowId}/activate", h.ActivateChip()).Methods(http.MethodPost)

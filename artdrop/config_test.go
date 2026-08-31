@@ -35,6 +35,29 @@ func TestLoadConfigDefaultsMatchDeployedAddresses(t *testing.T) {
 	if cfg.LogicOwner != cfg.EscrowModuleAddress {
 		t.Fatalf("expected LogicOwner to default to EscrowModuleAddress %q, got %q", cfg.EscrowModuleAddress, cfg.LogicOwner)
 	}
+	if cfg.EscrowMaxAmountFlow != defaultEscrowMaxAmountFlow {
+		t.Fatalf("EscrowMaxAmountFlow default changed: got %v, want %v", cfg.EscrowMaxAmountFlow, defaultEscrowMaxAmountFlow)
+	}
+}
+
+// TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow confirms a
+// zero-value EscrowMaxAmountFlow — e.g. a Config literal built directly
+// instead of via LoadConfig/env.Parse — falls back to
+// defaultEscrowMaxAmountFlow rather than leaving the cap disabled at 0
+// (which would reject every escrow amount).
+func TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow(t *testing.T) {
+	cfg := Config{
+		ArtDropCoreAddress:     "0xec581a0282d99a1a",
+		ArtDropRegistryAddress: "0xec581a0282d99a1a",
+		EscrowModuleAddress:    "0x1bfedfa0ec66c23e",
+		PaymentModuleAddress:   "0x1bfedfa0ec66c23e",
+	}
+	if err := cfg.normalizeAndValidate(); err != nil {
+		t.Fatalf("normalizeAndValidate returned error: %v", err)
+	}
+	if cfg.EscrowMaxAmountFlow != defaultEscrowMaxAmountFlow {
+		t.Fatalf("expected EscrowMaxAmountFlow to default to %v, got %v", defaultEscrowMaxAmountFlow, cfg.EscrowMaxAmountFlow)
+	}
 }
 
 // TestConfigNormalizeAndValidateRejectsMalformedAddresses covers "fail

@@ -212,26 +212,6 @@ func (h *Handler) CreateEditionFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
-func (h *Handler) CreateEscrow() http.Handler {
-	return handlers.UseJson(http.HandlerFunc(h.CreateEscrowFunc))
-}
-
-func (h *Handler) CreateEscrowFunc(rw http.ResponseWriter, r *http.Request) {
-	var req CreateEscrowRequest
-	if !h.decodeBody(rw, r, &req) {
-		return
-	}
-
-	sync := r.FormValue(handlers.SyncQueryParameter) != ""
-	job, tx, err := h.svc.CreateEscrow(r.Context(), sync, mux.Vars(r)["address"], req)
-	if err != nil {
-		handlers.HandleError(rw, r, err)
-		return
-	}
-
-	h.handleTransactionResponse(rw, sync, job, tx)
-}
-
 func (h *Handler) ReEscrow() http.Handler {
 	return handlers.UseJson(http.HandlerFunc(h.ReEscrowFunc))
 }

@@ -478,6 +478,98 @@ func TestServiceReEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	}
 }
 
+// TestServiceReEscrowRejectsAmountOverConfiguredMax pins the issue #105
+// server-side ceiling: an `amount` above Config.EscrowMaxAmountFlow must be
+// rejected before any transaction is submitted, and the error must name the
+// offending field so a caller can tell an amount-cap rejection apart from
+// any other validation failure.
+func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
+	txSvc := &setupTxService{}
+	cfg := ParseTestConfig(t)
+	cfg.EscrowMaxAmountFlow = 100
+	svc, err := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, _, err = svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
+		Buyer:         "0xf8d6e0586b0a20c7",
+		Seller:        "0x0ae53cb6e3f42a79",
+		CertificateId: 7,
+		ChipId:        "chip-1",
+		UnlockAt:      123.45,
+		Nonce:         7,
+		Amount:        100.01,
+	})
+	if err == nil {
+		t.Fatal("expected ReEscrow to reject an amount over the configured max")
+	}
+	if !strings.Contains(err.Error(), "amount") {
+		t.Fatalf("expected error to name the 'amount' field, got: %v", err)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected no transaction to be submitted, got %d", len(txSvc.calls))
+	}
+
+	// An amount at (not over) the max must still be accepted.
+	if _, _, err := svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
+		Buyer:         "0xf8d6e0586b0a20c7",
+		Seller:        "0x0ae53cb6e3f42a79",
+		CertificateId: 7,
+		ChipId:        "chip-1",
+		UnlockAt:      123.45,
+		Nonce:         7,
+		Amount:        100,
+	}); err != nil {
+		t.Fatalf("expected an amount at the max to be accepted, got: %v", err)
+	}
+}
+
+// TestServiceCreateEscrowRejectsAmountOverConfiguredMax mirrors
+// TestServiceReEscrowRejectsAmountOverConfiguredMax for CreateEscrow, which
+// keeps the same cap as a defense-in-depth backstop since the purchase flow
+// (#93) calls it directly (see purchaseEscrowCreator in plugin.go).
+func TestServiceCreateEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
+	txSvc := &setupTxService{}
+	cfg := ParseTestConfig(t)
+	cfg.EscrowMaxAmountFlow = 100
+	svc, err := NewService(plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			AdminAddress: "0xf8d6e0586b0a20c7",
+			ChainID:      flow.Emulator,
+		},
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	_, _, err = svc.CreateEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", CreateEscrowRequest{
+		Buyer:     "0xf8d6e0586b0a20c7",
+		Seller:    "0x0ae53cb6e3f42a79",
+		EditionId: 42,
+		ChipId:    "chip-1",
+		UnlockAt:  123.45,
+		Nonce:     7,
+		Amount:    100.01,
+	})
+	if err == nil {
+		t.Fatal("expected CreateEscrow to reject an amount over the configured max")
+	}
+	if !strings.Contains(err.Error(), "amount") {
+		t.Fatalf("expected error to name the 'amount' field, got: %v", err)
+	}
+	if len(txSvc.calls) != 0 {
+		t.Fatalf("expected no transaction to be submitted, got %d", len(txSvc.calls))
+	}
+}
+
 // TestServiceActivateChipUsesPathAddressAndServerLogicOwner also covers the
 // removal of ActivateChipRequest.LogicOwner, .CertificateId and
 // .CertificateOwner (escrow-lifecycle redesign, 2026-08 — the contract now
