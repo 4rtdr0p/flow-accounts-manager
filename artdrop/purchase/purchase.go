@@ -91,14 +91,25 @@ type CreatePurchaseChargeInput struct {
 	IdempotencyKey   string
 	Metadata         string
 
-	// Escrow fields. Buyer and Seller are Flow addresses; EditionID, ChipID,
-	// UnlockAt and Nonce are the escrow parameters. Amount is NOT accepted
-	// here — it is computed server-side.
+	// Escrow fields. Buyer and Seller are Flow addresses; EditionID, ChipID
+	// and Nonce are the escrow parameters. Amount is NOT accepted here — it is
+	// computed server-side.
+	//
+	// UnlockAt used to be client-supplied here. It is now server-controlled
+	// (issue #111) — computed in CreatePurchaseCharge as now() +
+	// Config.EscrowClaimWindowSeconds — and was removed outright rather than
+	// kept-but-ignored, following this package's convention for
+	// server-controlled fields (see CreateEscrowRequest's LogicOwner/
+	// VaultIdentifier removal in artdrop/types.go). unlock_at is the buyer's
+	// on-chain claim deadline; trusting a client-set value would let a
+	// past/zero unlock_at close the claim window before the buyer ever
+	// activates their chip. An unknown "unlockAt" in the JSON request body is
+	// simply ignored by the decoder, so existing front-end callers keep
+	// working unchanged.
 	Buyer     string
 	Seller    string
 	EditionID uint64
 	ChipID    string
-	UnlockAt  float64
 	Nonce     uint64
 
 	// CertificateID selects the create-vs-reescrow branch (issue #107). Zero

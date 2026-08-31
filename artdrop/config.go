@@ -87,6 +87,20 @@ type Config struct {
 	// together with the backfill on DISABLE_CHAIN_EVENTS (see plugin.go): with
 	// no listener there is no live projection to keep reconciled.
 	EscrowProjectionResync bool `env:"ARTDROP_ESCROW_PROJECTION_RESYNC" envDefault:"false"`
+
+	// EscrowClaimWindowSeconds is the buyer's on-chain claim deadline (issue
+	// #111), server-computed in the purchase flow as now + this window rather
+	// than trusted from the client request. unlock_at is the point after which
+	// releaseOnTimeout becomes permissionless and yanks the escrow reserve to
+	// the ArtDrop vault — a client-set past/zero unlock_at would close the
+	// buyer's claim window before they ever activate their chip, so like
+	// EscrowMaxAmountFlow (#105/#107) it is now a server-controlled setting,
+	// not a request field, for the purchase flow (#93). Raw ops endpoints
+	// (CreateEscrowRequest/ReEscrowRequest) are unaffected: they remain
+	// OperationalAdmin-scoped, trusted tooling with a client-supplied
+	// UnlockAt, the same scoping decision #107 made for amount. Default is
+	// 604800 seconds (7 days).
+	EscrowClaimWindowSeconds float64 `env:"ARTDROP_ESCROW_CLAIM_WINDOW_SECONDS" envDefault:"604800"`
 }
 
 // defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback
@@ -95,6 +109,11 @@ type Config struct {
 // envDefault handling), the same situation LogicOwner's empty-string fallback
 // below handles for the address fields.
 const defaultEscrowMaxAmountFlow = 50000000
+
+// defaultEscrowClaimWindowSeconds mirrors the envDefault above and is the
+// fallback normalizeAndValidate applies when EscrowClaimWindowSeconds is left
+// at its zero value, same rationale as defaultEscrowMaxAmountFlow.
+const defaultEscrowClaimWindowSeconds = 604800
 
 // LoadConfig parses the artdrop plugin's contract-address configuration from
 // the environment (FLOW_WALLET_ prefix, matching configs.Parse) and
@@ -129,15 +148,19 @@ func ParseTestConfig(t *testing.T) *Config {
 	return cfg
 }
 
-// normalizeAndValidate defaults LogicOwner from EscrowModuleAddress and
-// EscrowMaxAmountFlow to defaultEscrowMaxAmountFlow when unset, then
-// validates and canonicalizes every address field in place.
+// normalizeAndValidate defaults LogicOwner from EscrowModuleAddress,
+// EscrowMaxAmountFlow to defaultEscrowMaxAmountFlow, and
+// EscrowClaimWindowSeconds to defaultEscrowClaimWindowSeconds when unset,
+// then validates and canonicalizes every address field in place.
 func (c *Config) normalizeAndValidate() error {
 	if c.LogicOwner == "" {
 		c.LogicOwner = c.EscrowModuleAddress
 	}
 	if c.EscrowMaxAmountFlow <= 0 {
 		c.EscrowMaxAmountFlow = defaultEscrowMaxAmountFlow
+	}
+	if c.EscrowClaimWindowSeconds <= 0 {
+		c.EscrowClaimWindowSeconds = defaultEscrowClaimWindowSeconds
 	}
 
 	fields := []struct {

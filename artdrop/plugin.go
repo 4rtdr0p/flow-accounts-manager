@@ -140,6 +140,7 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		stripeClient,
 		purchaseEscrowCreator{svc: p.svc},
 		purchasePlatformFeeBps,
+		p.svc.cfg.EscrowClaimWindowSeconds,
 	)
 	purchaseHandler := purchase.NewHandler(purchaseService)
 	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)

@@ -38,6 +38,9 @@ func TestLoadConfigDefaultsMatchDeployedAddresses(t *testing.T) {
 	if cfg.EscrowMaxAmountFlow != defaultEscrowMaxAmountFlow {
 		t.Fatalf("EscrowMaxAmountFlow default changed: got %v, want %v", cfg.EscrowMaxAmountFlow, defaultEscrowMaxAmountFlow)
 	}
+	if cfg.EscrowClaimWindowSeconds != defaultEscrowClaimWindowSeconds {
+		t.Fatalf("EscrowClaimWindowSeconds default changed: got %v, want %v", cfg.EscrowClaimWindowSeconds, defaultEscrowClaimWindowSeconds)
+	}
 }
 
 // TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow confirms a
@@ -57,6 +60,9 @@ func TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow(t *testing.T) {
 	}
 	if cfg.EscrowMaxAmountFlow != defaultEscrowMaxAmountFlow {
 		t.Fatalf("expected EscrowMaxAmountFlow to default to %v, got %v", defaultEscrowMaxAmountFlow, cfg.EscrowMaxAmountFlow)
+	}
+	if cfg.EscrowClaimWindowSeconds != defaultEscrowClaimWindowSeconds {
+		t.Fatalf("expected EscrowClaimWindowSeconds to default to %v, got %v", defaultEscrowClaimWindowSeconds, cfg.EscrowClaimWindowSeconds)
 	}
 }
 

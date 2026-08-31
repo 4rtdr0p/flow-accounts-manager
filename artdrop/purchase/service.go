@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
@@ -72,21 +73,34 @@ type ServiceImpl struct {
 	escrow             EscrowCreator
 	platformFeeBps     int
 	shippingRatePerUSD float64
+
+	// claimWindowSeconds is the buyer's on-chain claim deadline window (issue
+	// #111): the escrow's unlock_at is computed as now() + claimWindowSeconds,
+	// never accepted from the client. See Config.EscrowClaimWindowSeconds.
+	claimWindowSeconds float64
+	// now is the current-time source, overridable in tests so unlock_at can be
+	// pinned to a known value; defaults to time.Now.
+	now func() time.Time
 }
 
 // NewService initiates a new purchase service wired for the full charge flow.
 // Any of the optional deps may be nil; the corresponding step reports its
 // disabled error. platformFeeBps is the platform fee in basis points, applied
 // as ArtDrop's share of the artwork price rather than a surcharge added on top
-// of it (see Config.PurchasePlatformFeeBasisPoints).
-func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) Service {
+// of it (see Config.PurchasePlatformFeeBasisPoints). claimWindowSeconds is the
+// server-computed unlock_at window (issue #111; see
+// Config.EscrowClaimWindowSeconds) — the buyer's on-chain claim deadline is
+// now() + claimWindowSeconds, never client-supplied.
+func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int, claimWindowSeconds float64) Service {
 	return &ServiceImpl{
-		store:          store,
-		prices:         prices,
-		oracle:         oracle,
-		charge:         charge,
-		escrow:         escrow,
-		platformFeeBps: platformFeeBps,
+		store:              store,
+		prices:             prices,
+		oracle:             oracle,
+		charge:             charge,
+		escrow:             escrow,
+		platformFeeBps:     platformFeeBps,
+		claimWindowSeconds: claimWindowSeconds,
+		now:                time.Now,
 	}
 }
 
@@ -213,11 +227,19 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	// forward to the escrow the job eventually creates (see
 	// PurchaseCharge.EscrowJobID; resolving the on-chain escrowId from the
 	// job's Result is a separate step, not done here).
+	// unlock_at, like amount, is computed server-side (issue #111), not
+	// trusted from the client: it is the buyer's on-chain claim deadline, and
+	// once now > unlock_at, releaseOnTimeout becomes permissionless and yanks
+	// the escrow reserve to the ArtDrop vault. A client-set past/zero value
+	// would close the buyer's claim window before they ever activate their
+	// chip.
+	serverUnlockAt := float64(s.now().Unix()) + s.claimWindowSeconds
+
 	var job *jobs.Job
 	if in.CertificateID != 0 {
-		job, _, err = s.escrow.ReEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.CertificateID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+		job, _, err = s.escrow.ReEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.CertificateID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
 	} else {
-		job, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, in.UnlockAt, in.Nonce, flowAmount)
+		job, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("create escrow: %w", err)
@@ -242,7 +264,7 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		Seller:              in.Seller,
 		EditionID:           in.EditionID,
 		ChipID:              in.ChipID,
-		UnlockAt:            in.UnlockAt,
+		UnlockAt:            serverUnlockAt,
 		Nonce:               in.Nonce,
 		Metadata:            in.Metadata,
 		EscrowJobID:         escrowJobID,

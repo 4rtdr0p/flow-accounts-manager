@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
@@ -14,6 +15,11 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+// testClaimWindowSeconds is an arbitrary, easy-to-check claim window used by
+// tests that don't care about the exact unlock_at value, only that it's
+// server-computed (issue #111).
+const testClaimWindowSeconds = 604800
 
 // mockArtworkPriceReader is a scripted ArtworkPriceReader for tests.
 type mockArtworkPriceReader struct {
@@ -92,6 +98,7 @@ func (m *mockChargeClient) CreateAndConfirm(ctx context.Context, in studio.Strip
 // interface doesn't itself guarantee a non-nil job on success.
 type mockEscrowCreator struct {
 	amount       float64
+	unlockAt     float64
 	err          error
 	called       bool
 	job          *jobs.Job
@@ -107,6 +114,7 @@ type mockEscrowCreator struct {
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
 	m.called = true
 	m.amount = amount
+	m.unlockAt = unlockAt
 	if m.err != nil {
 		return nil, nil, m.err
 	}
@@ -123,6 +131,7 @@ func (m *mockEscrowCreator) ReEscrow(ctx context.Context, sync bool, address str
 	m.reEscrowCalled = true
 	m.certificateID = certificateID
 	m.amount = amount
+	m.unlockAt = unlockAt
 	if m.err != nil {
 		return nil, nil, m.err
 	}
@@ -157,7 +166,7 @@ func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle Pric
 	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(NewGormStore(db), prices, oracle, charge, escrow, platformFeeBps)
+	return NewService(NewGormStore(db), prices, oracle, charge, escrow, platformFeeBps, testClaimWindowSeconds)
 }
 
 func validPurchaseInput() CreatePurchaseChargeInput {
@@ -172,7 +181,6 @@ func validPurchaseInput() CreatePurchaseChargeInput {
 		Seller:           "0xf3fcd2c1a78f5eee",
 		EditionID:        1,
 		ChipID:           "chip-1",
-		UnlockAt:         4102444800.0,
 		Nonce:            1,
 	}
 }
@@ -232,6 +240,52 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	// EscrowID is intentionally not resolved by this flow — see #98.
 	if got.EscrowID != nil {
 		t.Errorf("expected EscrowID to stay nil (resolved separately), got %v", *got.EscrowID)
+	}
+}
+
+// TestCreatePurchaseCharge_ServerComputesUnlockAt pins issue #111: unlock_at
+// is computed server-side as now() + Config.EscrowClaimWindowSeconds, never
+// accepted from the client — CreatePurchaseChargeInput has no UnlockAt field
+// at all. It injects a fixed `now` and a known claim window directly on the
+// ServiceImpl and asserts the exact value reaches the escrow creator.
+func TestCreatePurchaseCharge_ServerComputesUnlockAt(t *testing.T) {
+	prices := &mockArtworkPriceReader{
+		editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100.0},
+	}
+	oracle := &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}
+	charge := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+
+	const claimWindowSeconds = 12345.0
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	svcIface := newPurchaseTestService(t, prices, oracle, charge, escrow, 500)
+	svc, ok := svcIface.(*ServiceImpl)
+	if !ok {
+		t.Fatalf("newPurchaseTestService returned %T, want *ServiceImpl", svcIface)
+	}
+	svc.claimWindowSeconds = claimWindowSeconds
+	svc.now = func() time.Time { return fixedNow }
+
+	want := float64(fixedNow.Unix()) + claimWindowSeconds
+
+	got, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+
+	// The escrow creator must receive the server-computed unlock_at.
+	if escrow.unlockAt != want {
+		t.Errorf("escrow unlockAt = %f, want %f", escrow.unlockAt, want)
+	}
+	// The audit record must persist the same server-computed value.
+	if got.UnlockAt != want {
+		t.Errorf("PurchaseCharge.UnlockAt = %f, want %f", got.UnlockAt, want)
+	}
+	// CreatePurchaseChargeInput has no UnlockAt field to derive it from — this
+	// documents that the value cannot have come from the client.
+	if _, ok := any(validPurchaseInput()).(interface{ GetUnlockAt() float64 }); ok {
+		t.Fatal("CreatePurchaseChargeInput must not expose a client-settable unlock_at")
 	}
 }
 
@@ -442,7 +496,7 @@ func TestCreatePurchaseCharge_IdempotentDuplicate(t *testing.T) {
 	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(store, prices, &mockPriceOracle{}, &mockChargeClient{}, &mockEscrowCreator{}, 500)
+	svc := NewService(store, prices, &mockPriceOracle{}, &mockChargeClient{}, &mockEscrowCreator{}, 500, testClaimWindowSeconds)
 
 	_, err = svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	if !errors.Is(err, ErrChargeAlreadyRecorded) {

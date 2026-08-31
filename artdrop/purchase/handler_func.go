@@ -22,13 +22,16 @@ type createPurchaseChargeRequest struct {
 	PaymentMethodID  string `json:"paymentMethodId,omitempty"`
 	Metadata         string `json:"metadata,omitempty"`
 
-	// Escrow fields.
-	Buyer     string  `json:"buyer"`
-	Seller    string  `json:"seller"`
-	EditionID uint64  `json:"editionId"`
-	ChipID    string  `json:"chipId"`
-	UnlockAt  float64 `json:"unlockAt"`
-	Nonce     uint64  `json:"nonce"`
+	// Escrow fields. UnlockAt is not accepted here (issue #111): it is
+	// computed server-side as now() + Config.EscrowClaimWindowSeconds, never
+	// trusted from the client — see CreatePurchaseChargeInput's doc comment.
+	// An "unlockAt" key in the request body is simply ignored by the JSON
+	// decoder.
+	Buyer     string `json:"buyer"`
+	Seller    string `json:"seller"`
+	EditionID uint64 `json:"editionId"`
+	ChipID    string `json:"chipId"`
+	Nonce     uint64 `json:"nonce"`
 
 	// CertificateID selects the create-vs-reescrow branch (issue #107):
 	// omit/zero for a fresh purchase (mint a new certificate against
@@ -63,7 +66,6 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		Seller:           req.Seller,
 		EditionID:        req.EditionID,
 		ChipID:           req.ChipID,
-		UnlockAt:         req.UnlockAt,
 		Nonce:            req.Nonce,
 		CertificateID:    req.CertificateID,
 	})
