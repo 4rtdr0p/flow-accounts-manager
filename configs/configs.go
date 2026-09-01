@@ -249,8 +249,12 @@ type Config struct {
 	// is server configuration.
 	PurchaseShippingRatePerUnitUSD float64 `env:"PURCHASE_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
 	// PythHermesBaseURL is the base URL of the Pyth Hermes HTTP API used to
-	// convert the USD artwork price to FLOW. It is free and needs no API key.
-	PythHermesBaseURL string `env:"PYTH_HERMES_BASE_URL" envDefault:"https://hermes.pyth.network"`
+	// convert the USD artwork price to FLOW.
+	PythHermesBaseURL string `env:"PYTH_HERMES_BASE_URL" envDefault:"https://pyth.dourolabs.app/hermes"`
+	// PythAPIKey authenticates requests to the Pyth Hermes HTTP API. It must
+	// remain a server-side secret and is intentionally optional for local test
+	// endpoints.
+	PythAPIKey string `env:"PYTH_API_KEY" envDefault:""`
 	// PythHermesFeedID is the Pyth Hermes price feed id for FLOW/USD. It is
 	// the feed the purchase charge flow reads to convert the USD artwork
 	// price to FLOW for the escrow amount.

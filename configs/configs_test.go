@@ -12,6 +12,7 @@ func TestParseConfig(t *testing.T) {
 	t.Setenv("FLOW_WALLET_ENCRYPTION_KEY_TYPE", "local")
 	t.Setenv("FLOW_WALLET_ACCESS_API_HOST", "access-api-host")
 	t.Setenv("FLOW_WALLET_WORKER_COUNT", "1")
+	t.Setenv("FLOW_WALLET_PYTH_API_KEY", "test-key")
 
 	cfg, err := Parse()
 
@@ -25,6 +26,10 @@ func TestParseConfig(t *testing.T) {
 
 	if cfg.WorkerCount != 1 {
 		t.Errorf(`expected "WorkerCount" to equal 1, got %d`, cfg.WorkerCount)
+	}
+
+	if cfg.PythAPIKey != "test-key" {
+		t.Errorf(`expected "PythAPIKey" to equal "test-key", got %q`, cfg.PythAPIKey)
 	}
 
 	if len(cfg.EnabledTokens) != 2 ||
