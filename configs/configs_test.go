@@ -13,6 +13,7 @@ func TestParseConfig(t *testing.T) {
 	t.Setenv("FLOW_WALLET_ACCESS_API_HOST", "access-api-host")
 	t.Setenv("FLOW_WALLET_WORKER_COUNT", "1")
 	t.Setenv("FLOW_WALLET_PYTH_API_KEY", "test-key")
+	t.Setenv("FLOW_WALLET_DEV_FLOW_USD_PRICE", "0.026")
 
 	cfg, err := Parse()
 
@@ -31,6 +32,9 @@ func TestParseConfig(t *testing.T) {
 	if cfg.PythAPIKey != "test-key" {
 		t.Errorf(`expected "PythAPIKey" to equal "test-key", got %q`, cfg.PythAPIKey)
 	}
+	if cfg.DevFlowUSDPrice != 0.026 {
+		t.Errorf(`expected "DevFlowUSDPrice" to equal 0.026, got %v`, cfg.DevFlowUSDPrice)
+	}
 
 	if len(cfg.EnabledTokens) != 2 ||
 		cfg.EnabledTokens[0] != "FlowToken:0x0ae53cb6e3f42a79:flowToken" ||
@@ -40,5 +44,19 @@ func TestParseConfig(t *testing.T) {
 			[]string{"FlowToken:0x0ae53cb6e3f42a79:flowToken", "FUSD:0xf8d6e0586b0a20c7:fusd"},
 			cfg.EnabledTokens,
 		)
+	}
+}
+
+func TestParseConfigRejectsDevPriceOnMainnet(t *testing.T) {
+	t.Setenv("FLOW_WALLET_ADMIN_ADDRESS", "admin-address")
+	t.Setenv("FLOW_WALLET_ADMIN_PRIVATE_KEY", "admin-private-key")
+	t.Setenv("FLOW_WALLET_ENCRYPTION_KEY", "encryption-key")
+	t.Setenv("FLOW_WALLET_ENCRYPTION_KEY_TYPE", "local")
+	t.Setenv("FLOW_WALLET_ACCESS_API_HOST", "access-api-host")
+	t.Setenv("FLOW_WALLET_CHAIN_ID", "flow-mainnet")
+	t.Setenv("FLOW_WALLET_DEV_FLOW_USD_PRICE", "0.026")
+
+	if _, err := Parse(); err == nil {
+		t.Fatal("expected fixed QA price on mainnet to be rejected")
 	}
 }

@@ -125,19 +125,27 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	var purchasePlatformFeeBps int
 	var pythMaxAge time.Duration
 	var pythBaseURL, pythFeedID, pythAPIKey string
+	var devFlowUSDPrice float64
 	if deps.Config != nil {
 		purchasePlatformFeeBps = deps.Config.PurchasePlatformFeeBasisPoints
 		pythMaxAge = deps.Config.PythMaxAge
 		pythBaseURL = deps.Config.PythHermesBaseURL
 		pythFeedID = deps.Config.PythHermesFeedID
 		pythAPIKey = deps.Config.PythAPIKey
+		devFlowUSDPrice = deps.Config.DevFlowUSDPrice
 	}
 	purchaseStore := datastoremongo.NewPurchaseStore(deps.Mongo, deps.Config)
-	pythClient := purchase.NewPythClient(pythBaseURL, pythFeedID, pythAPIKey, pythMaxAge)
+	var oracle purchase.PriceOracle
+	if devFlowUSDPrice > 0 {
+		oracle = purchase.FixedPriceOracle{PriceUSD: devFlowUSDPrice}
+		log.Warn("using fixed FLOW/USD price for non-mainnet QA")
+	} else {
+		oracle = purchase.NewPythClient(pythBaseURL, pythFeedID, pythAPIKey, pythMaxAge)
+	}
 	purchaseService := purchase.NewService(
 		purchase.NewGormStore(deps.DB),
 		purchaseStore,
-		pythClient,
+		oracle,
 		stripeClient,
 		purchaseEscrowCreator{svc: p.svc},
 		purchasePlatformFeeBps,
