@@ -3,10 +3,12 @@ package artdrop
 import (
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/caarlos0/env/v6"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/ixkio"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/onflow/flow-go-sdk"
 )
@@ -101,6 +103,40 @@ type Config struct {
 	// UnlockAt, the same scoping decision #107 made for amount. Default is
 	// 604800 seconds (7 days).
 	EscrowClaimWindowSeconds float64 `env:"ARTDROP_ESCROW_CLAIM_WINDOW_SECONDS" envDefault:"604800"`
+
+	// IxkioAPIURL is the Ixkio Flex API "API mode" tap-verification endpoint
+	// (design doc CHIP-SIGNING-DESIGN.md §4a). It is NOT the front's
+	// redirect-mode endpoint (payload-galaxy-front's auth-bridge.ts) — this is
+	// a separate, unrelated tap flow (design doc §3.4).
+	IxkioAPIURL string `env:"ARTDROP_IXKIO_API_URL" envDefault:"https://api.ixkio.com/v1/t"`
+
+	// IxkioResponseToken is Ixkio's "r" API-mode response token for the
+	// wallet-api's own Ixkio account. It is NOT the same token as the front's
+	// redirect-mode IXKIO_RESPONSE_API_TOKEN — that token is provisioned for
+	// a different Ixkio mode and must not be reused here (design doc §4a).
+	// Empty is allowed: the client omits "r" from the request rather than
+	// failing to start, so a deployment can come up before Ixkio provisions
+	// the token; real Verify calls will fail against Ixkio's own API until
+	// it's set.
+	IxkioResponseToken string `env:"ARTDROP_IXKIO_RESPONSE_TOKEN" envDefault:""`
+
+	// IxkioEnabled selects between the real Ixkio client and the
+	// TESTNET-ONLY bypass (ixkio.BypassVerifier), which makes every tap
+	// "Pass" without ever calling Ixkio. Defaults to false (bypass) so the
+	// create-escrow -> activate -> settle flow can be tested end to end with
+	// no physical chip and no live Ixkio dependency (design doc §0, §8 layer
+	// 4). MUST be true in production — see NewIxkioVerifier and
+	// ixkio.BypassVerifier's doc comment.
+	IxkioEnabled bool `env:"ARTDROP_IXKIO_ENABLED" envDefault:"false"`
+}
+
+// NewIxkioVerifier builds the ixkio.Verifier this Config selects: the real
+// Ixkio client when IxkioEnabled is true, or the TESTNET-ONLY bypass when
+// false. This is the constructor future consumers (escrow activation, design
+// doc §3.4/§5) call to get a verifier without caring which mode a deployment
+// is in.
+func (c *Config) NewIxkioVerifier() ixkio.Verifier {
+	return ixkio.NewVerifier(c.IxkioEnabled, c.IxkioAPIURL, c.IxkioResponseToken, http.DefaultClient)
 }
 
 // defaultEscrowMaxAmountFlow mirrors the envDefault above and is the fallback
