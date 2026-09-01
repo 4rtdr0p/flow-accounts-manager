@@ -124,15 +124,16 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	// It reuses the studio Stripe client and the artdrop escrow creator.
 	var purchasePlatformFeeBps int
 	var pythMaxAge time.Duration
-	var pythBaseURL, pythFeedID string
+	var pythBaseURL, pythFeedID, pythAPIKey string
 	if deps.Config != nil {
 		purchasePlatformFeeBps = deps.Config.PurchasePlatformFeeBasisPoints
 		pythMaxAge = deps.Config.PythMaxAge
 		pythBaseURL = deps.Config.PythHermesBaseURL
 		pythFeedID = deps.Config.PythHermesFeedID
+		pythAPIKey = deps.Config.PythAPIKey
 	}
 	purchaseStore := datastoremongo.NewPurchaseStore(deps.Mongo, deps.Config)
-	pythClient := purchase.NewPythClient(pythBaseURL, pythFeedID, pythMaxAge)
+	pythClient := purchase.NewPythClient(pythBaseURL, pythFeedID, pythAPIKey, pythMaxAge)
 	purchaseService := purchase.NewService(
 		purchase.NewGormStore(deps.DB),
 		purchaseStore,
