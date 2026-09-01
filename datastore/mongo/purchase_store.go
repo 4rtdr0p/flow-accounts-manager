@@ -7,6 +7,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -61,8 +62,7 @@ func (s *PurchaseStore) GetEditionPrice(ctx context.Context, editionID string) (
 		return nil, fmt.Errorf("edition id is required")
 	}
 
-	var raw bson.Raw
-	err := s.client.Collection(s.editionsColl).FindOne(ctx, bson.M{"id": editionID}).Decode(&raw)
+	raw, err := s.findArtwork(ctx, s.editionsColl, editionID)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrArtworkNotFound
@@ -95,8 +95,7 @@ func (s *PurchaseStore) GetPaintingPrice(ctx context.Context, paintingID string)
 		return nil, fmt.Errorf("painting id is required")
 	}
 
-	var raw bson.Raw
-	err := s.client.Collection(s.paintingsColl).FindOne(ctx, bson.M{"id": paintingID}).Decode(&raw)
+	raw, err := s.findArtwork(ctx, s.paintingsColl, paintingID)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrArtworkNotFound
@@ -115,4 +114,30 @@ func (s *PurchaseStore) GetPaintingPrice(ctx context.Context, paintingID string)
 	}
 
 	return &ArtworkPrice{ID: paintingID, PriceUSD: *doc.OriginalPrice}, nil
+}
+
+// findArtwork resolves Payload artwork ids across documents that store the
+// public identifier in either Mongo's _id field or Payload's id field.
+func (s *PurchaseStore) findArtwork(ctx context.Context, collection, artworkID string) (bson.Raw, error) {
+	ids := []any{artworkID}
+	if objectID, err := primitive.ObjectIDFromHex(artworkID); err == nil {
+		ids = []any{objectID, artworkID}
+	}
+
+	for _, id := range ids {
+		var raw bson.Raw
+		err := s.client.Collection(collection).FindOne(ctx, bson.M{"_id": id}).Decode(&raw)
+		if err == nil {
+			return raw, nil
+		}
+		if !errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, err
+		}
+	}
+
+	var raw bson.Raw
+	if err := s.client.Collection(collection).FindOne(ctx, bson.M{"id": artworkID}).Decode(&raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
