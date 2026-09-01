@@ -26,27 +26,25 @@ type PythPrice struct {
 	PublishTime time.Time
 }
 
-// PythClient reads the FLOW/USD price from the Pyth Hermes HTTP API.
+// PythClient reads the FLOW/USD price from the Pyth Hermes HTTP API. It is a
+// minimal net/http client; the feed is free and needs no API key.
 type PythClient struct {
 	baseURL string
 	feedID  string
-	apiKey  string
 	maxAge  time.Duration
 	http    *http.Client
 }
 
-// NewPythClient creates a Pyth Hermes client. When baseURL is empty, the
-// current default Hermes endpoint is used. apiKey is sent as a Bearer token
-// when non-empty. maxAge is the maximum age a price is accepted for; a price
-// older than that is rejected.
-func NewPythClient(baseURL, feedID, apiKey string, maxAge time.Duration) *PythClient {
+// NewPythClient creates a Pyth Hermes client. When baseURL is empty the client
+// is disabled (Latest returns ErrPythDisabled). maxAge is the maximum age a
+// price is accepted for; a price older than that is rejected.
+func NewPythClient(baseURL, feedID string, maxAge time.Duration) *PythClient {
 	if baseURL == "" {
-		baseURL = "https://pyth.dourolabs.app/hermes"
+		baseURL = "https://hermes.pyth.network"
 	}
 	return &PythClient{
 		baseURL: baseURL,
 		feedID:  feedID,
-		apiKey:  apiKey,
 		maxAge:  maxAge,
 		http:    &http.Client{Timeout: 15 * time.Second},
 	}
@@ -67,9 +65,6 @@ func (c *PythClient) Latest(ctx context.Context) (*PythPrice, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v2/updates/price/latest?"+q.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("build pyth request: %w", err)
-	}
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
 	resp, err := c.http.Do(req)
