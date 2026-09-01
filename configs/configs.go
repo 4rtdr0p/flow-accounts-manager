@@ -126,9 +126,12 @@ type Config struct {
 	AuthOpenAPISpecPath string `env:"OPENAPI_SPEC_PATH" envDefault:""`
 
 	// -- Token exchange (POST /v1/auth/token) --
-	// RSA public key (PEM) used to verify Payload's identity assertions.
-	// MUST stay optional (no notEmpty): an empty value must not crash-loop the
-	// service — the exchange endpoint simply returns 503 until it is set.
+	// RSA public key used to verify Payload's identity assertions, provided as
+	// base64 of the PEM on a single line (Quave env vars can't carry a multi-
+	// line PEM). It is base64-decoded then PEM-parsed at startup.
+	// MUST stay optional (no notEmpty): an empty — or invalid base64 / non-RSA —
+	// value must not crash-loop the service; the exchange endpoint simply
+	// returns 503 until a valid key is set.
 	AuthPayloadPublicKey string `env:"PAYLOAD_JWT_PUBLIC_KEY" envDefault:""`
 	// TTL for a minted wallet access token.
 	AuthAccessTokenTTL time.Duration `env:"AUTH_ACCESS_TOKEN_TTL" envDefault:"600s"`

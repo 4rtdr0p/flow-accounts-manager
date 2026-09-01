@@ -234,7 +234,7 @@ func runServer(cfg *configs.Config) {
 	opsHandler := handlers.NewOps(opsService)
 
 	authExchangeHandler := handlers.NewAuthExchange(exchange.New(exchange.Config{
-		PayloadPublicKeyPEM:       cfg.AuthPayloadPublicKey,
+		PayloadPublicKeyB64:       cfg.AuthPayloadPublicKey,
 		AccessTokenSecret:         cfg.AuthJWTSecret,
 		AccessTokenIssuer:         cfg.AuthJWTIssuer,
 		AccessTokenAudience:       cfg.AuthJWTAudience,

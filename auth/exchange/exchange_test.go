@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -57,9 +58,13 @@ func signAssertion(t *testing.T, key *rsa.PrivateKey, role, sub string, exp time
 	return signed
 }
 
+func b64PEM(pem string) string {
+	return base64.StdEncoding.EncodeToString([]byte(pem))
+}
+
 func testExchanger(pubPEM string) *Exchanger {
 	return New(Config{
-		PayloadPublicKeyPEM:       pubPEM,
+		PayloadPublicKeyB64:       b64PEM(pubPEM),
 		AccessTokenSecret:         testSecret,
 		AccessTokenIssuer:         testAccessIssuer,
 		AccessTokenAudience:       testAccessAudience,
@@ -267,9 +272,28 @@ func TestExchangeNotConfigured(t *testing.T) {
 	// Valid key but empty secret ⇒ also not configured (token would be
 	// unvalidatable).
 	_, pubPEM := newTestKeypair(t)
-	ex2 := New(Config{PayloadPublicKeyPEM: pubPEM, AccessTokenTTL: 600 * time.Second})
+	ex2 := New(Config{PayloadPublicKeyB64: b64PEM(pubPEM), AccessTokenSecret: "", AccessTokenTTL: 600 * time.Second})
 	if ex2.Configured() {
 		t.Fatal("exchanger with empty secret should not be configured")
+	}
+
+	// Non-base64 garbage ⇒ not configured, no panic.
+	ex3 := New(Config{PayloadPublicKeyB64: "!!!not-base64!!!", AccessTokenSecret: testSecret, AccessTokenTTL: 600 * time.Second})
+	if ex3.Configured() {
+		t.Fatal("exchanger with invalid base64 key should not be configured")
+	}
+
+	// Valid base64 but not an RSA PEM ⇒ not configured, no panic.
+	ex4 := New(Config{PayloadPublicKeyB64: base64.StdEncoding.EncodeToString([]byte("hello world")), AccessTokenSecret: testSecret, AccessTokenTTL: 600 * time.Second})
+	if ex4.Configured() {
+		t.Fatal("exchanger with non-RSA payload should not be configured")
+	}
+
+	// Sanity: a correctly base64-encoded PEM with a secret IS configured.
+	_, pubPEM2 := newTestKeypair(t)
+	ex5 := New(Config{PayloadPublicKeyB64: b64PEM(pubPEM2), AccessTokenSecret: testSecret, AccessTokenTTL: 600 * time.Second})
+	if !ex5.Configured() {
+		t.Fatal("exchanger with valid base64 PEM and secret should be configured")
 	}
 }
 

@@ -7,6 +7,7 @@ package exchange
 
 import (
 	"crypto/rsa"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,9 +39,11 @@ var (
 // AuthJWTIssuer / AuthJWTAudience) so that a minted token passes validation
 // once AUTH_ENABLED is turned on.
 type Config struct {
-	// PayloadPublicKeyPEM is the RSA public key (PEM) used to verify Payload's
-	// assertions. Empty ⇒ endpoint returns 503.
-	PayloadPublicKeyPEM string
+	// PayloadPublicKeyB64 is the RSA public key used to verify Payload's
+	// assertions, provided as base64 of the PEM on a single line (Quave env
+	// vars can't carry the multi-line PEM directly). It is base64-decoded and
+	// then PEM-parsed. Empty, non-base64, or non-RSA ⇒ endpoint returns 503.
+	PayloadPublicKeyB64 string
 
 	// AccessTokenSecret is the HS256 secret the minted access token is signed
 	// with. MUST equal the middleware's validation secret. Empty ⇒ 503.
@@ -77,12 +80,28 @@ type Result struct {
 // deliberate — the public key is injected after deploy.
 func New(cfg Config) *Exchanger {
 	e := &Exchanger{cfg: cfg}
-	if strings.TrimSpace(cfg.PayloadPublicKeyPEM) != "" {
-		if key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.PayloadPublicKeyPEM)); err == nil {
-			e.publicKey = key
-		}
+	if key, err := parsePublicKey(cfg.PayloadPublicKeyB64); err == nil {
+		e.publicKey = key
 	}
 	return e
+}
+
+// parsePublicKey decodes a single-line base64 value into PEM bytes and parses
+// them as an RSA public key. Any failure (empty, whitespace, bad base64, non-
+// RSA PEM) returns an error so the Exchanger is simply left unconfigured — the
+// service boots and the endpoint returns 503 rather than crash-looping.
+func parsePublicKey(b64 string) (*rsa.PublicKey, error) {
+	trimmed := strings.TrimSpace(b64)
+	if trimmed == "" {
+		return nil, errors.New("empty public key")
+	}
+	// Tolerate accidental internal whitespace/newlines in the base64 blob.
+	trimmed = strings.Join(strings.Fields(trimmed), "")
+	pemBytes, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("base64 decode public key: %w", err)
+	}
+	return jwt.ParseRSAPublicKeyFromPEM(pemBytes)
 }
 
 // Configured reports whether the exchange endpoint can serve requests. It needs
