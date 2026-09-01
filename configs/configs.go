@@ -1,6 +1,7 @@
 package configs
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -255,6 +256,9 @@ type Config struct {
 	// remain a server-side secret and is intentionally optional for local test
 	// endpoints.
 	PythAPIKey string `env:"PYTH_API_KEY" envDefault:""`
+	// DevFlowUSDPrice is a fixed FLOW/USD price for non-mainnet QA environments.
+	// It is disabled when zero.
+	DevFlowUSDPrice float64 `env:"DEV_FLOW_USD_PRICE" envDefault:"0"`
 	// PythHermesFeedID is the Pyth Hermes price feed id for FLOW/USD. It is
 	// the feed the purchase charge flow reads to convert the USD artwork
 	// price to FLOW for the escrow amount.
@@ -270,6 +274,15 @@ func Parse(opts ...env.Options) (*Config, error) {
 	cfg := Config{}
 	opts = append(opts, env.Options{Prefix: "FLOW_WALLET_"})
 	err := env.Parse(&cfg, opts...)
+	if err != nil {
+		return &cfg, err
+	}
+	if cfg.DevFlowUSDPrice < 0 {
+		return &cfg, fmt.Errorf("DEV_FLOW_USD_PRICE must not be negative")
+	}
+	if cfg.DevFlowUSDPrice > 0 && cfg.ChainID == flow.Mainnet {
+		return &cfg, fmt.Errorf("DEV_FLOW_USD_PRICE is not allowed on mainnet")
+	}
 	return &cfg, err
 }
 
