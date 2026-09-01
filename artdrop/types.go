@@ -1,6 +1,9 @@
 package artdrop
 
-import "github.com/flow-hydraulics/flow-wallet-api/transactions"
+import (
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/ixkio"
+	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+)
 
 // Transaction types used by the artdrop plugin.
 //
@@ -121,10 +124,19 @@ type ReEscrowRequest struct {
 // certificate. Keeping the fields around — even ignored — would leave a
 // client-controlled input sitting on exactly the path that vulnerability
 // used, inviting it to get wired back in later.
+//
+// Phase 3 (issue #117, docs/CHIP-SIGNING-DESIGN.md §5) removes Challenge and
+// Signature the same way: the wallet-api now produces the chip's activation
+// signature itself — server-side challenge, Ixkio-gated signing (see
+// Service.ActivateChip) — instead of relaying a client-supplied one. A
+// client-controlled signature was exactly the shape a forged activation
+// would need; do not reintroduce either field. EscrowId was already dead
+// (the real id comes from the URL path) and is dropped along with them.
+// IxkioTap carries only the raw, single-use tap evidence the front forwards
+// UNVERIFIED — per ixkio.Tap's doc comment, the front must never call Ixkio
+// itself first, since a tap can only be verified once.
 type ActivateChipRequest struct {
-	EscrowId  uint64 `json:"escrow_id"`
-	Challenge string `json:"challenge"`
-	Signature []byte `json:"signature"`
+	IxkioTap ixkio.Tap `json:"ixkio_tap"`
 }
 
 // ProvisionChipRequest is the body of POST /chips.

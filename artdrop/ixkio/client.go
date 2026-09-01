@@ -33,9 +33,9 @@ import (
 // scan counter n): callers must forward a tap unverified and let the
 // wallet-api perform the one Verify call, never verify it twice.
 type Tap struct {
-	X string
-	N string
-	E string
+	X string `json:"x"`
+	N string `json:"n"`
+	E string `json:"e"`
 }
 
 // Verifier confirms a Tap and reports the chip's Ixkio-side identifier

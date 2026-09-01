@@ -11,6 +11,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/chips"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/ixkio"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
@@ -169,7 +170,26 @@ type Service struct {
 	// unlike escrowStore there is no chain-fallback for this data (see
 	// chips.Chip's doc comment).
 	chipStore chips.Store
+
+	// ixkioVerifier gates chip-challenge signing (ActivateChip, issue #117
+	// phase 3) on a confirmed physical tap. Always non-nil: Config.
+	// NewIxkioVerifier returns either the real ixkio.Client or, per
+	// Config.IxkioEnabled, the TESTNET-ONLY ixkio.BypassVerifier — see
+	// docs/CHIP-SIGNING-DESIGN.md §4a/§8 layer 4.
+	ixkioVerifier ixkio.Verifier
+
+	// escrowReader resolves an escrow's buyer/nonce/chipId for ActivateChip
+	// — wired to s.GetEscrow (below, after construction, since a method
+	// value needs the already-built *Service). Kept as a swappable field
+	// rather than a hardcoded call so ActivateChip's tests can substitute a
+	// fake instead of faking a full get_escrow_summary chain/projection
+	// round trip (see activate_chip_test.go).
+	escrowReader escrowActivationReader
 }
+
+// escrowActivationReader is the shape of Service.GetEscrow, factored out so
+// Service.escrowReader can be swapped in tests. See that field's doc comment.
+type escrowActivationReader func(ctx context.Context, escrowId uint64) (*EscrowSummary, error)
 
 // NewService creates a new artdrop service using the shared plugin
 // dependencies and the artdrop contract-address config. It substitutes cfg's
@@ -221,8 +241,14 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		createOriginalCDC:              sub(createOriginalCDC),
 		createEditionCDC:               sub(createEditionCDC),
 
-		escrowCache: newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
+		escrowCache:   newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
+		ixkioVerifier: validated.NewIxkioVerifier(),
 	}
+
+	// escrowReader defaults to the service's own GetEscrow — set here
+	// (rather than in the struct literal above) because the method value
+	// needs the already-constructed *Service. See the field's doc comment.
+	svc.escrowReader = svc.GetEscrow
 
 	// escrowStore is only wired when a DB is available — deps.DB is nil in
 	// some test constructions that never exercise escrow reads (see
@@ -594,27 +620,114 @@ func (s *Service) VoidEscrow(ctx context.Context, sync bool, escrowId uint64) (*
 	return s.deps.Transactions.Create(ctx, sync, adminAddress, s.voidEscrowCDC, args, TxTypeVoidEscrow)
 }
 
-// ActivateChip validates a chip signature and settles the escrow.
+// ActivateChip verifies the request's Ixkio tap, has the wallet-api sign the
+// escrow's activation challenge AS THE CHIP, and submits
+// activate_chip_and_settle with that server-produced signature.
 //
 // certificateId/certificateOwner are no longer request inputs: the
 // escrow-lifecycle redesign (2026-08) changed EscrowModule.
 // activateChipAndSettle to derive both from the escrow's own on-chain
 // state, closing a certificate-theft vulnerability where a caller could
-// pass arbitrary values here. See ActivateChipRequest.
+// pass arbitrary values here.
+//
+// Reworked for issue #117 phase 3 (docs/CHIP-SIGNING-DESIGN.md §5): the
+// client no longer supplies challenge/signature at all — see
+// ActivateChipRequest's doc comment. Instead:
+//
+//  1. the escrow (escrowId, path) is read via s.escrowReader to recover its
+//     buyer/nonce/chipId. The path address must equal the escrow's buyer —
+//     it's who signs the resulting transaction, and the contract enforces
+//     activator == escrow.buyer too, but failing early here gives a clearer
+//     error than a reverted transaction.
+//  2. the request's raw Ixkio tap is verified via s.ixkioVerifier BEFORE any
+//     signing happens — a !pass or hard error short-circuits here, so the
+//     chip key is never wielded on an unconfirmed tap.
+//  3. the escrow's chipId is resolved to its custodial account via
+//     s.chipStore. When Ixkio is genuinely enabled (Config.IxkioEnabled,
+//     not the testnet bypass), the verified xuid must equal that chipId
+//     (design doc §1 pins chipId to BE the Ixkio xuid) — a Pass for chip A
+//     must never activate chip B's escrow. Under ixkio.BypassVerifier there
+//     is no real tap to bind (it just echoes tap.X), so this check is
+//     skipped and the escrow's own chipId is used directly — see
+//     BypassVerifier's doc comment.
+//  4. the challenge is built SERVER-SIDE exactly as EscrowModule.
+//     buildChallenge does: "{nonce}:{buyer}:{escrowId}" — confirmed against
+//     artdrop-protocol/contracts/implementations/EscrowModule.cdc
+//     (buildChallenge concatenates nonce.toString(), ":", buyer.toString(),
+//     ":", escrowId.toString()). escrow.Buyer is already rendered via
+//     flow_helpers.FormatAddress, the same "0x"+16-lowercase-hex-char form
+//     Cadence's Address.toString() produces, so the two encodings match.
+//  5. the wallet-api signs that challenge with the chip account's key
+//     (transactions.SignChipChallenge, the F0 primitive) — never a
+//     client-supplied signature.
+//  6. activate_chip_and_settle is submitted signed by the buyer's custodial
+//     account ({address} path param), carrying the wallet-produced
+//     signature. The Cadence transaction is unchanged; only where its
+//     signature argument comes from moved from client to wallet.
 func (s *Service) ActivateChip(ctx context.Context, sync bool, address string, escrowId uint64, req ActivateChipRequest) (*jobs.Job, *transactions.Transaction, error) {
 	address, err := flow_helpers.ValidateAddress(address, s.deps.Config.ChainID)
 	if err != nil {
 		return nil, nil, err
 	}
-	if req.Challenge == "" {
-		return nil, nil, fmt.Errorf("field 'challenge' is required")
+	if s.escrowReader == nil {
+		return nil, nil, fmt.Errorf("artdrop: chip activation requires an escrow reader, none is configured")
+	}
+	if s.ixkioVerifier == nil {
+		return nil, nil, fmt.Errorf("artdrop: chip activation requires an ixkio verifier, none is configured")
+	}
+	if s.chipStore == nil {
+		return nil, nil, fmt.Errorf("artdrop: chip activation requires a database, none is configured")
+	}
+
+	escrow, err := s.escrowReader(ctx, escrowId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("artdrop: read escrow %d: %w", escrowId, err)
+	}
+	if escrow == nil {
+		return nil, nil, fmt.Errorf("artdrop: escrow %d not found", escrowId)
+	}
+	if !strings.EqualFold(escrow.Buyer, address) {
+		return nil, nil, fmt.Errorf("artdrop: activator %s does not match escrow %d buyer %s", address, escrowId, escrow.Buyer)
+	}
+
+	// Verify the tap BEFORE touching the chip key — never sign on an
+	// unconfirmed tap (design doc §0 decision (a)).
+	xuid, pass, err := s.ixkioVerifier.Verify(ctx, req.IxkioTap)
+	if err != nil {
+		return nil, nil, fmt.Errorf("artdrop: verify ixkio tap: %w", err)
+	}
+	if !pass {
+		return nil, nil, fmt.Errorf("artdrop: ixkio tap did not pass verification")
+	}
+
+	chip, err := s.chipStore.GetChip(ctx, escrow.ChipId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("artdrop: look up chip %q: %w", escrow.ChipId, err)
+	}
+	if chip == nil {
+		return nil, nil, fmt.Errorf("artdrop: chip %q is not provisioned", escrow.ChipId)
+	}
+
+	// Identity binding (design doc §1/§6): a Pass for one chip's tap must
+	// never activate a different chip's escrow. Only checked under a real
+	// Ixkio verify — see BypassVerifier's doc comment for why the bypass
+	// mode has nothing genuine to bind.
+	if s.cfg.IxkioEnabled && !strings.EqualFold(xuid, escrow.ChipId) {
+		return nil, nil, fmt.Errorf("artdrop: ixkio tap xuid %q does not match escrow %d chip %q", xuid, escrowId, escrow.ChipId)
+	}
+
+	challenge := fmt.Sprintf("%d:%s:%d", escrow.Nonce, escrow.Buyer, escrowId)
+
+	signature, err := s.deps.Transactions.SignChipChallenge(ctx, chip.AccountAddress, []byte(challenge))
+	if err != nil {
+		return nil, nil, fmt.Errorf("artdrop: sign chip challenge: %w", err)
 	}
 
 	args := []transactions.Argument{
 		cadence.NewAddress(flow.HexToAddress(s.cfg.LogicOwner)),
 		cadence.NewUInt64(escrowId),
-		cadence.String(req.Challenge),
-		newUInt8Array(req.Signature),
+		cadence.String(challenge),
+		newUInt8Array(signature),
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, address, s.activateChipAndSettleCDC, args, TxTypeActivateChip)
