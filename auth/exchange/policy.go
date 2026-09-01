@@ -28,17 +28,30 @@ const (
 	scopeTransactionRead  = "transaction.read"
 	scopeHealthRead       = "health.read"
 
-	// Write / action scopes.
+	// User action scopes.
+	scopeScriptExecute      = "script.execute"
 	scopeAccountCreate      = "account.create"
 	scopeAccountSetup       = "account.setup"
 	scopeStudioChargeCreate = "studio.charge.create"
-	scopeAccountSign        = "account.sign"
-	scopeEscrowVoid         = "account.artdrop.escrow.void"
-	scopeEscrowReescrow     = "account.artdrop.escrow.reescrow"
+	scopeAccountTransfer    = "account.transfer"
 	scopeEscrowActivate     = "account.artdrop.escrow.activate"
-	scopeOriginalCreate     = "account.artdrop.original.create"
-	scopeEditionCreate      = "account.artdrop.edition.create"
-	scopeSystemWrite        = "system.write"
+
+	// Operations action scopes.
+	scopeEscrowVoid      = "account.artdrop.escrow.void"
+	scopeEscrowReescrow  = "account.artdrop.escrow.reescrow"
+	scopeOriginalCreate  = "account.artdrop.original.create"
+	scopeEditionCreate   = "account.artdrop.edition.create"
+	scopeArtistOnboard   = "account.artdrop.artist.onboard"
+	scopeAccountGraduate = "account.key.graduate"
+	scopeAccountKeySync  = "account.key.sync"
+	scopeWatchlistWrite  = "watchlist.write"
+	scopeOpsRun          = "ops.run"
+	scopeSystemWrite     = "system.write"
+
+	// Admin-only break-glass scopes (see adminScopes).
+	scopeAccountSign       = "account.sign"
+	scopeTransactionCreate = "transaction.create"
+	scopeTokenWrite        = "token.write"
 )
 
 // readScopes are granted to every role. These are all read-only endpoints.
@@ -56,38 +69,51 @@ var readScopes = []string{
 	scopeHealthRead,
 }
 
-// userScopes is the base set every authenticated end-user gets.
-//
-// account.sign is a TRANSITIONAL god-scope: it authorizes the raw
-// /accounts/{address}/sign endpoint, which lets the front sign arbitrary
-// transactions. It is granted only until the front migrates onto the
-// higher-level typed endpoints (transfer, escrow, purchases:charge, ...). To
-// remove it later, delete the single scopeAccountSign entry from this slice —
-// nothing else depends on it being here.
+// userScopes is the base set every authenticated end-user gets: all reads plus
+// the typed end-user actions. No god-scope here — the front uses the typed
+// endpoints (transfer, purchases:charge, escrow activate). escrow.activate is a
+// user action because the activation transaction is signed by the buyer
+// (activator == buyer on-chain).
 var userScopes = concatScopes(readScopes, []string{
+	scopeScriptExecute,
 	scopeAccountCreate,
 	scopeAccountSetup,
 	scopeStudioChargeCreate, // also covers /purchases:charge (issue #107)
-	scopeAccountSign,        // TRANSITIONAL — see note above
+	scopeAccountTransfer,
+	scopeEscrowActivate,
 })
 
-// operationsScopes is userScopes plus the operator-only actions: escrow
-// lifecycle, original/edition creation, and system.* writes.
+// operationsScopes is userScopes plus the operator-only actions: the rest of
+// the escrow lifecycle, original/edition creation, artist onboarding, custodial
+// key management, watchlist writes, and ops/system.* writes.
 var operationsScopes = concatScopes(userScopes, []string{
 	scopeEscrowVoid,
 	scopeEscrowReescrow,
-	scopeEscrowActivate,
 	scopeOriginalCreate,
 	scopeEditionCreate,
+	scopeArtistOnboard,
+	scopeAccountGraduate,
+	scopeAccountKeySync,
+	scopeWatchlistWrite,
+	scopeOpsRun,
 	scopeSystemWrite,
 })
 
-// DefaultRoleScopes is the wallet's role→scope policy. admin is a superset role
-// and currently mirrors operations exactly.
+// adminScopes is operationsScopes plus the break-glass scopes that must never
+// be handed to an end-user or operator: the raw signing endpoint (account.sign)
+// and the raw transaction/token-config endpoints. admin is a STRICT superset of
+// operations — it is not merely an alias.
+var adminScopes = concatScopes(operationsScopes, []string{
+	scopeAccountSign,       // break-glass: raw /accounts/{address}/sign
+	scopeTransactionCreate, // break-glass: raw transaction submission
+	scopeTokenWrite,        // break-glass: token template config
+})
+
+// DefaultRoleScopes is the wallet's role→scope policy.
 var DefaultRoleScopes = map[Role][]string{
 	RoleUser:       userScopes,
 	RoleOperations: operationsScopes,
-	RoleAdmin:      operationsScopes,
+	RoleAdmin:      adminScopes,
 }
 
 // ScopesForRole returns the scopes granted to role, and whether the role is

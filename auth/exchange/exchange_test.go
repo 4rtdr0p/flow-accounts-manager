@@ -133,9 +133,15 @@ func TestExchangeMintsTokenValidatedByRealMiddleware(t *testing.T) {
 	if !hasScopeInClaim(gotClaims.Scope, scopeAccountRead) {
 		t.Fatalf("minted scope claim %q missing %q", gotClaims.Scope, scopeAccountRead)
 	}
-	// The user role must also carry the transitional god-scope.
-	if !hasScopeInClaim(gotClaims.Scope, scopeAccountSign) {
-		t.Fatalf("minted scope claim %q missing transitional %q", gotClaims.Scope, scopeAccountSign)
+	// The user role carries the typed end-user actions...
+	for _, want := range []string{scopeScriptExecute, scopeAccountTransfer, scopeEscrowActivate} {
+		if !hasScopeInClaim(gotClaims.Scope, want) {
+			t.Fatalf("minted user scope claim %q missing %q", gotClaims.Scope, want)
+		}
+	}
+	// ...but NOT the break-glass account.sign god-scope (removed from user).
+	if hasScopeInClaim(gotClaims.Scope, scopeAccountSign) {
+		t.Fatalf("user token must not carry break-glass %q, got %q", scopeAccountSign, gotClaims.Scope)
 	}
 }
 
@@ -301,14 +307,109 @@ func TestScopesForRole(t *testing.T) {
 	if _, ok := ScopesForRole("nope"); ok {
 		t.Fatal("unknown role should not resolve")
 	}
+
+	userScopes, _ := ScopesForRole("user")
+	opsScopes, ok := ScopesForRole("operations")
+	if !ok {
+		t.Fatal("operations role should resolve")
+	}
 	adminScopes, ok := ScopesForRole("admin")
 	if !ok {
 		t.Fatal("admin role should resolve")
 	}
-	opsScopes, _ := ScopesForRole("operations")
-	if strings.Join(adminScopes, " ") != strings.Join(opsScopes, " ") {
-		t.Fatal("admin should currently mirror operations exactly")
+
+	userSet := toSet(userScopes)
+	opsSet := toSet(opsScopes)
+	adminSet := toSet(adminScopes)
+
+	// user must have the typed actions and NOT any break-glass scope.
+	for _, s := range []string{scopeScriptExecute, scopeAccountTransfer, scopeEscrowActivate, scopeAccountCreate, scopeAccountSetup, scopeStudioChargeCreate} {
+		if _, ok := userSet[s]; !ok {
+			t.Fatalf("user missing expected scope %q", s)
+		}
 	}
+	for _, s := range []string{scopeAccountSign, scopeTransactionCreate, scopeTokenWrite, scopeEscrowVoid, scopeSystemWrite} {
+		if _, ok := userSet[s]; ok {
+			t.Fatalf("user must NOT have scope %q", s)
+		}
+	}
+
+	// operations is a strict superset of user, plus operator actions, but NOT
+	// the break-glass scopes.
+	for s := range userSet {
+		if _, ok := opsSet[s]; !ok {
+			t.Fatalf("operations missing user scope %q", s)
+		}
+	}
+	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite} {
+		if _, ok := opsSet[s]; !ok {
+			t.Fatalf("operations missing expected scope %q", s)
+		}
+	}
+	for _, s := range []string{scopeAccountSign, scopeTransactionCreate, scopeTokenWrite} {
+		if _, ok := opsSet[s]; ok {
+			t.Fatalf("operations must NOT have break-glass scope %q", s)
+		}
+	}
+
+	// admin is a strict superset of operations, plus exactly the 3 break-glass
+	// scopes. It must NOT merely mirror operations.
+	if len(adminScopes) == len(opsScopes) {
+		t.Fatal("admin must be a strict superset of operations, not an alias")
+	}
+	for s := range opsSet {
+		if _, ok := adminSet[s]; !ok {
+			t.Fatalf("admin missing operations scope %q", s)
+		}
+	}
+	for _, s := range []string{scopeAccountSign, scopeTransactionCreate, scopeTokenWrite} {
+		if _, ok := adminSet[s]; !ok {
+			t.Fatalf("admin missing break-glass scope %q", s)
+		}
+	}
+	if len(adminScopes) != len(opsScopes)+3 {
+		t.Fatalf("admin should be operations + 3 break-glass scopes, got %d vs %d", len(adminScopes), len(opsScopes))
+	}
+}
+
+// TestAdminCoversAllNonExemptScopes guards the invariant that every scope in
+// openapi.yml is granted by some role EXCEPT auth.token (the exchange route
+// itself, which is auth-exempt). Since admin is the top superset, admin must
+// contain exactly the full non-exempt scope universe.
+func TestAdminCoversAllNonExemptScopes(t *testing.T) {
+	allNonExempt := []string{
+		// reads
+		"account.read", "job.read", "ops.read", "pricing.read", "studio.charge.read",
+		"system.read", "token.read", "transaction.read", "health.read",
+		// user actions
+		"script.execute", "account.create", "account.setup", "studio.charge.create",
+		"account.transfer", "account.artdrop.escrow.activate",
+		// operations actions
+		"account.artdrop.escrow.void", "account.artdrop.escrow.reescrow",
+		"account.artdrop.original.create", "account.artdrop.edition.create",
+		"account.artdrop.artist.onboard", "account.key.graduate", "account.key.sync",
+		"watchlist.write", "ops.run", "system.write",
+		// admin break-glass
+		"account.sign", "transaction.create", "token.write",
+	}
+	adminScopes, _ := ScopesForRole("admin")
+	adminSet := toSet(adminScopes)
+	for _, s := range allNonExempt {
+		if _, ok := adminSet[s]; !ok {
+			t.Errorf("admin (superset) missing openapi scope %q", s)
+		}
+	}
+	if len(adminScopes) != len(allNonExempt) {
+		t.Fatalf("admin scope count = %d, want %d (all non-exempt openapi scopes); auth.token must stay exempt", len(adminScopes), len(allNonExempt))
+	}
+}
+
+func toSet(ss []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(ss))
+	for _, s := range ss {
+		m[s] = struct{}{}
+	}
+	return m
 }
 
 func hasScopeInClaim(scopeClaim, want string) bool {
