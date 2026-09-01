@@ -266,6 +266,10 @@ func (s *graduateTxService) GetOrCreateTransaction(transactionId string) *transa
 	panic("not used")
 }
 
+func (s *graduateTxService) SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error) {
+	panic("not used")
+}
+
 func (s *graduateTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
 }
 

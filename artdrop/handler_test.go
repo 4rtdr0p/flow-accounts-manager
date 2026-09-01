@@ -337,5 +337,9 @@ func (s *captureTransactionService) GetOrCreateTransaction(transactionId string)
 	return nil
 }
 
+func (s *captureTransactionService) SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (s *captureTransactionService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
 }

@@ -670,3 +670,7 @@ func (s *setupTxService) GetOrCreateTransaction(transactionId string) *transacti
 
 func (s *setupTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
 }
+
+func (s *setupTxService) SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error) {
+	panic("not used")
+}
