@@ -21,7 +21,14 @@ const (
 	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
 	TxTypeCreateEdition     transactions.Type = "ArtdropCreateEdition"
+	TxTypeProvisionChip     transactions.Type = "ArtdropProvisionChip"
 )
+
+// chipSigningModeCustodial is the only Chip.SigningMode value provisioning
+// writes today — the wallet-api signs on the chip's behalf, Ixkio-gated. See
+// docs/CHIP-SIGNING-DESIGN.md §7 for the future "self" mode (asymmetric
+// self-signing chips), which is not wired anywhere yet.
+const chipSigningModeCustodial = "custodial"
 
 // TransferRequest contains the parameters needed to transfer a certificate.
 type TransferRequest struct {
@@ -118,6 +125,29 @@ type ActivateChipRequest struct {
 	EscrowId  uint64 `json:"escrow_id"`
 	Challenge string `json:"challenge"`
 	Signature []byte `json:"signature"`
+}
+
+// ProvisionChipRequest is the body of POST /chips.
+type ProvisionChipRequest struct {
+	ChipId string `json:"chip_id"`
+}
+
+// ChipInfo is a chip's chipId -> custodial-account mapping, returned by both
+// provisioning and lookup (issue #117).
+type ChipInfo struct {
+	ChipId string `json:"chip_id"`
+	// AccountAddress is the chip's custodial Flow account — the account
+	// whose stored key is this chip's private key.
+	AccountAddress string `json:"account_address"`
+	// PublicKey is the chip's on-chain identity: the 64-byte raw ECDSA
+	// P-256 public key (x||y), hex-encoded without a "0x" prefix.
+	PublicKey string `json:"public_key"`
+	// SigningMode is "custodial" (wallet-api signs, Ixkio-gated) or,
+	// eventually, "self" (design doc §7) — always "custodial" today.
+	SigningMode string `json:"signing_mode"`
+	// RegisteredAtBlock is the block height the on-chain registration
+	// confirmed at, when known.
+	RegisteredAtBlock *uint64 `json:"registered_at_block,omitempty"`
 }
 
 // CertificateInfo represents a single certificate returned by the list endpoint.

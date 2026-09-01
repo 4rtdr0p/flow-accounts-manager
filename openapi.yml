@@ -1047,6 +1047,56 @@ paths:
       responses:
         '200':
           description: OK
+  '/chips':
+    post:
+      summary: Provision a chip's custodial account and register its public key
+      description: >-
+        Creates a custodial Flow account whose ECDSA P-256 key becomes the
+        chip's on-chain identity, registers that key via the delegated
+        ChipAdmin capability, and persists the chip_id -> account mapping.
+        Idempotent: provisioning an already-provisioned chip_id returns its
+        existing mapping unchanged rather than creating a second account.
+      operationId: provisionArtDropChip
+      x-required-scopes:
+        - chip.provision
+      tags:
+        - Chips
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - chip_id
+              properties:
+                chip_id:
+                  type: string
+      responses:
+        '201':
+          description: Created
+  '/chips/{chipId}':
+    get:
+      summary: Get a chip's provisioning mapping
+      description: >-
+        Returns the chip_id -> custodial account mapping, or 404 if the chip
+        has not been provisioned.
+      operationId: getArtDropChip
+      x-required-scopes:
+        - account.read
+      tags:
+        - Chips
+      parameters:
+        - name: chipId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: Not Found
   '/artdrop/originals/{origId}':
     get:
       summary: Get an ArtDrop original summary

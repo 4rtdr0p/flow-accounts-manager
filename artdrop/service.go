@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/chips"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
@@ -65,6 +66,9 @@ var voidEscrowCDC string
 
 //go:embed cdc/activate_chip_and_settle.cdc
 var activateChipAndSettleCDC string
+
+//go:embed cdc/register_chip_via_delegated_cap.cdc
+var registerChipViaDelegatedCapCDC string
 
 //go:embed cdc/get_original_extended_summary.cdc
 var getOriginalExtendedSummaryCDC string
@@ -126,6 +130,7 @@ type Service struct {
 	reEscrowCDC                    string
 	voidEscrowCDC                  string
 	activateChipAndSettleCDC       string
+	registerChipViaDelegatedCapCDC string
 	getOriginalExtendedSummaryCDC  string
 	getEditionSummaryCDC           string
 	getEditionIDsByOriginalCDC     string
@@ -157,6 +162,13 @@ type Service struct {
 	// always reading the chain. See escrow_projection/escrow.go for the
 	// full design rationale and escrow_read_swap.go for how it's consulted.
 	escrowStore escrow_projection.Store
+
+	// chipStore is the wallet-api's own chipId -> custodial-account mapping
+	// (issue #117, package chips) — nil when deps.DB is nil, in which case
+	// ProvisionChip/GetChip both error rather than silently doing nothing;
+	// unlike escrowStore there is no chain-fallback for this data (see
+	// chips.Chip's doc comment).
+	chipStore chips.Store
 }
 
 // NewService creates a new artdrop service using the shared plugin
@@ -197,6 +209,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		reEscrowCDC:                    sub(reEscrowCDC),
 		voidEscrowCDC:                  sub(voidEscrowCDC),
 		activateChipAndSettleCDC:       sub(activateChipAndSettleCDC),
+		registerChipViaDelegatedCapCDC: sub(registerChipViaDelegatedCapCDC),
 		getOriginalExtendedSummaryCDC:  sub(getOriginalExtendedSummaryCDC),
 		getEditionSummaryCDC:           sub(getEditionSummaryCDC),
 		getEditionIDsByOriginalCDC:     sub(getEditionIDsByOriginalCDC),
@@ -219,6 +232,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 	// escrowStore is nil.
 	if deps.DB != nil {
 		svc.escrowStore = escrow_projection.NewGormStore(deps.DB)
+		svc.chipStore = chips.NewGormStore(deps.DB)
 	}
 
 	// Expose the new Original/Edition id on the async job's Result field

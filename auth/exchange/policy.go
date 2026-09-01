@@ -47,6 +47,7 @@ const (
 	scopeWatchlistWrite  = "watchlist.write"
 	scopeOpsRun          = "ops.run"
 	scopeSystemWrite     = "system.write"
+	scopeChipProvision   = "chip.provision"
 
 	// Admin-only break-glass scopes (see adminScopes).
 	scopeAccountSign       = "account.sign"
@@ -85,7 +86,7 @@ var userScopes = concatScopes(readScopes, []string{
 
 // operationsScopes is userScopes plus the operator-only actions: the rest of
 // the escrow lifecycle, original/edition creation, artist onboarding, custodial
-// key management, watchlist writes, and ops/system.* writes.
+// key management, chip provisioning, watchlist writes, and ops/system.* writes.
 var operationsScopes = concatScopes(userScopes, []string{
 	scopeEscrowVoid,
 	scopeEscrowReescrow,
@@ -97,6 +98,7 @@ var operationsScopes = concatScopes(userScopes, []string{
 	scopeWatchlistWrite,
 	scopeOpsRun,
 	scopeSystemWrite,
+	scopeChipProvision,
 })
 
 // adminScopes is operationsScopes plus the break-glass scopes that must never
