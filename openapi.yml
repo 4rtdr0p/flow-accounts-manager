@@ -180,6 +180,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/account'
+  /auth/token:
+    post:
+      summary: Exchange a Payload identity assertion for a wallet access token
+      description: >
+        Verifies a short-lived identity assertion (JWT, RS256) signed by
+        Payload, reads its role, maps that role to wallet scopes using the
+        wallet's own policy, and mints a short-lived wallet access token
+        (HS256). This endpoint is auth-exempt: its authentication is the
+        assertion itself, not a wallet bearer token. Returns 503 when the
+        Payload public key is not configured.
+      x-required-scopes:
+        - auth.token
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assertion
+              properties:
+                assertion:
+                  type: string
+                  description: The Payload-signed identity assertion (JWT, RS256).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: Bearer
+                  expires_in:
+                    type: number
+        '400':
+          description: Malformed request body
+        '401':
+          description: Assertion verification failed
+        '503':
+          description: Token exchange not configured
+      operationId: post-auth-token
   /health/ready:
     get:
       summary: Healthcheck ready

@@ -18,6 +18,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/accounts"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection"
+	"github.com/flow-hydraulics/flow-wallet-api/auth/exchange"
 	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/chain_events"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
@@ -232,6 +233,16 @@ func runServer(cfg *configs.Config) {
 	tokenHandler := handlers.NewTokens(tokenService)
 	opsHandler := handlers.NewOps(opsService)
 
+	authExchangeHandler := handlers.NewAuthExchange(exchange.New(exchange.Config{
+		PayloadPublicKeyPEM:       cfg.AuthPayloadPublicKey,
+		AccessTokenSecret:         cfg.AuthJWTSecret,
+		AccessTokenIssuer:         cfg.AuthJWTIssuer,
+		AccessTokenAudience:       cfg.AuthJWTAudience,
+		AccessTokenTTL:            cfg.AuthAccessTokenTTL,
+		ExpectedAssertionIssuer:   cfg.AuthAssertionIssuer,
+		ExpectedAssertionAudience: cfg.AuthAssertionAudience,
+	}))
+
 	routerOptions := routeOptions{
 		DisableRawTransactions:   cfg.DisableRawTransactions,
 		DisableFungibleTokens:    cfg.DisableFungibleTokens,
@@ -265,6 +276,7 @@ func runServer(cfg *configs.Config) {
 		Transactions:   transactionHandler,
 		Tokens:         tokenHandler,
 		Ops:            opsHandler,
+		Auth:           authExchangeHandler,
 		DebugURL:       "https://github.com/flow-hydraulics/flow-wallet-api",
 		DebugSHA:       sha1ver,
 		DebugBuildTime: buildTime,
@@ -483,6 +495,7 @@ type routeHandlers struct {
 	Transactions     *handlers.Transactions
 	Tokens           *handlers.Tokens
 	Ops              *handlers.Ops
+	Auth             *handlers.AuthExchange
 	DebugURL         string
 	DebugSHA         string
 	DebugBuildTime   string
@@ -512,6 +525,11 @@ func buildRouter(opts routeOptions, hs routeHandlers, registeredPlugins []plugin
 	}
 
 	rv.Handle("/debug", handlers.Debug(hs.DebugURL, hs.DebugSHA, hs.DebugBuildTime)).Methods(http.MethodGet)
+
+	// Token exchange: auth-exempt (see middleware.authExemptPaths). Its auth is
+	// the Payload assertion in the body, not a wallet bearer token.
+	rv.Handle("/auth/token", hs.Auth.TokenExchange()).Methods(http.MethodPost)
+
 	rv.HandleFunc("/health/ready", handlers.HandleHealthReady).Methods(http.MethodGet)
 	rv.Handle("/health/liveness", handlers.Liveness(hs.WorkerPoolStatus)).Methods(http.MethodGet)
 

@@ -125,6 +125,17 @@ type Config struct {
 	// Optional path to openapi.yml; when empty the embedded spec in the binary is used.
 	AuthOpenAPISpecPath string `env:"OPENAPI_SPEC_PATH" envDefault:""`
 
+	// -- Token exchange (POST /v1/auth/token) --
+	// RSA public key (PEM) used to verify Payload's identity assertions.
+	// MUST stay optional (no notEmpty): an empty value must not crash-loop the
+	// service — the exchange endpoint simply returns 503 until it is set.
+	AuthPayloadPublicKey string `env:"PAYLOAD_JWT_PUBLIC_KEY" envDefault:""`
+	// TTL for a minted wallet access token.
+	AuthAccessTokenTTL time.Duration `env:"AUTH_ACCESS_TOKEN_TTL" envDefault:"600s"`
+	// Expected iss/aud on the incoming Payload assertion. Empty ⇒ check skipped.
+	AuthAssertionIssuer   string `env:"AUTH_ASSERTION_ISSUER" envDefault:"payload"`
+	AuthAssertionAudience string `env:"AUTH_ASSERTION_AUDIENCE" envDefault:"wallet-api"`
+
 	// Duration for which to wait for a transaction seal, if 0 wait indefinitely. Default: 0.
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	// For more info: https://pkg.go.dev/time#ParseDuration

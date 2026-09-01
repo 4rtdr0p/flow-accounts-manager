@@ -47,20 +47,27 @@ func ContextWithClaims(ctx context.Context, claims *AuthClaims) context.Context 
 	return context.WithValue(ctx, claimsContextKey{}, claims)
 }
 
-// healthCheckExemptPaths lets Kubernetes readiness/liveness probes reach the
-// health endpoints without a bearer token: probes never send one, and with
-// auth enabled a 401 here means the pod never becomes ready and the rollout
-// stalls forever. Deliberately a compile-time allowlist matched on exact
-// method+path, not a prefix or an env-configurable list: a prefix on
-// /v1/health would silently exempt any future /v1/health/* route, and an
-// env-configurable list is a silent security hole waiting for a typo.
-var healthCheckExemptPaths = map[string]struct{}{
+// authExemptPaths lists the routes that must be reachable without a wallet
+// bearer token even when auth is enabled:
+//   - the health endpoints, because Kubernetes readiness/liveness probes never
+//     send a token and a 401 here means the pod never becomes ready and the
+//     rollout stalls forever;
+//   - the token-exchange endpoint, whose authentication IS the Payload identity
+//     assertion in its body — requiring a wallet token to obtain a wallet token
+//     would be circular.
+//
+// Deliberately a compile-time allowlist matched on exact method+path, not a
+// prefix or an env-configurable list: a prefix on /v1/health would silently
+// exempt any future /v1/health/* route, and an env-configurable list is a
+// silent security hole waiting for a typo.
+var authExemptPaths = map[string]struct{}{
 	http.MethodGet + " /v1/health/ready":    {},
 	http.MethodGet + " /v1/health/liveness": {},
+	http.MethodPost + " /v1/auth/token":     {},
 }
 
-func isHealthCheckExempt(method, path string) bool {
-	_, ok := healthCheckExemptPaths[method+" "+path]
+func isAuthExempt(method, path string) bool {
+	_, ok := authExemptPaths[method+" "+path]
 	return ok
 }
 
@@ -85,7 +92,7 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 	}
 
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		if isHealthCheckExempt(r.Method, r.URL.Path) {
+		if isAuthExempt(r.Method, r.URL.Path) {
 			h.ServeHTTP(rw, r)
 			return
 		}
