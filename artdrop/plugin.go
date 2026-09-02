@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase"
@@ -14,6 +15,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
+	"github.com/onflow/flow-go-sdk"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -119,28 +121,38 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	// purchase and opens the on-chain escrow with a server-computed amount: it
 	// reads the artwork price from Mongo, charges that full price via Stripe,
 	// applies the configured platform fee and converts only that fee to FLOW
-	// via the Pyth oracle as the escrow's gas reserve, opens the escrow, and
+	// via the FLOW/USD oracle as the escrow's gas reserve, opens the escrow, and
 	// persists the audit record.
 	// It reuses the studio Stripe client and the artdrop escrow creator.
 	var purchasePlatformFeeBps int
-	var pythMaxAge time.Duration
-	var pythBaseURL, pythFeedID, pythAPIKey string
 	var devFlowUSDPrice float64
+	var mainnet bool
 	if deps.Config != nil {
 		purchasePlatformFeeBps = deps.Config.PurchasePlatformFeeBasisPoints
-		pythMaxAge = deps.Config.PythMaxAge
-		pythBaseURL = deps.Config.PythHermesBaseURL
-		pythFeedID = deps.Config.PythHermesFeedID
-		pythAPIKey = deps.Config.PythAPIKey
 		devFlowUSDPrice = deps.Config.DevFlowUSDPrice
+		mainnet = deps.Config.ChainID == flow.Mainnet
 	}
 	purchaseStore := datastoremongo.NewPurchaseStore(deps.Mongo, deps.Config)
+	// Oracle precedence (issue #121): the fixed-price override wins only for
+	// non-mainnet QA (Parse already rejects a fixed price on mainnet); otherwise
+	// the on-chain pool oracle is the default on every network. No Pyth.
 	var oracle purchase.PriceOracle
-	if devFlowUSDPrice > 0 {
+	if devFlowUSDPrice > 0 && !mainnet {
 		oracle = purchase.FixedPriceOracle{PriceUSD: devFlowUSDPrice}
-		log.Warn("using fixed FLOW/USD price for non-mainnet QA")
+		log.Warn("artdrop purchase: using fixed FLOW/USD price for non-mainnet QA")
 	} else {
-		oracle = purchase.NewPythClient(pythBaseURL, pythFeedID, pythAPIKey, pythMaxAge)
+		acfg := p.svc.cfg
+		oracle = purchase.NewPoolPriceOracle(purchase.PoolOracleConfig{
+			RPCURLs:         strings.Split(acfg.FlowEVMRPCURL, ","),
+			Pools:           acfg.OraclePoolsParsed,
+			TTL:             acfg.OracleTTL,
+			MaxDeviationBps: acfg.OracleMaxDeviationBps,
+			MinPools:        acfg.OracleMinPools,
+			MinSurvivors:    acfg.OracleMinSurvivors,
+			SanityMinUSD:    acfg.OracleSanityMinUSD,
+			SanityMaxUSD:    acfg.OracleSanityMaxUSD,
+			RPCTimeout:      acfg.OracleRPCTimeout,
+		})
 	}
 	purchaseService := purchase.NewService(
 		purchase.NewGormStore(deps.DB),

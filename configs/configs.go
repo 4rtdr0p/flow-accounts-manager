@@ -249,24 +249,12 @@ type Config struct {
 	// artwork price (the 5% fee is computed on the artwork price alone) and
 	// is server configuration.
 	PurchaseShippingRatePerUnitUSD float64 `env:"PURCHASE_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
-	// PythHermesBaseURL is the base URL of the Pyth Hermes HTTP API used to
-	// convert the USD artwork price to FLOW.
-	PythHermesBaseURL string `env:"PYTH_HERMES_BASE_URL" envDefault:"https://pyth.dourolabs.app/hermes"`
-	// PythAPIKey authenticates requests to the Pyth Hermes HTTP API. It must
-	// remain a server-side secret and is intentionally optional for local test
-	// endpoints.
-	PythAPIKey string `env:"PYTH_API_KEY" envDefault:""`
-	// DevFlowUSDPrice is a fixed FLOW/USD price for non-mainnet QA environments.
-	// It is disabled when zero.
+	// DevFlowUSDPrice is a fixed FLOW/USD price for non-mainnet QA environments,
+	// an opt-in override of the on-chain pool oracle (issue #121). It is
+	// disabled when zero and rejected on mainnet (see Parse). The pool oracle's
+	// own configuration lives in the artdrop plugin config
+	// (FLOW_WALLET_ARTDROP_ORACLE_*), not here.
 	DevFlowUSDPrice float64 `env:"DEV_FLOW_USD_PRICE" envDefault:"0"`
-	// PythHermesFeedID is the Pyth Hermes price feed id for FLOW/USD. It is
-	// the feed the purchase charge flow reads to convert the USD artwork
-	// price to FLOW for the escrow amount.
-	PythHermesFeedID string `env:"PYTH_HERMES_FEED_ID" envDefault:"2fb245b9a84554a0f15aa123cbb5f64cd263b59e9a87d80148cbffab50c69f30"`
-	// PythMaxAge is the maximum age, in seconds, a Pyth price is accepted for
-	// the USD->FLOW conversion. A price older than this is rejected rather
-	// than used, so a stale oracle can't lock an escrow at a wrong amount.
-	PythMaxAge time.Duration `env:"PYTH_MAX_AGE" envDefault:"60s"`
 }
 
 // Parse parses environment variables and flags to a valid Config.

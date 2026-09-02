@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/ixkio"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase"
 	"github.com/flow-hydraulics/flow-wallet-api/flow_helpers"
 	"github.com/onflow/flow-go-sdk"
 )
@@ -128,6 +130,52 @@ type Config struct {
 	// 4). MUST be true in production — see NewIxkioVerifier and
 	// ixkio.BypassVerifier's doc comment.
 	IxkioEnabled bool `env:"ARTDROP_IXKIO_ENABLED" envDefault:"false"`
+
+	// -- FLOW/USD pool oracle (issue #121) --
+	// These configure the PoolPriceOracle that reads FLOW/USD from Flow EVM
+	// pools (replacing Pyth). See docs/POOL-ORACLE-PLAN.md and
+	// artdrop/purchase/pooloracle.go. Every field has a working default, so the
+	// oracle runs with no configuration at all.
+
+	// FlowEVMRPCURL is the Flow EVM JSON-RPC endpoint(s) the oracle reads pools
+	// from. It is ALWAYS mainnet even when the wallet itself runs on testnet —
+	// FLOW's USD price is a mainnet fact. A comma-separated list enables
+	// failover (URLs are tried in order per read).
+	FlowEVMRPCURL string `env:"ARTDROP_FLOW_EVM_RPC_URL" envDefault:"https://mainnet.evm.nodes.onflow.org"`
+
+	// OraclePools overrides the hardcoded default pool set. Empty uses the five
+	// verified pools (purchase.DefaultPools). Format: a CSV of
+	// "addr:v2|v3:wflowIsToken0:stableDec" entries.
+	OraclePools string `env:"ARTDROP_ORACLE_POOLS" envDefault:""`
+
+	// OracleTTL is how long a read is cached before the next refresh.
+	OracleTTL time.Duration `env:"ARTDROP_ORACLE_TTL" envDefault:"45s"`
+
+	// OracleMaxDeviationBps rejects a pool whose spot deviates more than this
+	// (in basis points) from the median of all read pools. Default 200 = 2%.
+	OracleMaxDeviationBps int `env:"ARTDROP_ORACLE_MAX_DEVIATION_BPS" envDefault:"200"`
+
+	// OracleMinPools is the minimum number of pools that must be read
+	// successfully, or the refresh fails. Default 3.
+	OracleMinPools int `env:"ARTDROP_ORACLE_MIN_POOLS" envDefault:"3"`
+
+	// OracleMinSurvivors is the minimum number of pools that must survive
+	// outlier rejection, or the refresh fails. Default 2.
+	OracleMinSurvivors int `env:"ARTDROP_ORACLE_MIN_SURVIVORS" envDefault:"2"`
+
+	// OracleSanityMinUSD / OracleSanityMaxUSD bound the accepted final price;
+	// outside the band the refresh fails rather than locking a wrong amount.
+	OracleSanityMinUSD float64 `env:"ARTDROP_ORACLE_SANITY_MIN_USD" envDefault:"0.0005"`
+	OracleSanityMaxUSD float64 `env:"ARTDROP_ORACLE_SANITY_MAX_USD" envDefault:"2.0"`
+
+	// OracleRPCTimeout is the per-request HTTP timeout for a pool read batch.
+	OracleRPCTimeout time.Duration `env:"ARTDROP_ORACLE_RPC_TIMEOUT" envDefault:"10s"`
+
+	// OraclePoolsParsed is the resolved pool set (from OraclePools or the
+	// default), populated by normalizeAndValidate so a malformed OraclePools
+	// override fails loudly at startup rather than in RegisterRoutes. It is not
+	// an env field.
+	OraclePoolsParsed []purchase.PoolConfig `env:"-"`
 }
 
 // NewIxkioVerifier builds the ixkio.Verifier this Config selects: the real
@@ -198,6 +246,44 @@ func (c *Config) normalizeAndValidate() error {
 	if c.EscrowClaimWindowSeconds <= 0 {
 		c.EscrowClaimWindowSeconds = defaultEscrowClaimWindowSeconds
 	}
+
+	// Oracle knobs: default the zero values a Config literal (bypassing
+	// env.Parse's envDefault) would leave, then validate the invariants.
+	if c.FlowEVMRPCURL == "" {
+		c.FlowEVMRPCURL = "https://mainnet.evm.nodes.onflow.org"
+	}
+	if c.OracleTTL <= 0 {
+		c.OracleTTL = 45 * time.Second
+	}
+	if c.OracleMaxDeviationBps <= 0 {
+		c.OracleMaxDeviationBps = 200
+	}
+	if c.OracleMinPools <= 0 {
+		c.OracleMinPools = 3
+	}
+	if c.OracleMinSurvivors <= 0 {
+		c.OracleMinSurvivors = 2
+	}
+	if c.OracleSanityMinUSD <= 0 {
+		c.OracleSanityMinUSD = 0.0005
+	}
+	if c.OracleSanityMaxUSD <= 0 {
+		c.OracleSanityMaxUSD = 2.0
+	}
+	if c.OracleRPCTimeout <= 0 {
+		c.OracleRPCTimeout = 10 * time.Second
+	}
+	if c.OracleSanityMinUSD >= c.OracleSanityMaxUSD {
+		return fmt.Errorf("ARTDROP_ORACLE_SANITY_MIN_USD (%g) must be < ARTDROP_ORACLE_SANITY_MAX_USD (%g)", c.OracleSanityMinUSD, c.OracleSanityMaxUSD)
+	}
+	if c.OracleMinSurvivors > c.OracleMinPools {
+		return fmt.Errorf("ARTDROP_ORACLE_MIN_SURVIVORS (%d) must be <= ARTDROP_ORACLE_MIN_POOLS (%d)", c.OracleMinSurvivors, c.OracleMinPools)
+	}
+	pools, err := purchase.ParsePools(c.OraclePools)
+	if err != nil {
+		return fmt.Errorf("ARTDROP_ORACLE_POOLS: %w", err)
+	}
+	c.OraclePoolsParsed = pools
 
 	fields := []struct {
 		name  string
