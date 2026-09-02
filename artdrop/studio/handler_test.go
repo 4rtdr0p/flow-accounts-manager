@@ -8,7 +8,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
+	jwt "github.com/golang-jwt/jwt/v5"
 )
+
+// withClaims attaches auth claims to the request context the same way the auth
+// middleware does, so the identity guard sees an authenticated caller.
+func withClaims(r *http.Request, subject, scope string) *http.Request {
+	claims := &middleware.AuthClaims{
+		Scope:            scope,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: subject},
+	}
+	return r.WithContext(middleware.ContextWithClaims(r.Context(), claims))
+}
 
 // mockStudioService is a minimal in-memory implementation of Service
 // for handler tests.
@@ -248,5 +262,129 @@ func TestListChargesServiceError(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+// --- Identity guard (issue #113): userId bound to the token subject. ---
+
+func TestCreateStockRequestGuardSubjectMatches(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "user-1", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 when subject matches userId, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateStockRequestGuardSubjectMismatchForbidden(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "user-2", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when subject != userId, got %d: %s", rr.Code, rr.Body.String())
+	}
+	// The guard must run before the service: no charge should be recorded.
+	if len(svc.charges) != 0 {
+		t.Fatalf("expected no charge recorded on a blocked request, got %d", len(svc.charges))
+	}
+}
+
+func TestCreateStockRequestGuardOnBehalfBypass(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "operator-9", authguard.ScopeChargeOnBehalf)
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for on-behalf operator, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateStockRequestGuardEmptySubjectForbidden(t *testing.T) {
+	h := newStudioHandler(&mockStudioService{})
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for empty subject, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateStockRequestGuardAuthOffPassthrough(t *testing.T) {
+	// No claims in context (auth disabled): the request must pass unchanged.
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body))
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 with auth off, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestListChargesGuardSubjectMismatchForbidden(t *testing.T) {
+	h := newStudioHandler(&mockStudioService{})
+
+	req := withClaims(httptest.NewRequest(http.MethodGet, "/v1/studio/charges?userId=user-1", nil), "user-2", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.ListCharges().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 listing another user's charges, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestListChargesGuardSubjectMatches(t *testing.T) {
+	svc := &mockStudioService{}
+	svc.charges = append(svc.charges, ProductionCharge{ID: 1, UserID: "user-1", StripePaymentIntent: "pi_123"})
+	h := newStudioHandler(svc)
+
+	req := withClaims(httptest.NewRequest(http.MethodGet, "/v1/studio/charges?userId=user-1", nil), "user-1", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.ListCharges().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 listing own charges, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestListChargesGuardAuthOffPassthrough(t *testing.T) {
+	svc := &mockStudioService{}
+	svc.charges = append(svc.charges, ProductionCharge{ID: 1, UserID: "user-1", StripePaymentIntent: "pi_123"})
+	h := newStudioHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/studio/charges?userId=user-1", nil)
+	rr := httptest.NewRecorder()
+
+	h.ListCharges().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 with auth off, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

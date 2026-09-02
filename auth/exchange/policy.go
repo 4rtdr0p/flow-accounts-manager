@@ -9,6 +9,7 @@ type Role string
 
 const (
 	RoleUser       Role = "user"
+	RoleArtist     Role = "artist"
 	RoleOperations Role = "operations"
 	RoleAdmin      Role = "admin"
 )
@@ -48,6 +49,18 @@ const (
 	scopeOpsRun          = "ops.run"
 	scopeSystemWrite     = "system.write"
 	scopeChipProvision   = "chip.provision"
+	// scopeStudioChargeOnBehalf lets an operator create a studio charge on behalf
+	// of another user (not for their own custodial account). It is a capability
+	// checked by a downstream guard, not a requirement of any route, so it is not
+	// listed in openapi.yml. Operations+ only; never granted to end users.
+	scopeStudioChargeOnBehalf = "studio.charge.create.onbehalf"
+	// scopeArtistOnBehalf lets an operator create an Original/Edition (or onboard
+	// an artist) on behalf of an artist other than the token's own flow_address.
+	// Like scopeStudioChargeOnBehalf it is a capability checked by a downstream
+	// guard (requireArtistSubject), not a requirement of any route, so it is NOT
+	// listed in openapi.yml. Operations+ only; never granted to the artist role
+	// so that self-service artist tokens stay bound to their own address.
+	scopeArtistOnBehalf = "account.artdrop.artist.onbehalf"
 
 	// Admin-only break-glass scopes (see adminScopes).
 	scopeAccountSign       = "account.sign"
@@ -84,6 +97,19 @@ var userScopes = concatScopes(readScopes, []string{
 	scopeEscrowActivate,
 })
 
+// artistScopes is the self-service artist role: every end-user scope plus the
+// ability to create their OWN Originals/Editions and onboard themselves. It
+// deliberately omits scopeArtistOnBehalf so that requireArtistSubject keeps an
+// artist token bound to its own flow_address — an artist can act only for
+// themselves, never for another artist. original.create/edition.create/
+// artist.onboard stay in operationsScopes too (an operator needs them to reach
+// the same routes); they are granted here in addition, not moved.
+var artistScopes = concatScopes(userScopes, []string{
+	scopeOriginalCreate,
+	scopeEditionCreate,
+	scopeArtistOnboard,
+})
+
 // operationsScopes is userScopes plus the operator-only actions: the rest of
 // the escrow lifecycle, original/edition creation, artist onboarding, custodial
 // key management, chip provisioning, watchlist writes, and ops/system.* writes.
@@ -99,6 +125,8 @@ var operationsScopes = concatScopes(userScopes, []string{
 	scopeOpsRun,
 	scopeSystemWrite,
 	scopeChipProvision,
+	scopeStudioChargeOnBehalf,
+	scopeArtistOnBehalf,
 })
 
 // adminScopes is operationsScopes plus the break-glass scopes that must never
@@ -114,6 +142,7 @@ var adminScopes = concatScopes(operationsScopes, []string{
 // DefaultRoleScopes is the wallet's role→scope policy.
 var DefaultRoleScopes = map[Role][]string{
 	RoleUser:       userScopes,
+	RoleArtist:     artistScopes,
 	RoleOperations: operationsScopes,
 	RoleAdmin:      adminScopes,
 }

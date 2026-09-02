@@ -5,6 +5,7 @@ import (
 	stdErrors "errors"
 	"net/http"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 )
@@ -51,6 +52,14 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 	var req createPurchaseChargeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		handlers.HandleError(rw, r, handlers.InvalidBodyError)
+		return
+	}
+
+	// Bind the userId in the body to the authenticated token subject: an end
+	// user may only charge a purchase for their own account (an operator uses
+	// the on-behalf scope). See authguard.RequireUserSubject.
+	if err := authguard.RequireUserSubject(r, req.UserID); err != nil {
+		handlers.HandleError(rw, r, err)
 		return
 	}
 

@@ -156,7 +156,7 @@ func TestCreateOriginalHandlerRequiresFields(t *testing.T) {
 	}
 }
 
-func TestCreateOriginalHandlerRejectsMismatchedTokenSubject(t *testing.T) {
+func TestCreateOriginalHandlerRejectsMismatchedFlowAddress(t *testing.T) {
 	txSvc := &setupTxService{}
 	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
@@ -167,8 +167,11 @@ func TestCreateOriginalHandlerRejectsMismatchedTokenSubject(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals?sync=true", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = mux.SetURLVars(req, map[string]string{"artistAddress": "0xf8d6e0586b0a20c7"})
+	// A self-service artist token whose flow_address is a different artist must
+	// not be able to sign on that artist's custodial account.
 	req = req.WithContext(middleware.ContextWithClaims(req.Context(), &middleware.AuthClaims{
-		RegisteredClaims: jwt.RegisteredClaims{Subject: "0xother00000000000"},
+		FlowAddress:      "0xother00000000000",
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "payload-user-1"},
 	}))
 	rw := httptest.NewRecorder()
 
@@ -182,7 +185,7 @@ func TestCreateOriginalHandlerRejectsMismatchedTokenSubject(t *testing.T) {
 	}
 }
 
-func TestCreateOriginalHandlerAllowsMatchingTokenSubject(t *testing.T) {
+func TestCreateOriginalHandlerAllowsMatchingFlowAddress(t *testing.T) {
 	txSvc := &setupTxService{}
 	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,
@@ -193,8 +196,11 @@ func TestCreateOriginalHandlerAllowsMatchingTokenSubject(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/0xf8d6e0586b0a20c7/artdrop/originals?sync=true", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = mux.SetURLVars(req, map[string]string{"artistAddress": "0xf8d6e0586b0a20c7"})
+	// flow_address matches the path artist (case-differing to exercise the
+	// EqualFold comparison — Flow hex addresses are case-insensitive).
 	req = req.WithContext(middleware.ContextWithClaims(req.Context(), &middleware.AuthClaims{
-		RegisteredClaims: jwt.RegisteredClaims{Subject: "0xf8d6e0586b0a20c7"},
+		FlowAddress:      "0xF8D6E0586B0A20C7",
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "payload-user-1"},
 	}))
 	rw := httptest.NewRecorder()
 
@@ -205,9 +211,9 @@ func TestCreateOriginalHandlerAllowsMatchingTokenSubject(t *testing.T) {
 	}
 }
 
-func TestCreateOriginalHandlerAllowsMissingTokenSubject(t *testing.T) {
-	// A token with no subject claim (e.g. a service/admin token) is left
-	// untouched by the artistAddress check; see requireArtistSubject.
+func TestCreateOriginalHandlerAllowsNoClaims(t *testing.T) {
+	// No claims in context means auth is disabled (the middleware never ran, e.g.
+	// local dev): requireArtistSubject is a passthrough, so the request proceeds.
 	txSvc := &setupTxService{}
 	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
 		Transactions: txSvc,

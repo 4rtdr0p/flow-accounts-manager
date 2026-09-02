@@ -28,6 +28,12 @@ type AuthRule struct {
 
 type AuthClaims struct {
 	Scope string `json:"scope"`
+	// FlowAddress is the caller's custodial Flow address, carried through from
+	// the Payload identity assertion at token-exchange time. It binds the token
+	// to a specific on-chain identity so downstream guards can enforce that the
+	// caller is acting on their own account. Empty when the assertion did not
+	// carry it (backward-compatible: the front does not send it yet).
+	FlowAddress string `json:"flow_address,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -168,6 +174,14 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 		ctx := context.WithValue(r.Context(), claimsContextKey{}, &claims)
 		h.ServeHTTP(rw, r.WithContext(ctx))
 	})
+}
+
+// HasScope reports whether a space-separated scope claim grants the required
+// scope, honoring the "*" wildcard. Exported so downstream identity guards
+// (e.g. artdrop/authguard) can test scope membership with the same semantics
+// the auth middleware uses.
+func HasScope(scopeClaim string, required string) bool {
+	return hasScope(scopeClaim, required)
 }
 
 func hasScope(scopeClaim string, required string) bool {

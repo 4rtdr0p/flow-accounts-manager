@@ -145,6 +145,86 @@ func TestExchangeMintsTokenValidatedByRealMiddleware(t *testing.T) {
 	}
 }
 
+// TestExchangeCarriesFlowAddress verifies that a flow_address claim on the
+// Payload assertion is copied into the minted access token and is visible to a
+// downstream handler via ClaimsFromContext after the real middleware validates
+// the token. Backward-compat: an assertion without flow_address mints a token
+// whose FlowAddress is empty.
+func TestExchangeCarriesFlowAddress(t *testing.T) {
+	key, pubPEM := newTestKeypair(t)
+	ex := testExchanger(pubPEM)
+
+	const wantAddr = "0x1234567890abcdef"
+
+	// Sign an assertion that carries flow_address alongside sub + role.
+	claims := assertionClaims{
+		Role:        "user",
+		FlowAddress: wantAddr,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			Issuer:    testAssertionIssuer,
+			Audience:  jwt.ClaimStrings{testAssertionAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	assertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	if err != nil {
+		t.Fatalf("sign assertion: %v", err)
+	}
+
+	result, err := ex.Exchange(assertion)
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	// Feed the minted token through the REAL middleware and read the claims a
+	// downstream guard would see.
+	rule := middleware.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts", scopeAccountRead)
+	var gotClaims *middleware.AuthClaims
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		gotClaims, _ = middleware.ClaimsFromContext(r.Context())
+		rw.WriteHeader(http.StatusOK)
+	})
+	handler := middleware.AuthHandler(next, middleware.AuthOptions{
+		Enabled: true, Secret: testSecret, Issuer: testAccessIssuer, Audience: testAccessAudience,
+		Rules: []middleware.AuthRule{rule},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts", nil)
+	req.Header.Set("Authorization", "Bearer "+result.Token)
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("middleware rejected minted token: status %d body %q", rw.Code, rw.Body.String())
+	}
+	if gotClaims == nil {
+		t.Fatal("claims not found in context after validation")
+	}
+	if gotClaims.Subject != "user-123" {
+		t.Fatalf("subject = %q, want user-123", gotClaims.Subject)
+	}
+	if gotClaims.FlowAddress != wantAddr {
+		t.Fatalf("flow_address = %q, want %q", gotClaims.FlowAddress, wantAddr)
+	}
+
+	// Backward-compat: no flow_address on the assertion ⇒ empty on the token.
+	plain := signAssertion(t, key, "user", "user-456", time.Now().Add(time.Minute), testAssertionIssuer, testAssertionAudience)
+	plainResult, err := ex.Exchange(plain)
+	if err != nil {
+		t.Fatalf("Exchange (no flow_address): %v", err)
+	}
+	parsed := &middleware.AuthClaims{}
+	if _, err := jwt.NewParser().ParseWithClaims(plainResult.Token, parsed, func(*jwt.Token) (any, error) {
+		return []byte(testSecret), nil
+	}); err != nil {
+		t.Fatalf("parse minted token: %v", err)
+	}
+	if parsed.FlowAddress != "" {
+		t.Fatalf("flow_address = %q, want empty when assertion omits it", parsed.FlowAddress)
+	}
+}
+
 // TestOperationsRoleGetsEscrowScopes confirms an operations assertion mints a
 // token accepted for an escrow-ops-scoped route.
 func TestOperationsRoleGetsEscrowScopes(t *testing.T) {
@@ -309,6 +389,10 @@ func TestScopesForRole(t *testing.T) {
 	}
 
 	userScopes, _ := ScopesForRole("user")
+	artistScopes, ok := ScopesForRole("artist")
+	if !ok {
+		t.Fatal("artist role should resolve")
+	}
 	opsScopes, ok := ScopesForRole("operations")
 	if !ok {
 		t.Fatal("operations role should resolve")
@@ -319,6 +403,7 @@ func TestScopesForRole(t *testing.T) {
 	}
 
 	userSet := toSet(userScopes)
+	artistSet := toSet(artistScopes)
 	opsSet := toSet(opsScopes)
 	adminSet := toSet(adminScopes)
 
@@ -334,6 +419,27 @@ func TestScopesForRole(t *testing.T) {
 		}
 	}
 
+	// artist is a self-service role: every user scope plus the ability to create
+	// its OWN Originals/Editions and onboard itself.
+	for s := range userSet {
+		if _, ok := artistSet[s]; !ok {
+			t.Fatalf("artist missing user scope %q", s)
+		}
+	}
+	for _, s := range []string{scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard} {
+		if _, ok := artistSet[s]; !ok {
+			t.Fatalf("artist missing expected scope %q", s)
+		}
+	}
+	// artist must NOT carry the on-behalf capability (so requireArtistSubject
+	// keeps it bound to its own flow_address) nor any operations-only or
+	// break-glass scope.
+	for _, s := range []string{scopeArtistOnBehalf, scopeEscrowVoid, scopeEscrowReescrow, scopeAccountGraduate, scopeSystemWrite, scopeAccountSign, scopeTransactionCreate, scopeTokenWrite} {
+		if _, ok := artistSet[s]; ok {
+			t.Fatalf("artist must NOT have scope %q", s)
+		}
+	}
+
 	// operations is a strict superset of user, plus operator actions, but NOT
 	// the break-glass scopes.
 	for s := range userSet {
@@ -341,7 +447,7 @@ func TestScopesForRole(t *testing.T) {
 			t.Fatalf("operations missing user scope %q", s)
 		}
 	}
-	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite} {
+	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite, scopeArtistOnBehalf} {
 		if _, ok := opsSet[s]; !ok {
 			t.Fatalf("operations missing expected scope %q", s)
 		}
@@ -372,10 +478,12 @@ func TestScopesForRole(t *testing.T) {
 	}
 }
 
-// TestAdminCoversAllNonExemptScopes guards the invariant that every scope in
-// openapi.yml is granted by some role EXCEPT auth.token (the exchange route
-// itself, which is auth-exempt). Since admin is the top superset, admin must
-// contain exactly the full non-exempt scope universe.
+// TestAdminCoversAllNonExemptScopes guards the invariant that every scope the
+// wallet grants is accounted for here: the full non-exempt openapi.yml route
+// scope universe (all except auth.token, the exchange route itself, which is
+// auth-exempt) PLUS the capability scopes that no route requires but a
+// downstream guard checks (e.g. studio.charge.create.onbehalf). Since admin is
+// the top superset, admin must contain exactly this set.
 func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 	allNonExempt := []string{
 		// reads
@@ -389,6 +497,10 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		"account.artdrop.original.create", "account.artdrop.edition.create",
 		"account.artdrop.artist.onboard", "account.key.graduate", "account.key.sync",
 		"watchlist.write", "ops.run", "system.write", "chip.provision",
+		// capability scopes: granted by role but required by no route, so they
+		// are intentionally NOT in openapi.yml — a guard checks them.
+		"studio.charge.create.onbehalf",
+		"account.artdrop.artist.onbehalf",
 		// admin break-glass
 		"account.sign", "transaction.create", "token.write",
 	}
@@ -400,7 +512,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		}
 	}
 	if len(adminScopes) != len(allNonExempt) {
-		t.Fatalf("admin scope count = %d, want %d (all non-exempt openapi scopes); auth.token must stay exempt", len(adminScopes), len(allNonExempt))
+		t.Fatalf("admin scope count = %d, want %d (all non-exempt openapi scopes + capability scopes); auth.token must stay exempt", len(adminScopes), len(allNonExempt))
 	}
 }
 
