@@ -176,6 +176,14 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 	})
 }
 
+// HasScope reports whether a space-separated scope claim grants the required
+// scope, honoring the "*" wildcard. Exported so downstream identity guards
+// (e.g. artdrop/authguard) can test scope membership with the same semantics
+// the auth middleware uses.
+func HasScope(scopeClaim string, required string) bool {
+	return hasScope(scopeClaim, required)
+}
+
 func hasScope(scopeClaim string, required string) bool {
 	for _, s := range strings.Fields(scopeClaim) {
 		if s == "*" || s == required {

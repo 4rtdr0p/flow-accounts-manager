@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 )
@@ -39,6 +40,14 @@ func (h *Handler) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request
 	var req createStockRequestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		handlers.HandleError(rw, r, handlers.InvalidBodyError)
+		return
+	}
+
+	// Bind the userId in the body to the authenticated token subject: an end
+	// user may only charge their own account (an operator uses the on-behalf
+	// scope). See authguard.RequireUserSubject.
+	if err := authguard.RequireUserSubject(r, req.UserID); err != nil {
+		handlers.HandleError(rw, r, err)
 		return
 	}
 
@@ -78,6 +87,14 @@ func (h *Handler) ListChargesFunc(rw http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("userId")
 	if userID == "" {
 		handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusBadRequest, Err: errMissingUserID})
+		return
+	}
+
+	// Bind the userId query param to the authenticated token subject so a
+	// caller cannot list another user's charges. See
+	// authguard.RequireUserSubject.
+	if err := authguard.RequireUserSubject(r, userID); err != nil {
+		handlers.HandleError(rw, r, err)
 		return
 	}
 
