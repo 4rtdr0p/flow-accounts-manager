@@ -10,26 +10,33 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
 	"github.com/flow-hydraulics/flow-wallet-api/auth/exchange"
+	"github.com/flow-hydraulics/flow-wallet-api/auth/openapi"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 )
 
-// TestAuthExchangeE2E is the end-to-end proof of issue #284: Payload proves
-// identity (a short-lived RS256 assertion carrying only sub + role), the wallet
-// is the authorization authority (it maps role → scopes with its own policy and
-// mints the access token), and the minted token gates the typed endpoints so a
-// buyer (`user`) can never reach an operator-only action even with a valid
-// token. It runs the REAL exchange handler and the REAL auth middleware — the
-// only test double is a throwaway RSA keypair standing in for Payload's.
+// TestAuthExchangeE2E is the full-stack proof of issue #284: a Payload identity
+// assertion (short-lived RS256, sub + role only) is exchanged at the REAL
+// /v1/auth/token endpoint for a wallet access token, and that token is gated by
+// the REAL auth middleware whose rules come from the REAL router + the REAL
+// openapi.yml x-required-scopes — the exact openapi→scope wiring main() builds.
 //
-// Pure httptest: the exchange + gating logic is entirely chain-independent, so
-// this is deterministic and needs no emulator.
+// The per-unit pieces (assertion → Exchange → middleware, and the role→scope
+// policy) are already covered in auth/exchange/exchange_test.go; this test adds
+// the end-to-end wiring assertion those can't make: that the scope openapi
+// actually binds to POST .../void is the scope the wallet grants `operations`
+// but not `user`. It gates sentinel handlers with the real rules — auth runs
+// before any handler, so a sentinel is all the wiring assertion needs, and it
+// keeps the test hermetic (no services, no emulator, no contract deploy).
 func TestAuthExchangeE2E(t *testing.T) {
 	// A test keypair standing in for Payload's signing key.
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -63,6 +70,59 @@ func TestAuthExchangeE2E(t *testing.T) {
 	if !exchanger.Configured() {
 		t.Fatal("exchanger should be Configured with a valid public key + secret")
 	}
+	authHandler := handlers.NewAuthExchange(exchanger)
+
+	// Build the REAL router so its registered routes + openapi.yml's
+	// x-required-scopes yield the REAL auth rules — exactly as main() does.
+	// Service handlers are nil (route registration never calls them); the
+	// exchange handler is real so /v1/auth/token can mint tokens.
+	deps := plugins.PluginDeps{}
+	registeredPlugins, err := registerPlugins(nil, artdrop.ParseTestConfig(t), deps)
+	if err != nil {
+		t.Fatalf("registerPlugins: %v", err)
+	}
+	realRouter := buildRouter(routeOptions{}, routeHandlers{
+		System:           handlers.NewSystem(nil),
+		Templates:        handlers.NewTemplates(nil),
+		Jobs:             handlers.NewJobs(nil),
+		Accounts:         handlers.NewAccounts(nil),
+		Transactions:     handlers.NewTransactions(nil, nil),
+		Tokens:           handlers.NewTokens(nil),
+		Ops:              handlers.NewOps(nil),
+		Auth:             authHandler,
+		DebugURL:         "debug-url",
+		DebugSHA:         "debug-sha",
+		DebugBuildTime:   "debug-build-time",
+		WorkerPoolStatus: func() (interface{}, error) { return nil, nil },
+	}, registeredPlugins, deps)
+
+	spec, err := os.ReadFile("openapi.yml")
+	if err != nil {
+		t.Fatalf("read openapi.yml: %v", err)
+	}
+	scopeIndex, err := openapi.LoadScopeIndex(spec)
+	if err != nil {
+		t.Fatalf("LoadScopeIndex: %v", err)
+	}
+	authRules, err := openapi.AuthRulesFromRouter(realRouter, scopeIndex)
+	if err != nil {
+		t.Fatalf("AuthRulesFromRouter: %v", err)
+	}
+
+	// The server under test: sentinel handlers gated by the REAL rules, with
+	// the REAL exchange endpoint (auth-exempt) in front. This is main()'s
+	// UseAuth(router, {Rules: authRules}) wrapping, minus the business logic.
+	sentinel := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	})
+	tr := mux.NewRouter()
+	tr.Handle("/v1/auth/token", authHandler.TokenExchange()).Methods(http.MethodPost)
+	tr.PathPrefix("/").Handler(sentinel)
+	server := handlers.UseAuth(tr, handlers.AuthOptions{
+		Enabled: true,
+		Secret:  accessSecret,
+		Rules:   authRules,
+	})
 
 	// mintAssertion signs a Payload-style RS256 identity assertion. Overridable
 	// iss/aud/exp/role so we can exercise the rejection paths too.
@@ -76,54 +136,30 @@ func TestAuthExchangeE2E(t *testing.T) {
 			"iat":  time.Now().Unix(),
 			"exp":  exp.Unix(),
 		}
-		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-		signed, err := tok.SignedString(priv)
+		signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(priv)
 		if err != nil {
 			t.Fatalf("sign assertion: %v", err)
 		}
 		return signed
 	}
 
-	// The wallet router: the exchange endpoint plus three typed routes, each
-	// gated at the scope its role tier owns.
-	//   account.setup                    → user  (buyer can set up an account)
-	//   account.artdrop.escrow.void      → operations (buyer must NOT reach it)
-	//   account.sign                     → admin break-glass only
-	authHandler := handlers.NewAuthExchange(exchanger)
-	protected := func(scope string) http.Handler {
-		ok := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.WriteHeader(http.StatusOK)
-		})
-		return handlers.UseAuth(ok, handlers.AuthOptions{
-			Enabled: true,
-			Secret:  accessSecret,
-			Rules: []handlers.AuthRule{
-				handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/setup", "account.setup"),
-				handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/artdrop/escrows/{escrowId}/void", "account.artdrop.escrow.void"),
-				handlers.NewAuthRule(http.MethodPost, "/{apiVersion}/accounts/{address}/sign", "account.sign"),
-			},
-		})
-	}
-
-	router := mux.NewRouter()
-	router.Handle("/v1/auth/token", authHandler.TokenExchange()).Methods(http.MethodPost)
-	router.Handle("/v1/accounts/{address}/setup", protected("account.setup")).Methods(http.MethodPost)
-	router.Handle("/v1/accounts/{address}/artdrop/escrows/{escrowId}/void", protected("account.artdrop.escrow.void")).Methods(http.MethodPost)
-	router.Handle("/v1/accounts/{address}/sign", protected("account.sign")).Methods(http.MethodPost)
-
-	setupURL := "/v1/accounts/" + anAccount + "/setup"
+	// Real openapi-mapped endpoints (verified scopes):
+	//   GET  .../artdrop/escrows            account.read                 (user)
+	//   GET  .../artdrop/escrows/by-seller  account.read                 (user)
+	//   POST .../artdrop/escrows/{id}/void  account.artdrop.escrow.void  (operations)
+	//   POST .../sign                       account.sign                 (admin)
+	escrowsURL := "/v1/accounts/" + anAccount + "/artdrop/escrows"
+	bySellerURL := "/v1/accounts/" + anAccount + "/artdrop/escrows/by-seller"
 	voidURL := "/v1/accounts/" + anAccount + "/artdrop/escrows/" + anEscrow + "/void"
 	signURL := "/v1/accounts/" + anAccount + "/sign"
 
-	// exchange trades a Payload assertion for a wallet access token, asserting
-	// the HTTP contract (200, token_type Bearer, positive expires_in).
 	exchangeToken := func(t *testing.T, assertion string) string {
 		t.Helper()
 		body, _ := json.Marshal(map[string]string{"assertion": assertion})
 		req := httptest.NewRequest(http.MethodPost, "/v1/auth/token", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, req)
+		server.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("token exchange: expected 200, got %d: %s", rr.Code, rr.Body.String())
 		}
@@ -135,84 +171,76 @@ func TestAuthExchangeE2E(t *testing.T) {
 		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("decode token response: %v", err)
 		}
-		if resp.TokenType != "Bearer" {
-			t.Fatalf("expected token_type Bearer, got %q", resp.TokenType)
-		}
-		if resp.ExpiresIn <= 0 {
-			t.Fatalf("expected positive expires_in, got %d", resp.ExpiresIn)
-		}
-		if resp.Token == "" {
-			t.Fatal("expected a non-empty token")
+		if resp.TokenType != "Bearer" || resp.ExpiresIn <= 0 || resp.Token == "" {
+			t.Fatalf("bad token response: %+v", resp)
 		}
 		return resp.Token
 	}
 
-	callWithToken := func(t *testing.T, url, token string) int {
+	call := func(t *testing.T, method, url, token string) int {
 		t.Helper()
-		req := httptest.NewRequest(http.MethodPost, url, nil)
+		req := httptest.NewRequest(method, url, nil)
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, req)
+		server.ServeHTTP(rr, req)
 		return rr.Code
 	}
 
 	future := time.Now().Add(5 * time.Minute)
 
-	t.Run("user role: passes account.setup, is FORBIDDEN from escrow.void", func(t *testing.T) {
+	t.Run("user role: reads allowed, escrow.void and sign FORBIDDEN", func(t *testing.T) {
 		token := exchangeToken(t, mintAssertion(t, "user", assertionIssuer, assertionAud, future))
-
-		if got := callWithToken(t, setupURL, token); got != http.StatusOK {
-			t.Fatalf("user should pass account.setup: expected 200, got %d", got)
+		if got := call(t, http.MethodGet, escrowsURL, token); got != http.StatusOK {
+			t.Fatalf("user GET escrows: expected 200, got %d", got)
 		}
-		// The whole point of #284: a buyer's token can never void an escrow,
-		// even though it's a perfectly valid token.
-		if got := callWithToken(t, voidURL, token); got != http.StatusForbidden {
-			t.Fatalf("user must be forbidden from escrow.void: expected 403, got %d", got)
+		if got := call(t, http.MethodGet, bySellerURL, token); got != http.StatusOK {
+			t.Fatalf("user GET escrows/by-seller: expected 200, got %d", got)
 		}
-		if got := callWithToken(t, signURL, token); got != http.StatusForbidden {
-			t.Fatalf("user must be forbidden from account.sign: expected 403, got %d", got)
+		// The crux of #284: a buyer's valid token can never void an escrow.
+		if got := call(t, http.MethodPost, voidURL, token); got != http.StatusForbidden {
+			t.Fatalf("user POST void: expected 403, got %d", got)
+		}
+		if got := call(t, http.MethodPost, signURL, token); got != http.StatusForbidden {
+			t.Fatalf("user POST sign: expected 403, got %d", got)
 		}
 	})
 
-	t.Run("operations role: passes escrow.void and account.setup, FORBIDDEN from account.sign", func(t *testing.T) {
+	t.Run("operations role: escrow.void allowed, sign FORBIDDEN", func(t *testing.T) {
 		token := exchangeToken(t, mintAssertion(t, "operations", assertionIssuer, assertionAud, future))
-
-		if got := callWithToken(t, voidURL, token); got != http.StatusOK {
-			t.Fatalf("operations should pass escrow.void: expected 200, got %d", got)
+		if got := call(t, http.MethodPost, voidURL, token); got != http.StatusOK {
+			t.Fatalf("operations POST void: expected 200, got %d", got)
 		}
-		if got := callWithToken(t, setupURL, token); got != http.StatusOK {
-			t.Fatalf("operations should also pass account.setup: expected 200, got %d", got)
+		if got := call(t, http.MethodGet, escrowsURL, token); got != http.StatusOK {
+			t.Fatalf("operations GET escrows: expected 200, got %d", got)
 		}
-		// account.sign is admin break-glass only.
-		if got := callWithToken(t, signURL, token); got != http.StatusForbidden {
-			t.Fatalf("operations must be forbidden from account.sign: expected 403, got %d", got)
+		if got := call(t, http.MethodPost, signURL, token); got != http.StatusForbidden {
+			t.Fatalf("operations POST sign: expected 403 (admin break-glass only), got %d", got)
 		}
 	})
 
-	t.Run("admin role: break-glass account.sign passes", func(t *testing.T) {
+	t.Run("admin role: break-glass sign allowed", func(t *testing.T) {
 		token := exchangeToken(t, mintAssertion(t, "admin", assertionIssuer, assertionAud, future))
-		if got := callWithToken(t, signURL, token); got != http.StatusOK {
-			t.Fatalf("admin should pass account.sign break-glass: expected 200, got %d", got)
+		if got := call(t, http.MethodPost, signURL, token); got != http.StatusOK {
+			t.Fatalf("admin POST sign: expected 200, got %d", got)
 		}
 	})
 
-	t.Run("no token is 401, not 403", func(t *testing.T) {
-		if got := callWithToken(t, setupURL, ""); got != http.StatusUnauthorized {
+	t.Run("no token is 401", func(t *testing.T) {
+		if got := call(t, http.MethodPost, voidURL, ""); got != http.StatusUnauthorized {
 			t.Fatalf("missing token: expected 401, got %d", got)
 		}
 	})
 
-	// The exchange endpoint's own rejection paths (all 401): expired assertion,
-	// wrong issuer/audience, unknown role, tampered signature.
+	// The exchange endpoint's own rejection paths (all 401).
 	assertExchange401 := func(t *testing.T, assertion string) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]string{"assertion": assertion})
 		req := httptest.NewRequest(http.MethodPost, "/v1/auth/token", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
-		router.ServeHTTP(rr, req)
+		server.ServeHTTP(rr, req)
 		if rr.Code != http.StatusUnauthorized {
 			t.Fatalf("expected 401 from exchange, got %d: %s", rr.Code, rr.Body.String())
 		}
