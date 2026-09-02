@@ -10,9 +10,26 @@ import (
 	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/system"
 	"github.com/flow-hydraulics/flow-wallet-api/tests/test"
 	"github.com/gorilla/mux"
 )
+
+// resetSystemSettings puts the shared system-settings row back to its baseline
+// (not paused, not in maintenance) so a test that asserts the baseline is not
+// affected by whatever a sibling test left behind.
+func resetSystemSettings(t *testing.T, svc system.Service) {
+	t.Helper()
+	settings, err := svc.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.MaintenanceMode = false
+	settings.PausedSince = sql.NullTime{}
+	if err := svc.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestSettingsE2E(t *testing.T) {
 	cfg := test.LoadConfig(t)
@@ -73,6 +90,12 @@ func TestIsMaintenanceMode(t *testing.T) {
 
 	sysService := svcs.GetSystem()
 
+	// The system settings are a single shared row; sibling tests (and the
+	// handler table-test above) mutate it. Reset to a known baseline so this
+	// test is self-contained regardless of run order, and restore it after.
+	resetSystemSettings(t, sysService)
+	t.Cleanup(func() { resetSystemSettings(t, sysService) })
+
 	settings, err := sysService.GetSettings()
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +126,11 @@ func TestIsPaused(t *testing.T) {
 	svcs := test.GetServices(t, cfg)
 
 	sysService := svcs.GetSystem()
+
+	// The system settings are a single shared row; reset to a known baseline so
+	// this test is self-contained regardless of run order, and restore it after.
+	resetSystemSettings(t, sysService)
+	t.Cleanup(func() { resetSystemSettings(t, sysService) })
 
 	settings, err := sysService.GetSettings()
 	if err != nil {
