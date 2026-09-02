@@ -16,8 +16,9 @@ type ArtworkPriceReader interface {
 	GetPaintingPrice(ctx context.Context, paintingID string) (*datastoremongo.ArtworkPrice, error)
 }
 
-// PriceOracle reads the current FLOW/USD price from the Pyth Hermes oracle. It
-// is implemented by *PythClient.
+// PriceOracle reads the current FLOW/USD price. It is implemented by
+// *PoolPriceOracle (the on-chain Flow EVM pool oracle, issue #121) and by
+// FixedPriceOracle (the non-mainnet QA override).
 type PriceOracle interface {
 	Latest(ctx context.Context) (*PythPrice, error)
 }

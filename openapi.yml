@@ -1823,8 +1823,8 @@ paths:
         server-computed amount. The server reads the artwork price from Mongo
         (editions.price or paintings.originalPrice, both required and in
         dollars), applies the configured platform fee, converts the total to
-        FLOW via the Pyth oracle (rejecting prices older than the configured
-        max age), creates and confirms a Stripe PaymentIntent, opens the
+        FLOW via the on-chain FLOW/USD pool oracle, creates and confirms a
+        Stripe PaymentIntent, opens the
         escrow, and persists the audit record. No amount is trusted from the
         client. One PaymentIntent funds at most one escrow. Retries are
         governed by the `Idempotency-Key` header, which is propagated to
@@ -1905,7 +1905,7 @@ paths:
         '422':
           description: Unprocessable Entity - artwork price is missing
         '503':
-          description: Service Unavailable - pricing, Pyth oracle, Stripe or escrow is disabled
+          description: Service Unavailable - pricing, FLOW/USD oracle, Stripe or escrow is disabled
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
   /studio/charges:
