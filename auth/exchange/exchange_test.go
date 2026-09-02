@@ -389,6 +389,10 @@ func TestScopesForRole(t *testing.T) {
 	}
 
 	userScopes, _ := ScopesForRole("user")
+	artistScopes, ok := ScopesForRole("artist")
+	if !ok {
+		t.Fatal("artist role should resolve")
+	}
 	opsScopes, ok := ScopesForRole("operations")
 	if !ok {
 		t.Fatal("operations role should resolve")
@@ -399,6 +403,7 @@ func TestScopesForRole(t *testing.T) {
 	}
 
 	userSet := toSet(userScopes)
+	artistSet := toSet(artistScopes)
 	opsSet := toSet(opsScopes)
 	adminSet := toSet(adminScopes)
 
@@ -414,6 +419,27 @@ func TestScopesForRole(t *testing.T) {
 		}
 	}
 
+	// artist is a self-service role: every user scope plus the ability to create
+	// its OWN Originals/Editions and onboard itself.
+	for s := range userSet {
+		if _, ok := artistSet[s]; !ok {
+			t.Fatalf("artist missing user scope %q", s)
+		}
+	}
+	for _, s := range []string{scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard} {
+		if _, ok := artistSet[s]; !ok {
+			t.Fatalf("artist missing expected scope %q", s)
+		}
+	}
+	// artist must NOT carry the on-behalf capability (so requireArtistSubject
+	// keeps it bound to its own flow_address) nor any operations-only or
+	// break-glass scope.
+	for _, s := range []string{scopeArtistOnBehalf, scopeEscrowVoid, scopeEscrowReescrow, scopeAccountGraduate, scopeSystemWrite, scopeAccountSign, scopeTransactionCreate, scopeTokenWrite} {
+		if _, ok := artistSet[s]; ok {
+			t.Fatalf("artist must NOT have scope %q", s)
+		}
+	}
+
 	// operations is a strict superset of user, plus operator actions, but NOT
 	// the break-glass scopes.
 	for s := range userSet {
@@ -421,7 +447,7 @@ func TestScopesForRole(t *testing.T) {
 			t.Fatalf("operations missing user scope %q", s)
 		}
 	}
-	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite} {
+	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite, scopeArtistOnBehalf} {
 		if _, ok := opsSet[s]; !ok {
 			t.Fatalf("operations missing expected scope %q", s)
 		}
@@ -474,6 +500,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		// capability scopes: granted by role but required by no route, so they
 		// are intentionally NOT in openapi.yml — a guard checks them.
 		"studio.charge.create.onbehalf",
+		"account.artdrop.artist.onbehalf",
 		// admin break-glass
 		"account.sign", "transaction.create", "token.write",
 	}

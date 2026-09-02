@@ -5,38 +5,22 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
-	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/gorilla/mux"
 )
 
-// requireArtistSubject rejects the request if the caller's token identifies a
-// specific subject (artist) that doesn't match the artistAddress in the path.
-// These endpoints let an artist create their own Original/Edition; the
-// on-chain transaction already ties identity to the signer and can't be
-// forged, but without this check any caller holding the right scope could
-// ask the wallet-api to sign on behalf of a *different* artist's custodial
-// account. Tokens without a subject claim (e.g. service/admin tokens) are
-// left untouched by this check, since this repo has no existing convention
-// for what `sub` carries — confirm with whoever issues artist tokens that
-// `sub` is set to the artist's own address for this to be effective.
+// requireArtistSubject binds an artist-creation request to the caller's
+// flow_address claim. It delegates to authguard.RequireArtistSubject so the
+// artist guard lives next to the Studio/purchase guard (RequireUserSubject) and
+// the two share one consistent shape (fail-closed, on-behalf bypass, honors the
+// "*" wildcard). See authguard.RequireArtistSubject for the full contract.
 func requireArtistSubject(r *http.Request, artistAddress string) error {
-	claims, ok := middleware.ClaimsFromContext(r.Context())
-	if !ok || claims.Subject == "" {
-		return nil
-	}
-	if !strings.EqualFold(claims.Subject, artistAddress) {
-		return &errors.RequestError{
-			StatusCode: http.StatusForbidden,
-			Err:        fmt.Errorf("token subject does not match artistAddress"),
-		}
-	}
-	return nil
+	return authguard.RequireArtistSubject(r, artistAddress)
 }
 
 // Handler exposes HTTP endpoints for the artdrop plugin.
