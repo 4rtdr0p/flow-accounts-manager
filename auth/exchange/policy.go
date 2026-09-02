@@ -48,6 +48,11 @@ const (
 	scopeOpsRun          = "ops.run"
 	scopeSystemWrite     = "system.write"
 	scopeChipProvision   = "chip.provision"
+	// scopeStudioChargeOnBehalf lets an operator create a studio charge on behalf
+	// of another user (not for their own custodial account). It is a capability
+	// checked by a downstream guard, not a requirement of any route, so it is not
+	// listed in openapi.yml. Operations+ only; never granted to end users.
+	scopeStudioChargeOnBehalf = "studio.charge.create.onbehalf"
 
 	// Admin-only break-glass scopes (see adminScopes).
 	scopeAccountSign       = "account.sign"
@@ -99,6 +104,7 @@ var operationsScopes = concatScopes(userScopes, []string{
 	scopeOpsRun,
 	scopeSystemWrite,
 	scopeChipProvision,
+	scopeStudioChargeOnBehalf,
 })
 
 // adminScopes is operationsScopes plus the break-glass scopes that must never

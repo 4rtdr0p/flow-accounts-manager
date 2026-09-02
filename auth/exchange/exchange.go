@@ -113,6 +113,10 @@ func (e *Exchanger) Configured() bool {
 
 type assertionClaims struct {
 	Role string `json:"role"`
+	// FlowAddress is the caller's custodial Flow address, if Payload includes it
+	// in the assertion. It is optional and backward-compatible: the front does
+	// not send it yet, so an empty value is carried through unchanged.
+	FlowAddress string `json:"flow_address"`
 	jwt.RegisteredClaims
 }
 
@@ -163,13 +167,15 @@ func (e *Exchanger) Exchange(assertion string) (*Result, error) {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownRole, claims.Role)
 	}
 
-	return e.mint(claims.Subject, scopes)
+	return e.mint(claims.Subject, claims.FlowAddress, scopes)
 }
 
 // mint produces an access token in the exact shape the wallet's auth middleware
 // validates: HS256 with the shared secret, a space-separated `scope` claim, the
-// subject carried through, and matching iss/aud/exp.
-func (e *Exchanger) mint(subject string, scopes []string) (*Result, error) {
+// subject carried through, and matching iss/aud/exp. The caller's flow_address
+// (if the assertion carried one) is copied through unchanged so downstream
+// guards can bind the token to an on-chain identity.
+func (e *Exchanger) mint(subject, flowAddress string, scopes []string) (*Result, error) {
 	now := time.Now()
 	expiresAt := now.Add(e.cfg.AccessTokenTTL)
 
@@ -188,6 +194,7 @@ func (e *Exchanger) mint(subject string, scopes []string) (*Result, error) {
 
 	claims := middleware.AuthClaims{
 		Scope:            strings.Join(scopes, " "),
+		FlowAddress:      flowAddress,
 		RegisteredClaims: registered,
 	}
 
