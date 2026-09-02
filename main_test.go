@@ -548,7 +548,19 @@ func TestW02AccountCreateIdempotencyConflict(t *testing.T) {
 
 func TestAccountTransactionHandlers(t *testing.T) {
 	cfg := test.LoadConfig(t)
+	// Production runs a pool of admin proposal keys (ADMIN_PROPOSAL_KEY_COUNT is
+	// 50 in .env.example). With a single proposal key the "create ok async" and
+	// the immediately-following "create ok sync" subtests race on that one key's
+	// on-chain sequence number ("sequence number 1, but given 0") — the async tx
+	// is still sealing when the sync tx reads a stale sequence. Give the admin a
+	// small pool so the two use distinct keys; this makes the test deterministic
+	// on a fresh emulator instead of depending on prior tests / timing.
+	cfg.AdminProposalKeyCount = 5
 	app := test.GetServices(t, cfg)
+
+	if err := app.GetAccounts().InitAdminAccount(context.Background()); err != nil {
+		t.Fatalf("init admin proposal key pool: %v", err)
+	}
 
 	svc := app.GetTransactions()
 	templateSvc := app.GetTemplates()
@@ -1146,7 +1158,17 @@ func TestTokenServices(t *testing.T) {
 
 func TestTokenHandlers(t *testing.T) {
 	cfg := test.LoadConfig(t)
+	// Same async→sync proposal-key sequence-number race as in
+	// TestAccountTransactionHandlers: "create withdrawal valid async" bumps the
+	// admin key's sequence, and the immediately-following sync withdrawal fails
+	// with error 1007 (invalid proposal key). Give the admin a small proposal-key
+	// pool (as production does) so the two use distinct keys.
+	cfg.AdminProposalKeyCount = 5
 	app := test.GetServices(t, cfg)
+
+	if err := app.GetAccounts().InitAdminAccount(context.Background()); err != nil {
+		t.Fatalf("init admin proposal key pool: %v", err)
+	}
 
 	svc := app.GetTokens()
 	accountSvc := app.GetAccounts()

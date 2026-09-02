@@ -388,7 +388,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		"account.artdrop.escrow.void", "account.artdrop.escrow.reescrow",
 		"account.artdrop.original.create", "account.artdrop.edition.create",
 		"account.artdrop.artist.onboard", "account.key.graduate", "account.key.sync",
-		"watchlist.write", "ops.run", "system.write",
+		"watchlist.write", "ops.run", "system.write", "chip.provision",
 		// admin break-glass
 		"account.sign", "transaction.create", "token.write",
 	}

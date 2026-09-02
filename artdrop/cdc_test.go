@@ -39,11 +39,14 @@ func embeddedCDCScripts() map[string]string {
 
 func testAddressConfig() Config {
 	return Config{
-		LogicOwner:             "0x0000000000000001",
-		ArtDropCoreAddress:     "0x0000000000000002",
-		ArtDropRegistryAddress: "0x0000000000000003",
-		EscrowModuleAddress:    "0x0000000000000004",
-		PaymentModuleAddress:   "0x0000000000000005",
+		LogicOwner:              "0x0000000000000001",
+		ArtDropCoreAddress:      "0x0000000000000002",
+		ArtDropRegistryAddress:  "0x0000000000000003",
+		EscrowModuleAddress:     "0x0000000000000004",
+		PaymentModuleAddress:    "0x0000000000000005",
+		FungibleTokenAddress:    "0x0000000000000006",
+		NonFungibleTokenAddress: "0x0000000000000007",
+		MetadataViewsAddress:    "0x0000000000000008",
 	}
 }
 
@@ -78,32 +81,40 @@ access(all) fun main() {}
 	}
 }
 
-// TestSubstituteAddressesLeavesNonArtDropImportsAlone covers the standard
-// contracts (FungibleToken, NonFungibleToken, MetadataViews) called out in
-// the task as explicitly out of scope: their import lines must survive
-// substitution byte-for-byte.
-func TestSubstituteAddressesLeavesNonArtDropImportsAlone(t *testing.T) {
+// TestSubstituteAddressesRewritesStandardContractImports covers the standard
+// Flow contracts (FungibleToken, NonFungibleToken, MetadataViews). These live
+// on a different address per network, and several scripts hardcode the testnet
+// address in their import line, so substitution now rewrites them to cfg's
+// per-network address the same way it does the ArtDrop contracts (C-iii). A
+// contract NOT in the map (e.g. FlowToken) must still survive untouched.
+func TestSubstituteAddressesRewritesStandardContractImports(t *testing.T) {
 	cfg := testAddressConfig()
 
 	script := `import FungibleToken from 0x9a0766d93b6608b7
 import NonFungibleToken from 0x631e88ae7f1d7c20
 import MetadataViews from 0x631e88ae7f1d7c20
+import FlowToken from 0x7e60df042a9c0868
 import ArtDropCore from 0xec581a0282d99a1a
 `
 
 	got := substituteAddresses(script, cfg)
 
 	for _, line := range []string{
-		"import FungibleToken from 0x9a0766d93b6608b7",
-		"import NonFungibleToken from 0x631e88ae7f1d7c20",
-		"import MetadataViews from 0x631e88ae7f1d7c20",
+		"import FungibleToken from " + cfg.FungibleTokenAddress,
+		"import NonFungibleToken from " + cfg.NonFungibleTokenAddress,
+		"import MetadataViews from " + cfg.MetadataViewsAddress,
+		// FlowToken is not in the substitution map — it must be left as-is.
+		"import FlowToken from 0x7e60df042a9c0868",
 	} {
 		if !strings.Contains(got, line) {
-			t.Fatalf("expected stable standard-contract import to survive unchanged: %q, got:\n%s", line, got)
+			t.Fatalf("expected substituted script to contain %q, got:\n%s", line, got)
 		}
 	}
 	if strings.Contains(got, "0xec581a0282d99a1a") {
 		t.Fatalf("expected ArtDropCore's old address to be gone, got:\n%s", got)
+	}
+	if strings.Contains(got, "0x9a0766d93b6608b7") {
+		t.Fatalf("expected FungibleToken's old testnet address to be gone, got:\n%s", got)
 	}
 }
 

@@ -241,7 +241,14 @@ run-tests: check-go
 	@go test ./... -p 1
 
 .PHONY: test
-test: check-flow check-go start-emulator deploy run-tests
+# The Go test harness (main_test.go) self-deploys the standard contracts it
+# needs (FUSD / ExampleNFT via templates), so `test` does NOT run the flow
+# `deploy` step — that step is only for the ArtDrop Tier-2 suite and is broken
+# for the standard contracts anyway (FUSD.cdc/NonFungibleToken.cdc import a
+# relative ./ViewResolver.cdc that isn't vendored). Tier-1 needs a running
+# emulator started from flow/ (its flow.json service key is what the harness's
+# admin key matches).
+test: check-flow check-go start-emulator run-tests
 
 .PHONY: test-clean
 test-clean: check-go clean-test-cache test
@@ -334,3 +341,32 @@ local-status:
 	@if [ -f emulator.pid ] && ps -p $$(cat emulator.pid) > /dev/null; then echo "Flow Emulator: Running (PID: $$(cat emulator.pid))"; else echo "Flow Emulator: Not running"; fi
 	@if [ -f swagger.pid ] && ps -p $$(cat swagger.pid) > /dev/null; then echo "Swagger UI: Running (PID: $$(cat swagger.pid))"; else echo "Swagger UI: Not running"; fi
 	@if [ -f api.pid ] && ps -p $$(cat api.pid) > /dev/null; then echo "Phoenix Wallet API: Running (PID: $$(cat api.pid))"; else echo "Phoenix Wallet API: Not running"; fi
+
+# ── ArtDrop Tier-2 E2E (chip + escrow against real contracts) ────────────────
+# Stands up an emulator with the full artdrop-protocol deploy + delegated caps
+# (flow/e2e-setup-artdrop.sh) and runs the //go:build artdrop_e2e suite against
+# it. Depends on the sibling artdrop-protocol checkout (set ARTDROP_PROTOCOL_DIR
+# to override its location). The setup leaves an emulator running under
+# flow/e2e-emulator.pid; this target stops it when the tests finish.
+.PHONY: test-artdrop-e2e
+test-artdrop-e2e: check-flow check-go
+	@bash flow/e2e-setup-artdrop.sh
+	@set -a; . flow/e2e-artdrop.env; set +a; \
+	  go test -tags artdrop_e2e -run TestE2E ./artdrop/ -p 1 -count=1; \
+	  rc=$$?; \
+	  $(MAKE) stop-artdrop-e2e; \
+	  exit $$rc
+
+.PHONY: stop-artdrop-e2e
+stop-artdrop-e2e:
+	@if [ -f flow/e2e-emulator.pid ]; then \
+	  kill $$(cat flow/e2e-emulator.pid) 2>/dev/null || true; \
+	  rm -f flow/e2e-emulator.pid; \
+	  echo "artdrop e2e emulator stopped"; \
+	else echo "no artdrop e2e emulator pidfile"; fi
+
+# ── Live integration (pool oracle against mainnet RPC) ───────────────────────
+# Separate from the emulator suites: hits the real mainnet EVM RPC, no emulator.
+.PHONY: test-integration
+test-integration: check-go
+	@go test -tags integration ./artdrop/purchase/... -count=1
