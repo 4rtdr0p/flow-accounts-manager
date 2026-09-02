@@ -49,6 +49,26 @@ type Config struct {
 	// PaymentModuleAddress is the account PaymentModule is deployed to.
 	PaymentModuleAddress string `env:"ARTDROP_PAYMENT_MODULE_ADDRESS,notEmpty" envDefault:"0x2edba2d63af095b8"`
 
+	// FungibleTokenAddress, NonFungibleTokenAddress and MetadataViewsAddress
+	// are the accounts the *standard* Flow contracts live on for this chain.
+	// Unlike the ArtDrop contracts above, these are the same well-known system
+	// contracts on any given network — but their address still differs per
+	// network (e.g. FungibleToken is 0x9a0766d93b6608b7 on testnet but
+	// 0xee82856bf20e2aa6 on the emulator). Several write-path scripts
+	// (create_escrow.cdc, re_escrow.cdc: FungibleToken; register_provider.cdc:
+	// NonFungibleToken) and read scripts (get_certificate_detail.cdc:
+	// MetadataViews) hardcode the testnet address in their import lines, so
+	// substituteAddresses now rewrites these too (see cdc.go). Defaults are the
+	// testnet addresses that were previously hardcoded, so production behavior
+	// is unchanged; the emulator E2E setup overrides them via env.
+	FungibleTokenAddress string `env:"ARTDROP_FUNGIBLE_TOKEN_ADDRESS,notEmpty" envDefault:"0x9a0766d93b6608b7"`
+
+	// NonFungibleTokenAddress — see FungibleTokenAddress.
+	NonFungibleTokenAddress string `env:"ARTDROP_NON_FUNGIBLE_TOKEN_ADDRESS,notEmpty" envDefault:"0x631e88ae7f1d7c20"`
+
+	// MetadataViewsAddress — see FungibleTokenAddress.
+	MetadataViewsAddress string `env:"ARTDROP_METADATA_VIEWS_ADDRESS,notEmpty" envDefault:"0x631e88ae7f1d7c20"`
+
 	// EscrowMaxAmountFlow is the server-side anti-garbage ceiling (issue #105,
 	// re-scoped in #107) on the `amount` (whole FLOW, not centiFLOW) the raw
 	// ReEscrow ops path is allowed to lock, enforced in Service.ReEscrow.
@@ -294,6 +314,9 @@ func (c *Config) normalizeAndValidate() error {
 		{"ARTDROP_REGISTRY_ADDRESS", &c.ArtDropRegistryAddress},
 		{"ARTDROP_ESCROW_MODULE_ADDRESS", &c.EscrowModuleAddress},
 		{"ARTDROP_PAYMENT_MODULE_ADDRESS", &c.PaymentModuleAddress},
+		{"ARTDROP_FUNGIBLE_TOKEN_ADDRESS", &c.FungibleTokenAddress},
+		{"ARTDROP_NON_FUNGIBLE_TOKEN_ADDRESS", &c.NonFungibleTokenAddress},
+		{"ARTDROP_METADATA_VIEWS_ADDRESS", &c.MetadataViewsAddress},
 	}
 	for _, f := range fields {
 		normalized, err := validateContractAddress(*f.value)

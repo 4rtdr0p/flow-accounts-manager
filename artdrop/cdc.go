@@ -11,17 +11,26 @@ import (
 // script written some other way is left untouched rather than guessed at.
 var importLineRE = regexp.MustCompile(`(?m)^import (\w+) from 0x[0-9A-Fa-f]+$`)
 
-// contractAddresses maps each ArtDrop protocol contract name to the address
-// it's deployed to in cfg. Contracts not in this map — FungibleToken,
-// NonFungibleToken, MetadataViews — are the stable, non-ArtDrop-specific
-// standard contracts called out in the task; substituteAddresses leaves
-// their import lines untouched.
+// contractAddresses maps each contract name substituteAddresses rewrites to
+// the address it lives on in cfg. This covers the four ArtDrop protocol
+// contracts plus the three standard Flow contracts whose import lines several
+// scripts hardcode to a specific network's address (FungibleToken in
+// create_escrow.cdc/re_escrow.cdc, NonFungibleToken in register_provider.cdc,
+// MetadataViews in get_certificate_detail.cdc). The standard contracts are the
+// same well-known system contracts on any network, but their address differs
+// per network — testnet's 0x9a0766d93b6608b7 FungibleToken is the emulator's
+// 0xee82856bf20e2aa6 — so a script written for testnet won't run on the
+// emulator unless these are rewritten too. Their cfg values default to the
+// testnet addresses that were hardcoded before, so production is unchanged.
 func contractAddresses(cfg Config) map[string]string {
 	return map[string]string{
-		"ArtDropCore":     cfg.ArtDropCoreAddress,
-		"ArtDropRegistry": cfg.ArtDropRegistryAddress,
-		"EscrowModule":    cfg.EscrowModuleAddress,
-		"PaymentModule":   cfg.PaymentModuleAddress,
+		"ArtDropCore":      cfg.ArtDropCoreAddress,
+		"ArtDropRegistry":  cfg.ArtDropRegistryAddress,
+		"EscrowModule":     cfg.EscrowModuleAddress,
+		"PaymentModule":    cfg.PaymentModuleAddress,
+		"FungibleToken":    cfg.FungibleTokenAddress,
+		"NonFungibleToken": cfg.NonFungibleTokenAddress,
+		"MetadataViews":    cfg.MetadataViewsAddress,
 	}
 }
 

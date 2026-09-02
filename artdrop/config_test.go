@@ -50,10 +50,13 @@ func TestLoadConfigDefaultsMatchDeployedAddresses(t *testing.T) {
 // (which would reject every escrow amount).
 func TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow(t *testing.T) {
 	cfg := Config{
-		ArtDropCoreAddress:     "0xec581a0282d99a1a",
-		ArtDropRegistryAddress: "0xec581a0282d99a1a",
-		EscrowModuleAddress:    "0x1bfedfa0ec66c23e",
-		PaymentModuleAddress:   "0x1bfedfa0ec66c23e",
+		ArtDropCoreAddress:      "0xec581a0282d99a1a",
+		ArtDropRegistryAddress:  "0xec581a0282d99a1a",
+		EscrowModuleAddress:     "0x1bfedfa0ec66c23e",
+		PaymentModuleAddress:    "0x1bfedfa0ec66c23e",
+		FungibleTokenAddress:    "0xee82856bf20e2aa6",
+		NonFungibleTokenAddress: "0xf8d6e0586b0a20c7",
+		MetadataViewsAddress:    "0xf8d6e0586b0a20c7",
 	}
 	if err := cfg.normalizeAndValidate(); err != nil {
 		t.Fatalf("normalizeAndValidate returned error: %v", err)
@@ -74,10 +77,13 @@ func TestConfigNormalizeAndValidateDefaultsEscrowMaxAmountFlow(t *testing.T) {
 func TestConfigNormalizeAndValidateRejectsMalformedAddresses(t *testing.T) {
 	base := func() Config {
 		return Config{
-			ArtDropCoreAddress:     "0xec581a0282d99a1a",
-			ArtDropRegistryAddress: "0xec581a0282d99a1a",
-			EscrowModuleAddress:    "0x1bfedfa0ec66c23e",
-			PaymentModuleAddress:   "0x1bfedfa0ec66c23e",
+			ArtDropCoreAddress:      "0xec581a0282d99a1a",
+			ArtDropRegistryAddress:  "0xec581a0282d99a1a",
+			EscrowModuleAddress:     "0x1bfedfa0ec66c23e",
+			PaymentModuleAddress:    "0x1bfedfa0ec66c23e",
+			FungibleTokenAddress:    "0xee82856bf20e2aa6",
+			NonFungibleTokenAddress: "0xf8d6e0586b0a20c7",
+			MetadataViewsAddress:    "0xf8d6e0586b0a20c7",
 		}
 	}
 
@@ -112,10 +118,13 @@ func TestConfigNormalizeAndValidateRejectsMalformedAddresses(t *testing.T) {
 // rather than substituting a malformed address into a live script.
 func TestConfigNormalizeAndValidateCanonicalizesAddresses(t *testing.T) {
 	cfg := Config{
-		ArtDropCoreAddress:     "EC581A0282D99A1A", // no "0x", uppercase
-		ArtDropRegistryAddress: "0xec581a0282d99a1a",
-		EscrowModuleAddress:    "0x1bfedfa0ec66c23e",
-		PaymentModuleAddress:   "0x1bfedfa0ec66c23e",
+		ArtDropCoreAddress:      "EC581A0282D99A1A", // no "0x", uppercase
+		ArtDropRegistryAddress:  "0xec581a0282d99a1a",
+		EscrowModuleAddress:     "0x1bfedfa0ec66c23e",
+		PaymentModuleAddress:    "0x1bfedfa0ec66c23e",
+		FungibleTokenAddress:    "0xee82856bf20e2aa6",
+		NonFungibleTokenAddress: "0xf8d6e0586b0a20c7",
+		MetadataViewsAddress:    "0xf8d6e0586b0a20c7",
 	}
 
 	if err := cfg.normalizeAndValidate(); err != nil {
@@ -136,10 +145,13 @@ func TestNewServiceRejectsInvalidConfig(t *testing.T) {
 	}
 
 	bad := &Config{
-		ArtDropCoreAddress:     "",
-		ArtDropRegistryAddress: "0xec581a0282d99a1a",
-		EscrowModuleAddress:    "0x1bfedfa0ec66c23e",
-		PaymentModuleAddress:   "0x1bfedfa0ec66c23e",
+		ArtDropCoreAddress:      "",
+		ArtDropRegistryAddress:  "0xec581a0282d99a1a",
+		EscrowModuleAddress:     "0x1bfedfa0ec66c23e",
+		PaymentModuleAddress:    "0x1bfedfa0ec66c23e",
+		FungibleTokenAddress:    "0xee82856bf20e2aa6",
+		NonFungibleTokenAddress: "0xf8d6e0586b0a20c7",
+		MetadataViewsAddress:    "0xf8d6e0586b0a20c7",
 	}
 	svc, err := NewService(plugins.PluginDeps{}, bad)
 	if err == nil {

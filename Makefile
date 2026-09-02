@@ -241,7 +241,14 @@ run-tests: check-go
 	@go test ./... -p 1
 
 .PHONY: test
-test: check-flow check-go start-emulator deploy run-tests
+# The Go test harness (main_test.go) self-deploys the standard contracts it
+# needs (FUSD / ExampleNFT via templates), so `test` does NOT run the flow
+# `deploy` step — that step is only for the ArtDrop Tier-2 suite and is broken
+# for the standard contracts anyway (FUSD.cdc/NonFungibleToken.cdc import a
+# relative ./ViewResolver.cdc that isn't vendored). Tier-1 needs a running
+# emulator started from flow/ (its flow.json service key is what the harness's
+# admin key matches).
+test: check-flow check-go start-emulator run-tests
 
 .PHONY: test-clean
 test-clean: check-go clean-test-cache test
