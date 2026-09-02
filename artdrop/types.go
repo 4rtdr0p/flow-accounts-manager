@@ -1,6 +1,9 @@
 package artdrop
 
-import "github.com/flow-hydraulics/flow-wallet-api/transactions"
+import (
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/ixkio"
+	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+)
 
 // Transaction types used by the artdrop plugin.
 //
@@ -21,7 +24,14 @@ const (
 	TxTypeSetupArtistDirect transactions.Type = "ArtdropSetupArtistDirect"
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
 	TxTypeCreateEdition     transactions.Type = "ArtdropCreateEdition"
+	TxTypeProvisionChip     transactions.Type = "ArtdropProvisionChip"
 )
+
+// chipSigningModeCustodial is the only Chip.SigningMode value provisioning
+// writes today — the wallet-api signs on the chip's behalf, Ixkio-gated. See
+// docs/CHIP-SIGNING-DESIGN.md §7 for the future "self" mode (asymmetric
+// self-signing chips), which is not wired anywhere yet.
+const chipSigningModeCustodial = "custodial"
 
 // TransferRequest contains the parameters needed to transfer a certificate.
 type TransferRequest struct {
@@ -114,10 +124,42 @@ type ReEscrowRequest struct {
 // certificate. Keeping the fields around — even ignored — would leave a
 // client-controlled input sitting on exactly the path that vulnerability
 // used, inviting it to get wired back in later.
+//
+// Phase 3 (issue #117, docs/CHIP-SIGNING-DESIGN.md §5) removes Challenge and
+// Signature the same way: the wallet-api now produces the chip's activation
+// signature itself — server-side challenge, Ixkio-gated signing (see
+// Service.ActivateChip) — instead of relaying a client-supplied one. A
+// client-controlled signature was exactly the shape a forged activation
+// would need; do not reintroduce either field. EscrowId was already dead
+// (the real id comes from the URL path) and is dropped along with them.
+// IxkioTap carries only the raw, single-use tap evidence the front forwards
+// UNVERIFIED — per ixkio.Tap's doc comment, the front must never call Ixkio
+// itself first, since a tap can only be verified once.
 type ActivateChipRequest struct {
-	EscrowId  uint64 `json:"escrow_id"`
-	Challenge string `json:"challenge"`
-	Signature []byte `json:"signature"`
+	IxkioTap ixkio.Tap `json:"ixkio_tap"`
+}
+
+// ProvisionChipRequest is the body of POST /chips.
+type ProvisionChipRequest struct {
+	ChipId string `json:"chip_id"`
+}
+
+// ChipInfo is a chip's chipId -> custodial-account mapping, returned by both
+// provisioning and lookup (issue #117).
+type ChipInfo struct {
+	ChipId string `json:"chip_id"`
+	// AccountAddress is the chip's custodial Flow account — the account
+	// whose stored key is this chip's private key.
+	AccountAddress string `json:"account_address"`
+	// PublicKey is the chip's on-chain identity: the 64-byte raw ECDSA
+	// P-256 public key (x||y), hex-encoded without a "0x" prefix.
+	PublicKey string `json:"public_key"`
+	// SigningMode is "custodial" (wallet-api signs, Ixkio-gated) or,
+	// eventually, "self" (design doc §7) — always "custodial" today.
+	SigningMode string `json:"signing_mode"`
+	// RegisteredAtBlock is the block height the on-chain registration
+	// confirmed at, when known.
+	RegisteredAtBlock *uint64 `json:"registered_at_block,omitempty"`
 }
 
 // CertificateInfo represents a single certificate returned by the list endpoint.

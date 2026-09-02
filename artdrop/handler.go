@@ -277,6 +277,48 @@ func (h *Handler) ActivateChipFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
+func (h *Handler) ProvisionChip() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.ProvisionChipFunc))
+}
+
+func (h *Handler) ProvisionChipFunc(rw http.ResponseWriter, r *http.Request) {
+	var req ProvisionChipRequest
+	if !h.decodeBody(rw, r, &req) {
+		return
+	}
+
+	info, err := h.svc.ProvisionChip(r.Context(), req.ChipId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusCreated, info)
+}
+
+func (h *Handler) GetChip() http.Handler {
+	return http.HandlerFunc(h.GetChipFunc)
+}
+
+func (h *Handler) GetChipFunc(rw http.ResponseWriter, r *http.Request) {
+	chipId := mux.Vars(r)["chipId"]
+
+	info, err := h.svc.GetChip(r.Context(), chipId)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	if info == nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusNotFound,
+			Err:        fmt.Errorf("chip not found"),
+		})
+		return
+	}
+
+	handlers.HandleJsonResponse(rw, http.StatusOK, info)
+}
+
 func (h *Handler) ListCertificates() http.Handler {
 	return http.HandlerFunc(h.ListCertificatesFunc)
 }

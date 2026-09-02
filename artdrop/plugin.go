@@ -154,6 +154,12 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	purchaseHandler := purchase.NewHandler(purchaseService)
 	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)
 
+	// Chip provisioning (issue #117, phase 2): create a chip's custodial
+	// account, register its P-256 pubkey on-chain, and persist the
+	// chipId -> account mapping. See docs/CHIP-SIGNING-DESIGN.md §2.
+	router.Handle("/chips", h.ProvisionChip()).Methods(http.MethodPost)
+	router.Handle("/chips/{chipId}", h.GetChip()).Methods(http.MethodGet)
+
 	router.Handle("/accounts/{address}/transfer", h.Transfer()).Methods(http.MethodPost)
 	router.Handle("/accounts/{address}/artdrop/setup", h.Setup()).Methods(http.MethodPost)
 	router.Handle("/accounts/{artistAddress}/artdrop/artist-direct/setup", h.SetupArtistDirect()).Methods(http.MethodPost)

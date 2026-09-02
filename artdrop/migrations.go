@@ -1,6 +1,7 @@
 package artdrop
 
 import (
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/chips/migrations/m20260901"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection/migrations/m20260829"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase/migrations/m20260821"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase/migrations/m20260828"
@@ -43,6 +44,11 @@ func Migrations() []*gormigrate.Migration {
 			ID:       m20260829.ID,
 			Migrate:  m20260829.Migrate,
 			Rollback: m20260829.Rollback,
+		},
+		{
+			ID:       m20260901.ID,
+			Migrate:  m20260901.Migrate,
+			Rollback: m20260901.Rollback,
 		},
 	}
 }

@@ -29,6 +29,12 @@ type Service interface {
 	UpdateTransaction(t *Transaction) error
 	GetOrCreateTransaction(transactionId string) *Transaction
 
+	// SignChipChallenge signs an arbitrary payload with a custodial account's
+	// ECDSA P-256 key in the exact form the on-chain
+	// EscrowModule.verifyChipSignature accepts: SHA2_256 hash, empty
+	// domain-separation tag, 64-byte raw r||s output. See chip_signing.go.
+	SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error)
+
 	// RegisterResultExtractor lets a plugin expose plugin-specific data (e.g.
 	// an on-chain entity id) on the async job Result for one of its own
 	// transaction Types, without the core knowing anything about that

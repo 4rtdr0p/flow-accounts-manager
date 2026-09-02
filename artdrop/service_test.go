@@ -538,63 +538,22 @@ func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
 // anti-garbage ceiling now applies solely to ReEscrow's raw ops amount, pinned
 // by TestServiceReEscrowRejectsAmountOverConfiguredMax above.
 
-// TestServiceActivateChipUsesPathAddressAndServerLogicOwner also covers the
-// removal of ActivateChipRequest.LogicOwner, .CertificateId and
-// .CertificateOwner (escrow-lifecycle redesign, 2026-08 — the contract now
-// derives certificate id/owner from the escrow's own state, closing a
-// theft vector where a caller could pass arbitrary values): with none of
-// those fields left on the request, the args reaching the chain can only
-// ever be the path address, the server's config LogicOwner, and whatever
-// the request actually still carries (escrowId, challenge, signature).
+// ActivateChip's tests (issue #117 phase 3: the wallet-api now produces the
+// chip's activation signature itself instead of relaying a client one) live
+// in activate_chip_test.go — the rework needs an escrow read + Ixkio verify +
+// chip lookup + SignChipChallenge fakes that don't belong alongside this
+// file's simpler transaction-shape tests. That file's
+// TestServiceActivateChipUsesPathAddressAndServerLogicOwner covers what this
+// one used to: the escrow-lifecycle redesign (2026-08) removal of
+// ActivateChipRequest.LogicOwner/.CertificateId/.CertificateOwner (the
+// contract now derives certificate id/owner from the escrow's own state,
+// closing a theft vector where a caller could pass arbitrary values).
 //
 // Release/Cancel/Refund and their EscrowActionRequest/TxTypeRelease/
 // TxTypeCancel/TxTypeRefund covered here previously were deleted along
 // with the Service methods themselves — the underlying EscrowModule
 // functions (releaseEscrow, cancel, refund) no longer exist on chain, so
 // there's no behavior left for those cases to assert.
-func TestServiceActivateChipUsesPathAddressAndServerLogicOwner(t *testing.T) {
-	txSvc := &setupTxService{}
-	cfg := ParseTestConfig(t)
-	svc, err := NewService(plugins.PluginDeps{
-		Transactions: txSvc,
-		Config:       &configs.Config{ChainID: flow.Emulator},
-	}, cfg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	_, _, err = svc.ActivateChip(context.Background(), true, "0xf8d6e0586b0a20c7", 55, ActivateChipRequest{
-		EscrowId:  99,
-		Challenge: "challenge",
-		Signature: []byte{9, 8, 7},
-	})
-	if err != nil {
-		t.Fatalf("ActivateChip returned error: %v", err)
-	}
-
-	if len(txSvc.calls) != 1 {
-		t.Fatalf("expected 1 transaction, got %d", len(txSvc.calls))
-	}
-	call := txSvc.calls[0]
-	if call.proposerAddress != "0xf8d6e0586b0a20c7" {
-		t.Fatalf("expected path proposer, got %q", call.proposerAddress)
-	}
-	if call.txType != TxTypeActivateChip {
-		t.Fatalf("expected type %q, got %q", TxTypeActivateChip, call.txType)
-	}
-	if !strings.Contains(call.code, "activateChipAndSettle") {
-		t.Fatal("expected activate-chip-and-settle CDC")
-	}
-	if len(call.args) != 4 {
-		t.Fatalf("expected 4 args (logicOwner, escrowId, challenge, signature) — no certificateId/certificateOwner, got %d", len(call.args))
-	}
-	if got := call.args[0]; got != cadence.NewAddress(flow.HexToAddress(cfg.LogicOwner)) {
-		t.Fatalf("expected logicOwner arg to be server config's %q, got %#v", cfg.LogicOwner, got)
-	}
-	if got := call.args[1]; got != cadence.UInt64(55) {
-		t.Fatalf("expected path escrow id arg 55, got %#v", got)
-	}
-}
 
 type setupTxCall struct {
 	sync            bool
@@ -669,4 +628,8 @@ func (s *setupTxService) GetOrCreateTransaction(transactionId string) *transacti
 }
 
 func (s *setupTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
+}
+
+func (s *setupTxService) SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error) {
+	panic("not used")
 }

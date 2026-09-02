@@ -1202,5 +1202,9 @@ func (s *queryTxService) GetOrCreateTransaction(transactionId string) *transacti
 	panic("not used by queries")
 }
 
+func (s *queryTxService) SignChipChallenge(ctx context.Context, address string, payload []byte) ([]byte, error) {
+	panic("not used by queries")
+}
+
 func (s *queryTxService) RegisterResultExtractor(tType transactions.Type, fn transactions.ResultExtractorFunc) {
 }
