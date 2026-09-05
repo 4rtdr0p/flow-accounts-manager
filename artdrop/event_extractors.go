@@ -38,6 +38,18 @@ type escrowCreatedResult struct {
 	CertificateId uint64 `json:"certificateId"`
 }
 
+// certificateReEscrowedResult is the re-escrow (TxTypeReEscrow) counterpart of
+// escrowCreatedResult. Its JSON shape is deliberately identical
+// ({escrowId, certificateId}) so the front end reads the new escrowId from the
+// re-escrow job's Result with the exact same code path it uses for
+// create-escrow (front #494/#495) — a re-escrow emits CertificateReEscrowed,
+// not EscrowCreated, so without a dedicated extractor the job Result came back
+// empty and the re-escrow read-after-write was broken.
+type certificateReEscrowedResult struct {
+	EscrowId      uint64 `json:"escrowId"`
+	CertificateId uint64 `json:"certificateId"`
+}
+
 // findArtDropEvent returns the Value of the first event among events whose
 // qualified type ends in ".<name>" (e.g. "A.ec581a0282d99a1a.ArtDropCore.
 // OriginalCreated"), regardless of which address ArtDropCore is currently
@@ -130,6 +142,40 @@ func extractEscrowCreatedResult(events []flow.Event) (string, error) {
 	})
 	if err != nil {
 		return "", fmt.Errorf("artdrop: marshal EscrowCreated result: %w", err)
+	}
+	return string(b), nil
+}
+
+// extractCertificateReEscrowedResult implements transactions.ResultExtractorFunc
+// for TxTypeReEscrow. See ArtDropCore.CertificateReEscrowed (escrowId,
+// certificateId: UInt64, among other fields) in artdrop-protocol/contracts/
+// core/ArtDropCore.cdc. A re-escrow reuses an existing certificate and emits
+// CertificateReEscrowed (NOT EscrowCreated), so the create-escrow extractor
+// never matched and the job Result came back empty (broken re-escrow
+// read-after-write). Field names match EscrowCreated: "escrowId" and
+// "certificateId".
+func extractCertificateReEscrowedResult(events []flow.Event) (string, error) {
+	evt, ok := findArtDropEvent(events, "CertificateReEscrowed")
+	if !ok {
+		return "", fmt.Errorf("artdrop: CertificateReEscrowed event not found among %d event(s)", len(events))
+	}
+
+	fields := evt.FieldsMappedByName()
+	escrowId, ok := fields["escrowId"].(cadence.UInt64)
+	if !ok {
+		return "", fmt.Errorf("artdrop: CertificateReEscrowed.escrowId missing or wrong type (got %T)", fields["escrowId"])
+	}
+	certificateId, ok := fields["certificateId"].(cadence.UInt64)
+	if !ok {
+		return "", fmt.Errorf("artdrop: CertificateReEscrowed.certificateId missing or wrong type (got %T)", fields["certificateId"])
+	}
+
+	b, err := json.Marshal(certificateReEscrowedResult{
+		EscrowId:      uint64(escrowId),
+		CertificateId: uint64(certificateId),
+	})
+	if err != nil {
+		return "", fmt.Errorf("artdrop: marshal CertificateReEscrowed result: %w", err)
 	}
 	return string(b), nil
 }
