@@ -936,14 +936,41 @@ paths:
   '/accounts/{address}/artdrop/escrows/re-escrow':
     post:
       summary: Open an ArtDrop escrow against an existing certificate
+      description: >-
+        Opens a new escrow against an EXISTING, already-minted certificate
+        (issue #175 / no-orphans re-escrow) — no re-mint. LogicOwner and the
+        vault identifier are server-controlled; unlike /purchases:charge, the
+        amount is taken from the request body here. On completion the async
+        job's result carries the new {escrowId, certificateId} (same shape as
+        create-escrow), read from the CertificateReEscrowed event.
       operationId: reEscrowArtDropCertificate
       x-required-scopes:
         - account.artdrop.escrow.reescrow
       tags:
         - Account Transactions
+      parameters:
+        - $ref: '#/components/parameters/address'
+        - $ref: '#/components/parameters/sync'
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/artdropReEscrowRequest'
       responses:
         '201':
           description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/job'
+                  - $ref: '#/components/schemas/transactionWithEvents'
+        '400':
+          description: Bad Request — missing or invalid body fields
+        '403':
+          description: Forbidden — wrong scope or signer not authorized
   '/accounts/{address}/artdrop/escrows/{escrowId}/activate':
     post:
       summary: Activate an ArtDrop escrow chip
@@ -2113,6 +2140,35 @@ components:
             type: number
         rarity_profile:
           type: integer
+    artdropReEscrowRequest:
+      type: object
+      required:
+        - buyer
+        - seller
+        - certificate_id
+        - chip_id
+        - unlock_at
+        - nonce
+        - amount
+      properties:
+        buyer:
+          type: string
+        seller:
+          type: string
+        certificate_id:
+          type: integer
+          format: uint64
+        chip_id:
+          type: string
+        unlock_at:
+          type: number
+          format: float
+        nonce:
+          type: integer
+          format: uint64
+        amount:
+          type: number
+          format: float
     jobState:
       type: string
       example: ACCEPTED

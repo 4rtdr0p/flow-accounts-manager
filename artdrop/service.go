@@ -272,6 +272,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		deps.Transactions.RegisterResultExtractor(TxTypeCreateOriginal, extractOriginalCreatedResult)
 		deps.Transactions.RegisterResultExtractor(TxTypeCreateEdition, extractEditionCreatedResult)
 		deps.Transactions.RegisterResultExtractor(TxTypeCreateEscrow, extractEscrowCreatedResult)
+		deps.Transactions.RegisterResultExtractor(TxTypeReEscrow, extractCertificateReEscrowedResult)
 	}
 
 	return svc, nil
