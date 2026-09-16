@@ -25,7 +25,7 @@ transaction(
     amount: UFix64,
     vaultIdentifier: String
 ) {
-    prepare(signer: auth(BorrowValue, FungibleToken.Withdraw) &Account) {
+    prepare(signer: auth(BorrowValue, Storage, FungibleToken.Withdraw) &Account) {
         let vaultPath = StoragePath(identifier: vaultIdentifier)!
         let vault = signer.storage.borrow<auth(FungibleToken.Withdraw) &{FungibleToken.Vault}>(
             from: vaultPath
@@ -33,10 +33,13 @@ transaction(
 
         let payment <- vault.withdraw(amount: amount)
 
-        let escrowLogic = getAccount(logicOwner)
-            .capabilities
-            .borrow<&{EscrowModule.IEscrowLogic}>(EscrowModule.PublicPath)
-            ?? panic("re_escrow: EscrowModule capability missing")
+        let capabilityPath = StoragePath(identifier: "artdropEscrowVoidAdminCap")!
+        let cap = signer.storage.copy<
+            Capability<auth(ArtDropCore.OperationalAdmin) &EscrowModule.EscrowLogic>
+        >(from: capabilityPath)
+            ?? panic("re_escrow: delegated OperationalAdmin capability missing")
+        let escrowLogic = cap.borrow()
+            ?? panic("re_escrow: delegated OperationalAdmin capability borrow failed")
 
         let escrowId = escrowLogic.createReEscrow(
             buyer: buyer,
