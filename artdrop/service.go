@@ -163,6 +163,11 @@ type Service struct {
 	// always reading the chain. See escrow_projection/escrow.go for the
 	// full design rationale and escrow_read_swap.go for how it's consulted.
 	escrowStore escrow_projection.Store
+	// reEscrowAmount resolves the certificate's server-owned FLOW reserve.
+	// It is installed by Plugin after its Mongo price reader and oracle are
+	// configured. Keeping it here makes the raw ops route fail closed rather
+	// than ever accepting a caller-controlled amount.
+	reEscrowAmount func(context.Context, string, uint64, string) (float64, error)
 
 	// chipStore is the wallet-api's own chipId -> custodial-account mapping
 	// (issue #117, package chips) — nil when deps.DB is nil, in which case
@@ -564,10 +569,17 @@ func (s *Service) ReEscrow(ctx context.Context, sync bool, address string, req R
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'unlock_at': %w", err)
 	}
-	if err := s.validateEscrowAmount(req.Amount); err != nil {
+	if s.reEscrowAmount == nil {
+		return nil, nil, fmt.Errorf("re-escrow pricing is unavailable")
+	}
+	serverAmount, err := s.reEscrowAmount(ctx, seller, req.CertificateId, req.ChipId)
+	if err != nil {
+		return nil, nil, fmt.Errorf("derive re-escrow amount: %w", err)
+	}
+	if err := s.validateEscrowAmount(serverAmount); err != nil {
 		return nil, nil, err
 	}
-	amount, err := newUFix64(req.Amount)
+	amount, err := newUFix64(serverAmount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("field 'amount': %w", err)
 	}
@@ -588,6 +600,10 @@ func (s *Service) ReEscrow(ctx context.Context, sync bool, address string, req R
 	}
 
 	return s.deps.Transactions.Create(ctx, sync, proposerAddress, s.reEscrowCDC, args, TxTypeReEscrow)
+}
+
+func (s *Service) setReEscrowAmountResolver(resolver func(context.Context, string, uint64, string) (float64, error)) {
+	s.reEscrowAmount = resolver
 }
 
 // VoidEscrow admin-annuls a still-Pending escrow (issue #185's Voided

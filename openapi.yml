@@ -939,8 +939,9 @@ paths:
       description: >-
         Opens a new escrow against an EXISTING, already-minted certificate
         (issue #175 / no-orphans re-escrow) — no re-mint. LogicOwner and the
-        vault identifier are server-controlled; unlike /purchases:charge, the
-        amount is taken from the request body here. On completion the async
+        vault identifier and FLOW amount are server-controlled. The amount is
+        derived from the certificate's verified edition price plus configured
+        fee; any legacy caller-supplied amount is ignored. On completion the async
         job's result carries the new {escrowId, certificateId} (same shape as
         create-escrow), read from the CertificateReEscrowed event.
       operationId: reEscrowArtDropCertificate
@@ -1907,6 +1908,16 @@ paths:
                 nonce:
                   type: integer
                   format: uint64
+                shippingCents:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: >-
+                    Optional carrier-calculated shipping amount in cents in
+                    the Stripe charge currency. It is added to the single
+                    Stripe PaymentIntent only; it never changes the FLOW
+                    escrow reserve or certificate value. Omit or send 0 for
+                    legacy behavior.
                 certificateId:
                   type: integer
                   format: uint64
@@ -2149,7 +2160,6 @@ components:
         - chip_id
         - unlock_at
         - nonce
-        - amount
       properties:
         buyer:
           type: string
@@ -2169,6 +2179,10 @@ components:
         amount:
           type: number
           format: float
+          deprecated: true
+          description: >-
+            Retained for compatibility but ignored. The server derives the
+            FLOW reserve from the certificate's verified edition and fee.
     jobState:
       type: string
       example: ACCEPTED

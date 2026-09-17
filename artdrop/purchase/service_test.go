@@ -261,6 +261,42 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	}
 }
 
+func TestCreatePurchaseCharge_AddsShippingToStripeOnly(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500)
+	in := validPurchaseInput()
+	in.ShippingCents = 1299
+
+	got, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+	if stripe.lastIn.AmountCents != 11299 {
+		t.Errorf("Stripe AmountCents = %d, want 11299", stripe.lastIn.AmountCents)
+	}
+	if got.ShippingCents != 1299 || got.AmountCents != 10000 {
+		t.Errorf("audit amounts = artwork %d shipping %d, want 10000 and 1299", got.AmountCents, got.ShippingCents)
+	}
+	if got.FlowAmount != 10 || escrow.amount != 10 {
+		t.Errorf("FLOW escrow = record %f call %f, want 10 (shipping excluded)", got.FlowAmount, escrow.amount)
+	}
+}
+
+func TestCreatePurchaseCharge_ZeroShippingPreservesLegacyStripeAmount(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	stripe := &mockChargeClient{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, &mockEscrowCreator{}, 500)
+
+	if _, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput()); err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+	if stripe.lastIn.AmountCents != 10000 {
+		t.Errorf("Stripe AmountCents = %d, want legacy 10000", stripe.lastIn.AmountCents)
+	}
+}
+
 func TestCreatePurchaseCharge_WithoutChipCreatesPaidObligation(t *testing.T) {
 	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
 	stripe := &mockChargeClient{}
