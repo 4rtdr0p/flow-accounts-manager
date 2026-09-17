@@ -111,6 +111,15 @@ type mockEscrowCreator struct {
 	certificateID  uint64
 }
 
+type mockChipReader struct {
+	provisioned bool
+	err         error
+}
+
+func (m *mockChipReader) IsProvisioned(_ context.Context, _ string) (bool, error) {
+	return m.provisioned, m.err
+}
+
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
 	m.called = true
 	m.amount = amount
@@ -154,6 +163,15 @@ func (m *mockStore) CreatePurchaseCharge(charge *PurchaseCharge) error {
 	return m.createErr
 }
 
+func (m *mockStore) GetPurchaseCharge(context.Context, string) (*PurchaseCharge, error) {
+	return nil, nil
+}
+func (m *mockStore) ClaimEscrowOpening(context.Context, string, string, uint64, string) (bool, error) {
+	return false, nil
+}
+func (m *mockStore) SetEscrowJobID(context.Context, string, string) error { return nil }
+func (m *mockStore) ResetEscrowOpening(context.Context, string) error     { return nil }
+
 // newPurchaseTestService builds a ServiceImpl wired with the given mocks and a
 // fresh in-memory DB.
 func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) Service {
@@ -166,7 +184,7 @@ func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle Pric
 	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(NewGormStore(db), prices, oracle, charge, escrow, platformFeeBps, testClaimWindowSeconds)
+	return NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, platformFeeBps, testClaimWindowSeconds)
 }
 
 func validPurchaseInput() CreatePurchaseChargeInput {
@@ -240,6 +258,77 @@ func TestCreatePurchaseCharge_ServerComputesAmount(t *testing.T) {
 	// EscrowID is intentionally not resolved by this flow — see #98.
 	if got.EscrowID != nil {
 		t.Errorf("expected EscrowID to stay nil (resolved separately), got %v", *got.EscrowID)
+	}
+}
+
+func TestCreatePurchaseCharge_WithoutChipCreatesPaidObligation(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500)
+
+	in := validPurchaseInput()
+	in.ChipID = ""
+	got, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge without chip: %v", err)
+	}
+	if got.PurchaseID == "" || got.Status != PurchaseStatusPaidPendingEscrow {
+		t.Fatalf("paid obligation = %#v, want public id and %s", got, PurchaseStatusPaidPendingEscrow)
+	}
+	if got.EscrowJobID != "" || escrow.called || escrow.reEscrowCalled {
+		t.Fatal("chipless charge must not enqueue escrow")
+	}
+	if !stripe.called || got.FlowAmount != 10 {
+		t.Fatalf("chipless charge must charge and freeze FLOW amount, got stripe=%v flow=%v", stripe.called, got.FlowAmount)
+	}
+}
+
+func TestOpenEscrow_QueuesOnceAndReplaysDurableResult(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, &mockChargeClient{}, escrow, 500)
+	in := validPurchaseInput()
+	in.ChipID = ""
+	paid, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	open := OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 19, IdempotencyKey: "open-1"}
+	got, err := svc.OpenEscrow(context.Background(), open)
+	if err != nil {
+		t.Fatalf("OpenEscrow: %v", err)
+	}
+	if got.Status != PurchaseStatusEscrowOpening || got.EscrowJobID == "" || got.ChipID != open.ChipID {
+		t.Fatalf("open result = %#v", got)
+	}
+	if !escrow.called || escrow.amount != paid.FlowAmount || escrow.unlockAt != paid.UnlockAt {
+		t.Fatal("open escrow did not use the frozen paid obligation values")
+	}
+	replay, err := svc.OpenEscrow(context.Background(), open)
+	if err != nil || replay.EscrowJobID != got.EscrowJobID || escrow.job == nil {
+		t.Fatalf("idempotent replay = %#v, %v", replay, err)
+	}
+	if _, err := svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 19, IdempotencyKey: "different-key"}); !errors.Is(err, ErrPurchaseNotOpenable) {
+		t.Fatalf("second open err = %v, want ErrPurchaseNotOpenable", err)
+	}
+}
+
+func TestOpenEscrow_RejectsUnknownChip(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, &mockChargeClient{}, &mockEscrowCreator{}, 500)
+	impl := svc.(*ServiceImpl)
+	impl.chips = &mockChipReader{provisioned: false}
+	in := validPurchaseInput()
+	in.ChipID = ""
+	paid, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "missing", IdempotencyKey: "open-1"})
+	if !errors.Is(err, ErrChipNotProvisioned) {
+		t.Fatalf("err = %v, want ErrChipNotProvisioned", err)
 	}
 }
 
@@ -496,7 +585,7 @@ func TestCreatePurchaseCharge_IdempotentDuplicate(t *testing.T) {
 	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(store, prices, &mockPriceOracle{}, &mockChargeClient{}, &mockEscrowCreator{}, 500, testClaimWindowSeconds)
+	svc := NewService(store, prices, &mockPriceOracle{}, &mockChargeClient{}, &mockEscrowCreator{}, &mockChipReader{provisioned: true}, 500, testClaimWindowSeconds)
 
 	_, err = svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	if !errors.Is(err, ErrChargeAlreadyRecorded) {
@@ -517,7 +606,6 @@ func TestCreatePurchaseCharge_Validation(t *testing.T) {
 		{"missing idempotency key", func(in *CreatePurchaseChargeInput) { in.IdempotencyKey = "" }, "idempotency key"},
 		{"missing buyer", func(in *CreatePurchaseChargeInput) { in.Buyer = "" }, "buyer"},
 		{"missing seller", func(in *CreatePurchaseChargeInput) { in.Seller = "" }, "seller"},
-		{"missing chip id", func(in *CreatePurchaseChargeInput) { in.ChipID = "" }, "chip id"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

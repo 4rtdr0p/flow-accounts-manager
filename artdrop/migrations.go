@@ -5,6 +5,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/escrow_projection/migrations/m20260829"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase/migrations/m20260821"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase/migrations/m20260828"
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase/migrations/m20260917"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/migrations/m20260807"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/migrations/m20260820"
 	"github.com/go-gormigrate/gormigrate/v2"
@@ -40,6 +41,7 @@ func Migrations() []*gormigrate.Migration {
 			Migrate:  m20260828.Migrate,
 			Rollback: m20260828.Rollback,
 		},
+		{ID: m20260917.ID, Migrate: m20260917.Migrate, Rollback: m20260917.Rollback},
 		{
 			ID:       m20260829.ID,
 			Migrate:  m20260829.Migrate,

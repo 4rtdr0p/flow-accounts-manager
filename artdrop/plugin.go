@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/chips"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio/pricing"
@@ -31,6 +32,13 @@ type Plugin struct {
 // import cycle). The amount passed in is the server-computed FLOW amount.
 type purchaseEscrowCreator struct {
 	svc *Service
+}
+
+type purchaseChipReader struct{ store chips.Store }
+
+func (r purchaseChipReader) IsProvisioned(ctx context.Context, chipID string) (bool, error) {
+	chip, err := r.store.GetChip(ctx, chipID)
+	return chip != nil, err
 }
 
 func (a purchaseEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
@@ -160,11 +168,13 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		oracle,
 		stripeClient,
 		purchaseEscrowCreator{svc: p.svc},
+		purchaseChipReader{store: chips.NewGormStore(deps.DB)},
 		purchasePlatformFeeBps,
 		p.svc.cfg.EscrowClaimWindowSeconds,
 	)
 	purchaseHandler := purchase.NewHandler(purchaseService)
 	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)
+	router.Handle("/purchases/{purchaseId}:open-escrow", purchaseHandler.OpenEscrow()).Methods(http.MethodPost)
 
 	// Chip provisioning (issue #117, phase 2): create a chip's custodial
 	// account, register its P-256 pubkey on-chain, and persist the

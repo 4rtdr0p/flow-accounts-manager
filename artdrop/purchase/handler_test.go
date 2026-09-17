@@ -6,19 +6,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/mux"
 )
 
 // mockPurchaseService is a minimal in-memory implementation of Service for
 // handler tests. It records the last input and how many times it was called so
 // tests can assert the identity guard runs before the service.
 type mockPurchaseService struct {
-	calls  int
-	lastIn CreatePurchaseChargeInput
-	err    error
+	calls     int
+	lastIn    CreatePurchaseChargeInput
+	openCalls int
+	lastOpen  OpenEscrowInput
+	err       error
+}
+
+func (m *mockPurchaseService) OpenEscrow(_ context.Context, in OpenEscrowInput) (*PurchaseCharge, error) {
+	m.openCalls++
+	m.lastOpen = in
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &PurchaseCharge{PurchaseID: in.PurchaseID, Status: PurchaseStatusEscrowOpening, EscrowJobID: "job-1", ChipID: in.ChipID}, nil
 }
 
 func (m *mockPurchaseService) CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (*PurchaseCharge, error) {
@@ -118,5 +131,55 @@ func TestCreatePurchaseChargeGuardAuthOffPassthrough(t *testing.T) {
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201 with auth off, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestOpenEscrowRejectsFieldsOutsideAllowList(t *testing.T) {
+	svc := &mockPurchaseService{}
+	h := NewHandler(svc)
+	req := httptest.NewRequest(http.MethodPost, "/v1/purchases/purchase-1:open-escrow", bytes.NewBufferString(`{"chipId":"chip-1","nonce":1,"amount":999}`))
+	req.Header.Set("Idempotency-Key", "open-1")
+	req = mux.SetURLVars(req, map[string]string{"purchaseId": "purchase-1"})
+	rr := httptest.NewRecorder()
+	h.OpenEscrow().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest || svc.openCalls != 0 {
+		t.Fatalf("got status=%d calls=%d, want 400 and no service call", rr.Code, svc.openCalls)
+	}
+}
+
+func TestOpenEscrowRequiresIdempotencyKey(t *testing.T) {
+	svc := &mockPurchaseService{}
+	h := NewHandler(svc)
+	req := httptest.NewRequest(http.MethodPost, "/v1/purchases/purchase-1:open-escrow", bytes.NewBufferString(`{"chipId":"chip-1","nonce":1}`))
+	req = mux.SetURLVars(req, map[string]string{"purchaseId": "purchase-1"})
+	rr := httptest.NewRecorder()
+	h.OpenEscrow().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestOpenEscrowForbiddenWithoutOperationsScope(t *testing.T) {
+	svc := &mockPurchaseService{}
+	h := NewHandler(svc)
+	protected := middleware.AuthHandler(h.OpenEscrow(), middleware.AuthOptions{
+		Enabled: true,
+		Secret:  "test-secret",
+		Rules: []middleware.AuthRule{
+			middleware.NewAuthRule(http.MethodPost, "/v1/purchases/{purchaseId}:open-escrow", "account.artdrop.escrow.open-paid"),
+		},
+	})
+	claims := middleware.AuthClaims{Scope: "studio.charge.create", RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte("test-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/purchases/purchase-1:open-escrow", bytes.NewBufferString(`{"chipId":"chip-1","nonce":1}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Idempotency-Key", "open-1")
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden || svc.openCalls != 0 {
+		t.Fatalf("got status=%d calls=%d, want 403 and no service call", rr.Code, svc.openCalls)
 	}
 }

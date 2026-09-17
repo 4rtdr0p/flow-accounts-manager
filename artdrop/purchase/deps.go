@@ -50,3 +50,9 @@ type EscrowCreator interface {
 	CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error)
 	ReEscrow(ctx context.Context, sync bool, address string, buyer, seller string, certificateID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error)
 }
+
+// ChipReader verifies that a physical chip was provisioned before it is bound
+// to a paid purchase. It deliberately returns only existence, not key data.
+type ChipReader interface {
+	IsProvisioned(ctx context.Context, chipID string) (bool, error)
+}

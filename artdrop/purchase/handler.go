@@ -26,3 +26,5 @@ func NewHandler(service Service) *Handler {
 func (h *Handler) CreatePurchaseCharge() http.Handler {
 	return http.HandlerFunc(h.CreatePurchaseChargeFunc)
 }
+
+func (h *Handler) OpenEscrow() http.Handler { return http.HandlerFunc(h.OpenEscrowFunc) }

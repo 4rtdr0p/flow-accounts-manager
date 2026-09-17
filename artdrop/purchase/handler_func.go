@@ -3,11 +3,13 @@ package purchase
 import (
 	"encoding/json"
 	stdErrors "errors"
+	"io"
 	"net/http"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/gorilla/mux"
 )
 
 // createPurchaseChargeRequest is the body of POST /v1/purchases:charge. It
@@ -40,6 +42,60 @@ type createPurchaseChargeRequest struct {
 	// escrow was Voided. It does not let the client set the amount — only
 	// which certificate is re-escrowed; the amount stays server-computed.
 	CertificateID uint64 `json:"certificateId,omitempty"`
+}
+
+type openEscrowRequest struct {
+	ChipID string `json:"chipId"`
+	Nonce  uint64 `json:"nonce"`
+}
+
+// OpenEscrowFunc opens escrow for an already-paid obligation. Strict decoding
+// makes every financial and identity field an allow-list violation.
+func (h *Handler) OpenEscrowFunc(rw http.ResponseWriter, r *http.Request) {
+	if r.Body == nil || r.Body == http.NoBody {
+		handlers.HandleError(rw, r, handlers.EmptyBodyError)
+		return
+	}
+	if r.Header.Get("Idempotency-Key") == "" {
+		handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusBadRequest, Err: ErrInvalidOpenEscrowInput})
+		return
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	var req openEscrowRequest
+	if err := dec.Decode(&req); err != nil {
+		handlers.HandleError(rw, r, handlers.InvalidBodyError)
+		return
+	}
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		handlers.HandleError(rw, r, handlers.InvalidBodyError)
+		return
+	}
+	charge, err := h.service.OpenEscrow(r.Context(), OpenEscrowInput{PurchaseID: mux.Vars(r)["purchaseId"], ChipID: req.ChipID, Nonce: req.Nonce, IdempotencyKey: r.Header.Get("Idempotency-Key")})
+	if err != nil {
+		switch {
+		case stdErrors.Is(err, ErrInvalidOpenEscrowInput):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusBadRequest, Err: err})
+		case stdErrors.Is(err, ErrPurchaseNotFound):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
+		case stdErrors.Is(err, ErrPurchaseNotOpenable):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
+		case stdErrors.Is(err, ErrChipNotProvisioned):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusUnprocessableEntity, Err: err})
+		case stdErrors.Is(err, ErrEscrowDisabled), stdErrors.Is(err, ErrEscrowUnavailable), stdErrors.Is(err, ErrChipUnavailable), stdErrors.Is(err, ErrChargeRecordFailed):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusServiceUnavailable, Err: err})
+		default:
+			handlers.HandleError(rw, r, err)
+		}
+		return
+	}
+	handlers.HandleJsonResponse(rw, http.StatusCreated, struct {
+		PurchaseID  string `json:"purchaseId"`
+		Status      string `json:"status"`
+		EscrowJobID string `json:"escrowJobId"`
+		ChipID      string `json:"chipId"`
+	}{charge.PurchaseID, charge.Status, charge.EscrowJobID, charge.ChipID})
 }
 
 // CreatePurchaseChargeFunc handles POST /v1/purchases:charge.

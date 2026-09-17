@@ -13,6 +13,11 @@ package purchase
 
 import "time"
 
+const (
+	PurchaseStatusPaidPendingEscrow = "PAID_PENDING_ESCROW"
+	PurchaseStatusEscrowOpening     = "ESCROW_OPENING"
+)
+
 // ArtworkKind is which kind of artwork is being purchased: an edition or a
 // painting. It selects which Mongo collection the price is read from.
 type ArtworkKind string
@@ -31,7 +36,11 @@ const (
 // charged, in what, and at what exchange rate" without going back to Mongo or
 // the oracle.
 type PurchaseCharge struct {
-	ID                  uint    `json:"id" gorm:"column:id;primary_key;autoIncrement"`
+	ID uint `json:"id" gorm:"column:id;primary_key;autoIncrement"`
+	// PurchaseID is the public, opaque identifier for the paid escrow obligation.
+	// It is intentionally distinct from the database primary key.
+	PurchaseID          string  `json:"purchaseId" gorm:"column:purchase_id;uniqueIndex"`
+	Status              string  `json:"status" gorm:"column:status;index"`
 	UserID              string  `json:"userId" gorm:"column:user_id;index"`
 	ArtworkKind         string  `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
 	ArtworkID           string  `json:"artworkId" gorm:"column:artwork_id;index"`
@@ -57,10 +66,15 @@ type PurchaseCharge struct {
 	// completes (see extractEscrowCreatedResult in the artdrop package); it
 	// is NULL until something backfills it — this migration and this flow do
 	// not do that backfill (issue #98).
-	EscrowJobID string  `json:"escrowJobId,omitempty" gorm:"column:escrow_job_id;index"`
-	EscrowID    *uint64 `json:"escrowId,omitempty" gorm:"column:escrow_id"`
+	EscrowJobID string `json:"escrowJobId,omitempty" gorm:"column:escrow_job_id;index"`
+	// EscrowIdempotencyKey binds the successful open request to its durable
+	// result. It is deliberately never returned to callers.
+	EscrowIdempotencyKey string  `json:"-" gorm:"column:escrow_idempotency_key"`
+	EscrowID             *uint64 `json:"escrowId,omitempty" gorm:"column:escrow_id"`
+	CertificateID        *uint64 `json:"certificateId,omitempty" gorm:"column:certificate_id"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"column:created_at"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"column:updated_at"`
 }
 
 // TableName returns the table name for the audit record.
@@ -123,4 +137,13 @@ type CreatePurchaseChargeInput struct {
 	// from). Like every other amount input, this never lets the client set the
 	// escrow amount — only which certificate is re-escrowed.
 	CertificateID uint64
+}
+
+// OpenEscrowInput contains the only operator-supplied values accepted after a
+// payment has settled. All financial and party data comes from PurchaseCharge.
+type OpenEscrowInput struct {
+	PurchaseID     string
+	ChipID         string
+	Nonce          uint64
+	IdempotencyKey string
 }

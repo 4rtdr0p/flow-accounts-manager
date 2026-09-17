@@ -11,6 +11,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -50,6 +51,12 @@ var ErrEscrowDisabled = errors.New("escrow creator is disabled")
 // persisted for a reason other than a duplicate payment intent. Callers must
 // map it to a 5xx so the idempotency middleware releases the key reservation.
 var ErrChargeRecordFailed = errors.New("failed to record charge")
+var ErrPurchaseNotFound = errors.New("paid purchase not found")
+var ErrPurchaseNotOpenable = errors.New("purchase is not awaiting escrow")
+var ErrChipNotProvisioned = errors.New("chip is not provisioned")
+var ErrChipUnavailable = errors.New("chip lookup is unavailable")
+var ErrInvalidOpenEscrowInput = errors.New("invalid open escrow request")
+var ErrEscrowUnavailable = errors.New("escrow queue is unavailable")
 
 // Service lists all functionality provided by the purchase service.
 type Service interface {
@@ -62,6 +69,7 @@ type Service interface {
 	// record. Every amount is computed server-side; the client only
 	// identifies the artwork, the parties and the payment details.
 	CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (*PurchaseCharge, error)
+	OpenEscrow(ctx context.Context, in OpenEscrowInput) (*PurchaseCharge, error)
 }
 
 // ServiceImpl implements the purchase Service.
@@ -71,6 +79,7 @@ type ServiceImpl struct {
 	oracle             PriceOracle
 	charge             ChargeClient
 	escrow             EscrowCreator
+	chips              ChipReader
 	platformFeeBps     int
 	shippingRatePerUSD float64
 
@@ -91,13 +100,14 @@ type ServiceImpl struct {
 // server-computed unlock_at window (issue #111; see
 // Config.EscrowClaimWindowSeconds) — the buyer's on-chain claim deadline is
 // now() + claimWindowSeconds, never client-supplied.
-func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int, claimWindowSeconds float64) Service {
+func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, chips ChipReader, platformFeeBps int, claimWindowSeconds float64) Service {
 	return &ServiceImpl{
 		store:              store,
 		prices:             prices,
 		oracle:             oracle,
 		charge:             charge,
 		escrow:             escrow,
+		chips:              chips,
 		platformFeeBps:     platformFeeBps,
 		claimWindowSeconds: claimWindowSeconds,
 		now:                time.Now,
@@ -130,9 +140,6 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	}
 	if in.Seller == "" {
 		return nil, fmt.Errorf("seller is required")
-	}
-	if in.ChipID == "" {
-		return nil, fmt.Errorf("chip id is required")
 	}
 
 	// 1. Read the artwork price from Mongo. The price is in whole dollars
@@ -205,7 +212,9 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
 	}
 
-	// 5. Open the on-chain escrow with the server-computed FLOW amount (the
+	// 5. The deployed legacy caller supplies a chip and keeps the original
+	// charge+open behavior. A chipless caller creates a paid obligation; it is
+	// opened later by operations once production assigns a provisioned chip.
 	// fee-only gas reserve). The escrow is opened by the artdrop service
 	// (via the EscrowCreator adapter), which owns the transaction submission
 	// and the server-controlled escrow arguments.
@@ -217,9 +226,6 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	// the edition from the certificate itself. Both receive the identical
 	// server-computed flowAmount above; only the escrow call and its
 	// certificate-vs-edition argument differ.
-	if s.escrow == nil {
-		return nil, ErrEscrowDisabled
-	}
 	// sync=false: this only schedules the on-chain transaction, it does not
 	// wait for it to confirm (unchanged behavior). job.ID is the wallet-api's
 	// own async job UUID, available immediately regardless of whether the
@@ -235,22 +241,31 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	// chip.
 	serverUnlockAt := float64(s.now().Unix()) + s.claimWindowSeconds
 
-	var job *jobs.Job
-	if in.CertificateID != 0 {
-		job, _, err = s.escrow.ReEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.CertificateID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
-	} else {
-		job, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("create escrow: %w", err)
-	}
 	var escrowJobID string
-	if job != nil {
-		escrowJobID = job.ID.String()
+	status := PurchaseStatusPaidPendingEscrow
+	if in.ChipID != "" {
+		if s.escrow == nil {
+			return nil, ErrEscrowDisabled
+		}
+		var job *jobs.Job
+		if in.CertificateID != 0 {
+			job, _, err = s.escrow.ReEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.CertificateID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
+		} else {
+			job, _, err = s.escrow.CreateEscrow(ctx, false, in.Buyer, in.Buyer, in.Seller, in.EditionID, in.ChipID, serverUnlockAt, in.Nonce, flowAmount)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("create escrow: %w", err)
+		}
+		if job != nil {
+			escrowJobID = job.ID.String()
+		}
+		status = PurchaseStatusEscrowOpening
 	}
 
 	// 6. Persist the audit record with the server-computed values.
 	charge := &PurchaseCharge{
+		PurchaseID:          uuid.NewString(),
+		Status:              status,
 		UserID:              in.UserID,
 		ArtworkKind:         string(in.ArtworkKind),
 		ArtworkID:           in.ArtworkID,
@@ -283,6 +298,67 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		return nil, ErrChargeRecordFailed
 	}
 
+	return charge, nil
+}
+
+// OpenEscrow binds a provisioned chip to exactly one already-paid obligation
+// and enqueues CreateEscrow. ClaimEscrowOpening is a conditional SQL update,
+// so concurrent operators cannot submit two jobs for the same purchase.
+func (s *ServiceImpl) OpenEscrow(ctx context.Context, in OpenEscrowInput) (*PurchaseCharge, error) {
+	if in.PurchaseID == "" || in.ChipID == "" || in.IdempotencyKey == "" {
+		return nil, fmt.Errorf("%w: purchase id, chip id and idempotency key are required", ErrInvalidOpenEscrowInput)
+	}
+	if s.store == nil {
+		return nil, ErrChargeRecordFailed
+	}
+	charge, err := s.store.GetPurchaseCharge(ctx, in.PurchaseID)
+	if err != nil {
+		return nil, fmt.Errorf("read paid purchase: %w", err)
+	}
+	if charge == nil {
+		return nil, ErrPurchaseNotFound
+	}
+	if charge.Status == PurchaseStatusEscrowOpening && charge.EscrowIdempotencyKey == in.IdempotencyKey && charge.EscrowJobID != "" {
+		return charge, nil
+	}
+	if charge.Status != PurchaseStatusPaidPendingEscrow || charge.EscrowJobID != "" {
+		return nil, ErrPurchaseNotOpenable
+	}
+	if s.chips == nil {
+		return nil, ErrEscrowDisabled
+	}
+	ok, err := s.chips.IsProvisioned(ctx, in.ChipID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrChipUnavailable, err)
+	}
+	if !ok {
+		return nil, ErrChipNotProvisioned
+	}
+	claimed, err := s.store.ClaimEscrowOpening(ctx, in.PurchaseID, in.ChipID, in.Nonce, in.IdempotencyKey)
+	if err != nil {
+		return nil, fmt.Errorf("claim paid purchase: %w", err)
+	}
+	if !claimed {
+		return nil, ErrPurchaseNotOpenable
+	}
+	if s.escrow == nil {
+		_ = s.store.ResetEscrowOpening(ctx, in.PurchaseID)
+		return nil, ErrEscrowDisabled
+	}
+	job, _, err := s.escrow.CreateEscrow(ctx, false, charge.Buyer, charge.Buyer, charge.Seller, charge.EditionID, in.ChipID, charge.UnlockAt, in.Nonce, charge.FlowAmount)
+	if err != nil {
+		// The adapter may have accepted the asynchronous job before returning an
+		// error. Keep the durable claim fail-closed rather than clearing it and
+		// risking a second CreateEscrow/certificate on retry.
+		return nil, fmt.Errorf("%w: %v", ErrEscrowUnavailable, err)
+	}
+	if job == nil {
+		return nil, fmt.Errorf("%w: create escrow returned no job", ErrEscrowUnavailable)
+	}
+	if err := s.store.SetEscrowJobID(ctx, in.PurchaseID, job.ID.String()); err != nil {
+		return nil, ErrChargeRecordFailed
+	}
+	charge.ChipID, charge.Nonce, charge.EscrowJobID, charge.Status = in.ChipID, in.Nonce, job.ID.String(), PurchaseStatusEscrowOpening
 	return charge, nil
 }
 
