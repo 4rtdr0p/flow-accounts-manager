@@ -49,6 +49,7 @@ const (
 	scopeOpsRun          = "ops.run"
 	scopeSystemWrite     = "system.write"
 	scopeChipProvision   = "chip.provision"
+	scopeEscrowOpenPaid  = "account.artdrop.escrow.open-paid"
 	// scopeStudioChargeOnBehalf lets an operator create a studio charge on behalf
 	// of another user (not for their own custodial account). It is a capability
 	// checked by a downstream guard, not a requirement of any route, so it is not
@@ -125,6 +126,7 @@ var operationsScopes = concatScopes(userScopes, []string{
 	scopeOpsRun,
 	scopeSystemWrite,
 	scopeChipProvision,
+	scopeEscrowOpenPaid,
 	scopeStudioChargeOnBehalf,
 	scopeArtistOnBehalf,
 })

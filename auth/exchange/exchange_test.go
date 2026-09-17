@@ -447,7 +447,7 @@ func TestScopesForRole(t *testing.T) {
 			t.Fatalf("operations missing user scope %q", s)
 		}
 	}
-	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite, scopeArtistOnBehalf} {
+	for _, s := range []string{scopeEscrowVoid, scopeEscrowReescrow, scopeEscrowOpenPaid, scopeOriginalCreate, scopeEditionCreate, scopeArtistOnboard, scopeAccountGraduate, scopeAccountKeySync, scopeWatchlistWrite, scopeOpsRun, scopeSystemWrite, scopeArtistOnBehalf} {
 		if _, ok := opsSet[s]; !ok {
 			t.Fatalf("operations missing expected scope %q", s)
 		}
@@ -493,7 +493,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		"script.execute", "account.create", "account.setup", "studio.charge.create",
 		"account.transfer", "account.artdrop.escrow.activate",
 		// operations actions
-		"account.artdrop.escrow.void", "account.artdrop.escrow.reescrow",
+		"account.artdrop.escrow.void", "account.artdrop.escrow.reescrow", "account.artdrop.escrow.open-paid",
 		"account.artdrop.original.create", "account.artdrop.edition.create",
 		"account.artdrop.artist.onboard", "account.key.graduate", "account.key.sync",
 		"watchlist.write", "ops.run", "system.write", "chip.provision",
