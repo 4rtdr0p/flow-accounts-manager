@@ -39,12 +39,16 @@ type PurchaseCharge struct {
 	ID uint `json:"id" gorm:"column:id;primary_key;autoIncrement"`
 	// PurchaseID is the public, opaque identifier for the paid escrow obligation.
 	// It is intentionally distinct from the database primary key.
-	PurchaseID          string  `json:"purchaseId" gorm:"column:purchase_id;uniqueIndex"`
-	Status              string  `json:"status" gorm:"column:status;index"`
-	UserID              string  `json:"userId" gorm:"column:user_id;index"`
-	ArtworkKind         string  `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
-	ArtworkID           string  `json:"artworkId" gorm:"column:artwork_id;index"`
-	AmountCents         int64   `json:"amountCents" gorm:"column:amount_cents"`
+	PurchaseID  string `json:"purchaseId" gorm:"column:purchase_id;uniqueIndex"`
+	Status      string `json:"status" gorm:"column:status;index"`
+	UserID      string `json:"userId" gorm:"column:user_id;index"`
+	ArtworkKind string `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
+	ArtworkID   string `json:"artworkId" gorm:"column:artwork_id;index"`
+	AmountCents int64  `json:"amountCents" gorm:"column:amount_cents"`
+	// ShippingCents is the carrier-calculated shipping portion collected by
+	// Stripe. It is deliberately separate from AmountCents and FlowAmount:
+	// shipping never contributes to the certificate's FLOW reserve.
+	ShippingCents       int64   `json:"shippingCents" gorm:"column:shipping_cents;default:0"`
 	PlatformFeeCents    int64   `json:"platformFeeCents" gorm:"column:platform_fee_cents"`
 	Currency            string  `json:"currency" gorm:"column:currency;size:3;default:usd"`
 	FlowAmount          float64 `json:"flowAmount" gorm:"column:flow_amount"`
@@ -104,6 +108,10 @@ type CreatePurchaseChargeInput struct {
 	PaymentMethodID  string
 	IdempotencyKey   string
 	Metadata         string
+	// ShippingCents is supplied by the checkout after carrier rating. Unlike
+	// artwork price it cannot be derived by wallet-api; it is added only to the
+	// Stripe total and never to the fee or FLOW escrow calculation.
+	ShippingCents int64
 
 	// Escrow fields. Buyer and Seller are Flow addresses; EditionID, ChipID
 	// and Nonce are the escrow parameters. Amount is NOT accepted here — it is

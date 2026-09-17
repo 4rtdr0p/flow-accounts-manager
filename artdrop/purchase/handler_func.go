@@ -24,6 +24,7 @@ type createPurchaseChargeRequest struct {
 	StripeCustomerID string `json:"stripeCustomerId"`
 	PaymentMethodID  string `json:"paymentMethodId,omitempty"`
 	Metadata         string `json:"metadata,omitempty"`
+	ShippingCents    int64  `json:"shippingCents,omitempty"`
 
 	// Escrow fields. UnlockAt is not accepted here (issue #111): it is
 	// computed server-side as now() + Config.EscrowClaimWindowSeconds, never
@@ -127,6 +128,7 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		PaymentMethodID:  req.PaymentMethodID,
 		IdempotencyKey:   r.Header.Get("Idempotency-Key"),
 		Metadata:         req.Metadata,
+		ShippingCents:    req.ShippingCents,
 		Buyer:            req.Buyer,
 		Seller:           req.Seller,
 		EditionID:        req.EditionID,

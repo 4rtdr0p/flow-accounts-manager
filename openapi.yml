@@ -939,8 +939,9 @@ paths:
       description: >-
         Opens a new escrow against an EXISTING, already-minted certificate
         (issue #175 / no-orphans re-escrow) — no re-mint. LogicOwner and the
-        vault identifier are server-controlled; unlike /purchases:charge, the
-        amount is taken from the request body here. On completion the async
+        vault identifier and FLOW amount are server-controlled. The amount is
+        derived from the certificate's verified edition price plus configured
+        fee; any legacy caller-supplied amount is ignored. On completion the async
         job's result carries the new {escrowId, certificateId} (same shape as
         create-escrow), read from the CertificateReEscrowed event.
       operationId: reEscrowArtDropCertificate
@@ -1844,15 +1845,17 @@ paths:
         - $ref: '#/components/parameters/idempotencyKey'
   /purchases:charge:
     post:
-      summary: Charge a buyer's purchase and open the on-chain escrow.
+      summary: Charge a buyer's purchase, optionally opening the on-chain escrow.
       description: >-
         Charges the buyer's purchase and opens the on-chain escrow with a
         server-computed amount. The server reads the artwork price from Mongo
         (editions.price or paintings.originalPrice, both required and in
         dollars), applies the configured platform fee, converts the total to
         FLOW via the on-chain FLOW/USD pool oracle, creates and confirms a
-        Stripe PaymentIntent, opens the
-        escrow, and persists the audit record. No amount is trusted from the
+        Stripe PaymentIntent and persists the audit record. When `chipId` is
+        supplied, it also opens the escrow as before. When omitted, the paid
+        purchase is recorded as `PAID_PENDING_ESCROW` and Operations opens it
+        later after assigning a provisioned chip. No amount is trusted from the
         client. One PaymentIntent funds at most one escrow. Retries are
         governed by the `Idempotency-Key` header, which is propagated to
         Stripe; replays return the stored result, while a conflicting duplicate
@@ -1875,8 +1878,6 @@ paths:
                 - buyer
                 - seller
                 - editionId
-                - chipId
-                - unlockAt
                 - nonce
               properties:
                 userId:
@@ -1901,12 +1902,30 @@ paths:
                   format: uint64
                 chipId:
                   type: string
+                  description: >-
+                    Optional. When present, preserves the legacy charge plus
+                    escrow-opening flow. When omitted, the response includes a
+                    `purchaseId` for the later open-escrow operation.
                 unlockAt:
                   type: number
                   format: float
+                  deprecated: true
+                  description: >-
+                    Retained for wire compatibility with legacy callers. It is
+                    ignored: the server always computes the claim deadline.
                 nonce:
                   type: integer
                   format: uint64
+                shippingCents:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: >-
+                    Optional carrier-calculated shipping amount in cents in
+                    the Stripe charge currency. It is added to the single
+                    Stripe PaymentIntent only; it never changes the FLOW
+                    escrow reserve or certificate value. Omit or send 0 for
+                    legacy behavior.
                 certificateId:
                   type: integer
                   format: uint64
@@ -1935,6 +1954,73 @@ paths:
           description: Service Unavailable - pricing, FLOW/USD oracle, Stripe or escrow is disabled
       parameters:
         - $ref: '#/components/parameters/idempotencyKey'
+  /purchases/{purchaseId}:open-escrow:
+    post:
+      summary: Open escrow for an already-paid purchase obligation.
+      description: >-
+        Binds a provisioned chip to a purchase in `PAID_PENDING_ESCROW` and
+        queues CreateEscrow using only the buyer, seller, edition, frozen FLOW
+        amount, and claim window stored at charge time. This endpoint never
+        charges Stripe. The request body is an allow-list: only chipId and
+        nonce are accepted.
+      operationId: openPurchaseEscrow
+      x-required-scopes:
+        - account.artdrop.escrow.open-paid
+      tags:
+        - Studio
+      parameters:
+        - name: purchaseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/idempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [chipId, nonce]
+              properties:
+                chipId:
+                  type: string
+                nonce:
+                  type: integer
+                  format: uint64
+      responses:
+        '201':
+          description: Escrow creation queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [purchaseId, status, escrowJobId, chipId]
+                properties:
+                  purchaseId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ESCROW_OPENING]
+                  escrowJobId:
+                    type: string
+                  chipId:
+                    type: string
+        '400':
+          description: Bad Request - malformed body, disallowed field, or missing Idempotency-Key
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - missing operations escrow-open-paid scope
+        '404':
+          description: Not Found - paid purchase obligation does not exist
+        '409':
+          description: Conflict - obligation is not awaiting escrow or has already been opened
+        '422':
+          description: Unprocessable Entity - chip is not provisioned
+        '503':
+          description: Service Unavailable - chip lookup or escrow queue is unavailable
   /studio/charges:
     get:
       summary: List studio production charges for a user.
@@ -2149,7 +2235,6 @@ components:
         - chip_id
         - unlock_at
         - nonce
-        - amount
       properties:
         buyer:
           type: string
@@ -2169,6 +2254,10 @@ components:
         amount:
           type: number
           format: float
+          deprecated: true
+          description: >-
+            Retained for compatibility but ignored. The server derives the
+            FLOW reserve from the certificate's verified edition and fee.
     jobState:
       type: string
       example: ACCEPTED

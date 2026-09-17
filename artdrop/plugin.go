@@ -1,9 +1,13 @@
 package artdrop
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,6 +176,55 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		purchasePlatformFeeBps,
 		p.svc.cfg.EscrowClaimWindowSeconds,
 	)
+	// Raw ops re-escrow has no artwork id in its body. Resolve the certificate
+	// from the seller's collection, then price its on-chain edition through the
+	// same Mongo + fee + oracle inputs as purchases:charge. The request's
+	// amount is intentionally not part of this calculation.
+	p.svc.setReEscrowAmountResolver(func(ctx context.Context, seller string, certificateID uint64, chipID string) (float64, error) {
+		certificates, err := p.svc.ListCertificates(ctx, seller)
+		if err != nil {
+			return 0, err
+		}
+		var editionID uint64
+		for _, certificate := range certificates {
+			if certificate.Id == certificateID {
+				editionID = certificate.EditionId
+				break
+			}
+		}
+		if editionID == 0 {
+			return 0, fmt.Errorf("certificate %d does not belong to seller", certificateID)
+		}
+		// When the chip registry is available, verify its public identity is
+		// the one recorded on the seller's certificate. The contract remains
+		// authoritative, but this rejects a mismatched local chip before a
+		// transaction is submitted.
+		if deps.DB != nil {
+			chip, err := chips.NewGormStore(deps.DB).GetChip(ctx, chipID)
+			if err != nil {
+				return 0, fmt.Errorf("look up chip: %w", err)
+			}
+			if chip == nil {
+				return 0, fmt.Errorf("chip %q is not provisioned", chipID)
+			}
+			certificate, err := p.svc.GetCertificateDetail(ctx, seller, certificateID)
+			if err != nil {
+				return 0, fmt.Errorf("read certificate: %w", err)
+			}
+			if certificate == nil {
+				return 0, fmt.Errorf("certificate %d does not belong to seller", certificateID)
+			}
+			chipKey, err := hex.DecodeString(chip.PublicKey)
+			if err != nil || !bytes.Equal(certificate.ChipPubKey, chipKey) {
+				return 0, fmt.Errorf("chip %q does not belong to certificate %d", chipID, certificateID)
+			}
+		}
+		artwork, err := purchaseStore.GetEditionPrice(ctx, strconv.FormatUint(editionID, 10))
+		if err != nil {
+			return 0, err
+		}
+		return purchase.FlowAmountForArtworkPrice(artwork.PriceUSD, purchasePlatformFeeBps, oracle)
+	})
 	purchaseHandler := purchase.NewHandler(purchaseService)
 	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)
 	router.Handle("/purchases/{purchaseId}:open-escrow", purchaseHandler.OpenEscrow()).Methods(http.MethodPost)

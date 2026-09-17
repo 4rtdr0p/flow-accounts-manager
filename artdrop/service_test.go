@@ -434,6 +434,7 @@ func TestServiceReEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
+	svc.setReEscrowAmountResolver(func(context.Context, string, uint64, string) (float64, error) { return 10, nil })
 
 	_, _, err = svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
 		Buyer:         "0xf8d6e0586b0a20c7",
@@ -442,7 +443,7 @@ func TestServiceReEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 		ChipId:        "chip-1",
 		UnlockAt:      123.45,
 		Nonce:         7,
-		Amount:        10.5,
+		Amount:        9999, // caller amount is ignored
 	})
 	if err != nil {
 		t.Fatalf("ReEscrow returned error: %v", err)
@@ -473,17 +474,21 @@ func TestServiceReEscrowUsesAdminProposerAndCadenceArgs(t *testing.T) {
 	if got := call.args[4]; got != cadence.String("chip-1") {
 		t.Fatalf("expected chipId arg, got %#v", got)
 	}
+	wantAmount, err := cadence.NewUFix64("10.00000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call.args[7]; got != wantAmount {
+		t.Fatalf("expected server-derived amount 10, got %#v", got)
+	}
 	if got := call.args[8]; got != cadence.String(defaultVaultIdentifier) {
 		t.Fatalf("expected vaultIdentifier arg %q, got %#v", defaultVaultIdentifier, got)
 	}
 }
 
-// TestServiceReEscrowRejectsAmountOverConfiguredMax pins the issue #105
-// server-side ceiling: an `amount` above Config.EscrowMaxAmountFlow must be
-// rejected before any transaction is submitted, and the error must name the
-// offending field so a caller can tell an amount-cap rejection apart from
-// any other validation failure.
-func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
+// TestServiceReEscrowIgnoresCallerAmount verifies that the raw ops endpoint
+// submits the resolver's amount even when the caller sends a larger value.
+func TestServiceReEscrowIgnoresCallerAmount(t *testing.T) {
 	txSvc := &setupTxService{}
 	cfg := ParseTestConfig(t)
 	cfg.EscrowMaxAmountFlow = 100
@@ -497,6 +502,7 @@ func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
+	svc.setReEscrowAmountResolver(func(context.Context, string, uint64, string) (float64, error) { return 100, nil })
 
 	_, _, err = svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
 		Buyer:         "0xf8d6e0586b0a20c7",
@@ -505,38 +511,19 @@ func TestServiceReEscrowRejectsAmountOverConfiguredMax(t *testing.T) {
 		ChipId:        "chip-1",
 		UnlockAt:      123.45,
 		Nonce:         7,
-		Amount:        100.01,
+		Amount:        100.01, // ignored; the resolver is the authority
 	})
-	if err == nil {
-		t.Fatal("expected ReEscrow to reject an amount over the configured max")
+	if err != nil {
+		t.Fatalf("ReEscrow should ignore caller amount: %v", err)
 	}
-	if !strings.Contains(err.Error(), "amount") {
-		t.Fatalf("expected error to name the 'amount' field, got: %v", err)
-	}
-	if len(txSvc.calls) != 0 {
-		t.Fatalf("expected no transaction to be submitted, got %d", len(txSvc.calls))
-	}
-
-	// An amount at (not over) the max must still be accepted.
-	if _, _, err := svc.ReEscrow(context.Background(), true, "0xf8d6e0586b0a20c7", ReEscrowRequest{
-		Buyer:         "0xf8d6e0586b0a20c7",
-		Seller:        "0x0ae53cb6e3f42a79",
-		CertificateId: 7,
-		ChipId:        "chip-1",
-		UnlockAt:      123.45,
-		Nonce:         7,
-		Amount:        100,
-	}); err != nil {
-		t.Fatalf("expected an amount at the max to be accepted, got: %v", err)
+	if len(txSvc.calls) != 1 {
+		t.Fatalf("expected transaction with server amount, got %d calls", len(txSvc.calls))
 	}
 }
 
-// CreateEscrow deliberately has NO amount-cap test as of issue #107: the
-// per-call ceiling was removed from CreateEscrow (see its doc comment and
-// validateEscrowAmount). CreateEscrow is unreachable over HTTP and its only
-// caller is the purchase flow (#93), which owns the amount server-side; the
-// anti-garbage ceiling now applies solely to ReEscrow's raw ops amount, pinned
-// by TestServiceReEscrowRejectsAmountOverConfiguredMax above.
+// CreateEscrow deliberately has no amount-cap test: its only caller is the
+// purchase flow, which owns the amount server-side. ReEscrow applies its cap
+// to the resolver result, never to the legacy request field.
 
 // ActivateChip's tests (issue #117 phase 3: the wallet-api now produces the
 // chip's activation signature itself instead of relaying a client one) live

@@ -92,6 +92,28 @@ type ServiceImpl struct {
 	now func() time.Time
 }
 
+// FlowAmountForArtworkPrice computes the FLOW reserve from the artwork price
+// and configured fee. Shipping is intentionally absent: it is a Stripe-only
+// delivery charge and cannot affect a certificate's reserve.
+func FlowAmountForArtworkPrice(priceUSD float64, platformFeeBps int, oracle PriceOracle) (float64, error) {
+	artworkCents := int64(math.Round(priceUSD * 100))
+	feeCents := int64(math.Round(float64(artworkCents) * float64(max(platformFeeBps, 0)) / 10000))
+	if artworkCents <= 0 || feeCents <= 0 {
+		return 0, fmt.Errorf("computed platform fee must be positive")
+	}
+	if oracle == nil {
+		return 0, ErrOracleDisabled
+	}
+	pyth, err := oracle.Latest(context.Background())
+	if err != nil {
+		return 0, err
+	}
+	if pyth.PriceUSD <= 0 {
+		return 0, fmt.Errorf("FLOW/USD price must be positive")
+	}
+	return float64(feeCents) / 100.0 / pyth.PriceUSD, nil
+}
+
 // NewService initiates a new purchase service wired for the full charge flow.
 // Any of the optional deps may be nil; the corresponding step reports its
 // disabled error. platformFeeBps is the platform fee in basis points, applied
@@ -134,6 +156,9 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	}
 	if in.IdempotencyKey == "" {
 		return nil, fmt.Errorf("idempotency key is required")
+	}
+	if in.ShippingCents < 0 {
+		return nil, fmt.Errorf("shipping cents must not be negative")
 	}
 	if in.Buyer == "" {
 		return nil, fmt.Errorf("buyer is required")
@@ -194,14 +219,14 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	}
 	flowAmount := float64(feeCents) / 100.0 / pyth.PriceUSD
 
-	// 4. Create and confirm the Stripe PaymentIntent for the full artwork
-	// price in USD. The buyer pays 100% of the artwork price; the platform
-	// fee is ArtDrop's share of that amount, not an addition to it.
+	// 4. Create and confirm one Stripe PaymentIntent for the artwork plus the
+	// carrier-calculated shipping amount. The platform fee and FLOW reserve
+	// above remain based on artworkCents alone.
 	if s.charge == nil {
 		return nil, ErrStripeDisabled
 	}
 	intent, err := s.charge.CreateAndConfirm(ctx, studio.StripeChargeInput{
-		AmountCents:     artworkCents,
+		AmountCents:     artworkCents + in.ShippingCents,
 		Currency:        "usd",
 		CustomerID:      in.StripeCustomerID,
 		PaymentMethodID: in.PaymentMethodID,
@@ -270,6 +295,7 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		ArtworkKind:         string(in.ArtworkKind),
 		ArtworkID:           in.ArtworkID,
 		AmountCents:         artworkCents,
+		ShippingCents:       in.ShippingCents,
 		PlatformFeeCents:    feeCents,
 		Currency:            "usd",
 		FlowAmount:          flowAmount,
