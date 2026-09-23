@@ -10,10 +10,14 @@ import (
 
 // GormStore is the GORM-backed implementation of Store.
 type GormStore struct {
-	db *gorm.DB
+	db         *gorm.DB
+	durability DurabilityOptions
 }
 
 func (s *GormStore) GetPurchaseCharge(ctx context.Context, purchaseID string) (*PurchaseCharge, error) {
+	if s.db == nil {
+		return nil, ErrChargeRecordFailed
+	}
 	var charge PurchaseCharge
 	err := s.db.WithContext(ctx).Where("purchase_id = ?", purchaseID).First(&charge).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -43,8 +47,12 @@ func (s *GormStore) ResetEscrowOpening(ctx context.Context, purchaseID string) e
 }
 
 // NewGormStore creates a new GORM-backed Store.
-func NewGormStore(db *gorm.DB) Store {
-	return &GormStore{db}
+func NewGormStore(db *gorm.DB, options ...DurabilityOptions) Store {
+	o := DefaultDurabilityOptions()
+	if len(options) > 0 {
+		o = options[0]
+	}
+	return &GormStore{db: db, durability: o}
 }
 
 // CreatePurchaseCharge persists a purchase charge audit record.

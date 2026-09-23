@@ -36,12 +36,20 @@ const (
 // charged, in what, and at what exchange rate" without going back to Mongo or
 // the oracle.
 type PurchaseCharge struct {
-	ID uint `json:"id" gorm:"column:id;primary_key;autoIncrement"`
+	responseBody         []byte
+	ChargeIntentID       *string    `json:"intentId" gorm:"column:charge_intent_id;size:128;uniqueIndex:idx_purchase_intent,priority:3"`
+	ChargeOperation      *string    `json:"-" gorm:"size:64;uniqueIndex:idx_purchase_intent,priority:2"`
+	RequestHash          *string    `json:"requestHash" gorm:"size:71"`
+	HashVersion          *int       `json:"hashVersion"`
+	StripeCustomerID     *string    `json:"stripeCustomerId"`
+	StripeStatusObserved *string    `json:"stripeStatusObserved"`
+	StripeObservedAt     *time.Time `json:"stripeObservedAt"`
+	ID                   uint       `json:"id" gorm:"column:id;primary_key;autoIncrement"`
 	// PurchaseID is the public, opaque identifier for the paid escrow obligation.
 	// It is intentionally distinct from the database primary key.
 	PurchaseID  string `json:"purchaseId" gorm:"column:purchase_id;uniqueIndex"`
 	Status      string `json:"status" gorm:"column:status;index"`
-	UserID      string `json:"userId" gorm:"column:user_id;index"`
+	UserID      string `json:"userId" gorm:"column:user_id;index;uniqueIndex:idx_purchase_intent,priority:1"`
 	ArtworkKind string `json:"artworkKind" gorm:"column:artwork_kind;size:16"`
 	ArtworkID   string `json:"artworkId" gorm:"column:artwork_id;index"`
 	AmountCents int64  `json:"amountCents" gorm:"column:amount_cents"`
@@ -96,11 +104,11 @@ func (PurchaseCharge) TableName() string {
 // payment details — no amount, fee or exchange rate is trusted from the
 // client.
 //
-// IdempotencyKey is the client-supplied Idempotency-Key header. It is
-// propagated to Stripe so that an HTTP replay of the same logical purchase
-// maps to the same PaymentIntent, while a genuinely new purchase (a new key)
-// is allowed to charge again.
+// IdempotencyKey is the durable financial intentId (purchase-v2:<UUID>).
+// Stripe receives a stable digest scoped by owner and operation. The original
+// identity is never recycled, including after a timeout or expired replay body.
 type CreatePurchaseChargeInput struct {
+	ActorSubject     string
 	UserID           string
 	ArtworkKind      ArtworkKind
 	ArtworkID        string

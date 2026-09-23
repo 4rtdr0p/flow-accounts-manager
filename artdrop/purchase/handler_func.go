@@ -9,7 +9,9 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 	"github.com/gorilla/mux"
+	"time"
 )
 
 // createPurchaseChargeRequest is the body of POST /v1/purchases:charge. It
@@ -18,13 +20,14 @@ import (
 // from Mongo, applies the configured platform fee, and converts the total to
 // FLOW via the Pyth oracle.
 type createPurchaseChargeRequest struct {
-	UserID           string `json:"userId"`
-	ArtworkKind      string `json:"artworkKind"`
-	ArtworkID        string `json:"artworkId"`
-	StripeCustomerID string `json:"stripeCustomerId"`
-	PaymentMethodID  string `json:"paymentMethodId,omitempty"`
-	Metadata         string `json:"metadata,omitempty"`
-	ShippingCents    int64  `json:"shippingCents,omitempty"`
+	UnlockAt         json.RawMessage `json:"unlockAt"`
+	UserID           string          `json:"userId"`
+	ArtworkKind      string          `json:"artworkKind"`
+	ArtworkID        string          `json:"artworkId"`
+	StripeCustomerID string          `json:"stripeCustomerId"`
+	PaymentMethodID  string          `json:"paymentMethodId,omitempty"`
+	Metadata         string          `json:"metadata,omitempty"`
+	ShippingCents    int64           `json:"shippingCents,omitempty"`
 
 	// Escrow fields. UnlockAt is not accepted here (issue #111): it is
 	// computed server-side as now() + Config.EscrowClaimWindowSeconds, never
@@ -101,17 +104,41 @@ func (h *Handler) OpenEscrowFunc(rw http.ResponseWriter, r *http.Request) {
 
 // CreatePurchaseChargeFunc handles POST /v1/purchases:charge.
 func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Request) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil || (claims.ExpiresAt != nil && !time.Now().Before(claims.ExpiresAt.Time)) {
+		writeRecoveryError(rw, recoveryError(401, "UNAUTHORIZED", ""))
+		return
+	}
+	if claims.Subject == "" || !middleware.HasScope(claims.Scope, "studio.charge.create") {
+		writeRecoveryError(rw, recoveryError(403, "FORBIDDEN", ""))
+		return
+	}
 	if r.Body == nil || r.Body == http.NoBody {
 		handlers.HandleError(rw, r, handlers.EmptyBodyError)
 		return
 	}
 
 	var req createPurchaseChargeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
 		handlers.HandleError(rw, r, handlers.InvalidBodyError)
 		return
 	}
 
+	var extra interface{}
+	if err := dec.Decode(&extra); err != io.EOF {
+		writeRecoveryError(rw, recoveryError(400, "INVALID_REQUEST", ""))
+		return
+	}
+	if r.Header.Get("Idempotency-Key") == "" {
+		writeRecoveryError(rw, recoveryError(400, "INVALID_INTENT_ID", ""))
+		return
+	}
+	if !validIntent(r.Header.Get("Idempotency-Key")) {
+		writeRecoveryError(rw, recoveryError(409, "LEGACY_INTENT_REQUIRES_REVIEW", ""))
+		return
+	}
 	// Bind the userId in the body to the authenticated token subject: an end
 	// user may only charge a purchase for their own account (an operator uses
 	// the on-behalf scope). See authguard.RequireUserSubject.
@@ -121,6 +148,7 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 	}
 
 	charge, err := h.service.CreatePurchaseCharge(r.Context(), CreatePurchaseChargeInput{
+		ActorSubject:     claims.Subject,
 		UserID:           req.UserID,
 		ArtworkKind:      ArtworkKind(req.ArtworkKind),
 		ArtworkID:        req.ArtworkID,
@@ -137,6 +165,11 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		CertificateID:    req.CertificateID,
 	})
 	if err != nil {
+		var re *RecoveryError
+		if stdErrors.As(err, &re) {
+			writeRecoveryError(rw, re)
+			return
+		}
 		switch {
 		case stdErrors.Is(err, ErrChargeAlreadyRecorded):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
@@ -158,5 +191,12 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	handlers.HandleJsonResponse(rw, http.StatusCreated, charge)
+	if len(charge.responseBody) == 0 {
+		writeRecoveryError(rw, recoveryError(503, "RESULT_UNAVAILABLE", r.Header.Get("Idempotency-Key")))
+		return
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-store")
+	rw.WriteHeader(http.StatusCreated)
+	_, _ = rw.Write(charge.responseBody)
 }

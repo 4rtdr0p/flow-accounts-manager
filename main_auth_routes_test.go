@@ -1,8 +1,12 @@
 package main
 
 import (
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/purchase"
+	"gopkg.in/yaml.v3"
 	"net/http"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop"
@@ -424,4 +428,77 @@ func diffScopeMap(left map[string]string, right map[string]string) []string {
 		}
 	}
 	return diff
+}
+
+func TestPurchaseRecoveryRouteScopesAndReferences(t *testing.T) {
+	spec, err := os.ReadFile("openapi.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := openapi.LoadScopeIndex(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/purchases/{purchaseId}", "/purchase-intents/{intentId}"} {
+		if index["GET /{apiVersion}"+path] != "purchase.read" {
+			t.Fatalf("missing recovery scope: %s", path)
+		}
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(spec, &doc); err != nil {
+		t.Fatal(err)
+	}
+	// Resolve every local JSON pointer, including references under response
+	// components that the scope loader does not inspect at startup.
+	var visit func(interface{})
+	visit = func(value interface{}) {
+		switch v := value.(type) {
+		case map[string]interface{}:
+			if ref, ok := v["$ref"].(string); ok && strings.HasPrefix(ref, "#/") {
+				var target interface{} = doc
+				for _, part := range strings.Split(strings.TrimPrefix(ref, "#/"), "/") {
+					part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
+					object, ok := target.(map[string]interface{})
+					if !ok {
+						t.Fatalf("invalid ref %s", ref)
+					}
+					target, ok = object[part]
+					if !ok {
+						t.Fatalf("dangling ref %s", ref)
+					}
+				}
+			}
+			for _, child := range v {
+				visit(child)
+			}
+		case []interface{}:
+			for _, child := range v {
+				visit(child)
+			}
+		}
+	}
+	visit(doc)
+	schemas := doc["components"].(map[string]interface{})["schemas"].(map[string]interface{})
+	for name, typ := range map[string]reflect.Type{
+		"PurchaseRecoveryResponse": reflect.TypeOf(purchase.PurchaseRecoveryResponse{}), "RecoveredPurchase": reflect.TypeOf(purchase.RecoveredPurchase{}),
+		"PurchaseFinancial": reflect.TypeOf(purchase.PurchaseFinancial{}), "PurchaseAmounts": reflect.TypeOf(purchase.PurchaseAmounts{}), "PurchaseEscrow": reflect.TypeOf(purchase.PurchaseEscrow{}),
+	} {
+		schema := schemas[name].(map[string]interface{})
+		props := schema["properties"].(map[string]interface{})
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			key := strings.Split(field.Tag.Get("json"), ",")[0]
+			raw, ok := props[key]
+			if !ok {
+				t.Fatalf("%s.%s undocumented", name, key)
+			}
+			property := raw.(map[string]interface{})
+			if field.Type.Kind() == reflect.Ptr && !strings.Contains(field.Tag.Get("json"), "omitempty") && property["nullable"] != true {
+				t.Fatalf("%s.%s must allow null", name, key)
+			}
+			if field.Type.Kind() == reflect.Uint64 && property["format"] != "uint64" {
+				t.Fatalf("%s.%s loses uint64 precision", name, key)
+			}
+		}
+	}
 }

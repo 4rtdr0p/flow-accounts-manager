@@ -9,6 +9,7 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
 	"github.com/google/uuid"
@@ -187,7 +188,7 @@ func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracl
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
+	if err := db.AutoMigrate(&PurchaseCharge{}, &handlers.PurchaseIntent{}); err != nil {
 		t.Fatal(err)
 	}
 	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, platformFeeBps, testClaimWindowSeconds)
@@ -200,7 +201,7 @@ func validPurchaseInput() CreatePurchaseChargeInput {
 		ArtworkID:        "edition-1",
 		StripeCustomerID: "cus_123",
 		PaymentMethodID:  "pm_123",
-		IdempotencyKey:   "idem-1",
+		IdempotencyKey:   "purchase-v2:00000000-0000-4000-8000-000000000001",
 		Buyer:            "0x179b6b1cb6755e31",
 		Seller:           "0xf3fcd2c1a78f5eee",
 		EditionID:        1,
@@ -353,7 +354,7 @@ func TestCreatePurchaseCharge_OnlyRecordsSucceededPaymentIntent(t *testing.T) {
 			if !errors.Is(err, ErrPaymentNotSucceeded) {
 				t.Fatalf("CreatePurchaseCharge error = %v, want ErrPaymentNotSucceeded", err)
 			}
-			if !strings.Contains(err.Error(), status) {
+			if !strings.Contains(errors.Unwrap(err).Error(), status) {
 				t.Fatalf("CreatePurchaseCharge error = %q, want payment intent status %q", err, status)
 			}
 			if charge != nil || count != 0 {
@@ -652,26 +653,14 @@ func TestCreatePurchaseCharge_EscrowDisabled(t *testing.T) {
 	}
 }
 
-// TestCreatePurchaseCharge_IdempotentDuplicate pins the idempotency guard: a
-// second attempt with the same Stripe payment intent (same Idempotency-Key)
-// must not create a duplicate audit record — it maps the unique-constraint
-// violation to ErrChargeAlreadyRecorded.
-func TestCreatePurchaseCharge_IdempotentDuplicate(t *testing.T) {
-	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100.0}}
-	store := &mockStore{createErr: gorm.ErrDuplicatedKey}
-	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
-		t.Fatal(err)
-	}
-	svc := NewService(store, prices, &mockPriceOracle{}, &mockChargeClient{}, &mockEscrowCreator{}, &mockChipReader{provisioned: true}, 500, testClaimWindowSeconds)
-
-	_, err = svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
-	if !errors.Is(err, ErrChargeAlreadyRecorded) {
-		t.Fatalf("err = %v, want ErrChargeAlreadyRecorded", err)
+// A store without durable primitives must fail closed before any effects.
+func TestCreatePurchaseCharge_RequiresDurableStore(t *testing.T) {
+	stripe := &mockChargeClient{}
+	svc := NewService(&mockStore{}, nil, nil, stripe, nil, nil, 500, testClaimWindowSeconds)
+	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	var re *RecoveryError
+	if !errors.As(err, &re) || re.Code != "RESERVATION_UNAVAILABLE" || stripe.called {
+		t.Fatalf("err=%v stripe=%v", err, stripe.called)
 	}
 }
 

@@ -236,6 +236,7 @@ type Config struct {
 	// can change it without a code deploy.
 	StudioShippingRatePerUnitUSD float64 `env:"STUDIO_SHIPPING_RATE_PER_UNIT_USD" envDefault:"25"`
 
+	PurchaseResponseRetention time.Duration `env:"PURCHASE_RESPONSE_RETENTION" envDefault:"720h"`
 	// -- Purchase charge + escrow (buyer purchase settlement) --
 	// PurchasePlatformFeeBasisPoints is the platform fee, in basis points,
 	// ArtDrop takes on a primary sale. It is computed on the artwork price
@@ -264,6 +265,9 @@ func Parse(opts ...env.Options) (*Config, error) {
 	err := env.Parse(&cfg, opts...)
 	if err != nil {
 		return &cfg, err
+	}
+	if cfg.PurchaseResponseRetention <= 0 || cfg.ServerRequestTimeout < 0 || cfg.ServerRequestTimeout > time.Duration(1<<62-1) {
+		return &cfg, fmt.Errorf("invalid purchase response retention or server request timeout")
 	}
 	if cfg.DevFlowUSDPrice < 0 {
 		return &cfg, fmt.Errorf("DEV_FLOW_USD_PRICE must not be negative")

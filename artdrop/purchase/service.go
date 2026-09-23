@@ -10,9 +10,9 @@ import (
 
 	"github.com/flow-hydraulics/flow-wallet-api/artdrop/studio"
 	datastoremongo "github.com/flow-hydraulics/flow-wallet-api/datastore/mongo"
+	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -54,7 +54,7 @@ var ErrEscrowDisabled = errors.New("escrow creator is disabled")
 
 // ErrChargeRecordFailed is returned when the audit record could not be
 // persisted for a reason other than a duplicate payment intent. Callers must
-// map it to a 5xx so the idempotency middleware releases the key reservation.
+// retain the durable reservation: a failed local write cannot undo Stripe.
 var ErrChargeRecordFailed = errors.New("failed to record charge")
 var ErrPurchaseNotFound = errors.New("paid purchase not found")
 var ErrPurchaseNotOpenable = errors.New("purchase is not awaiting escrow")
@@ -65,6 +65,8 @@ var ErrEscrowUnavailable = errors.New("escrow queue is unavailable")
 
 // Service lists all functionality provided by the purchase service.
 type Service interface {
+	GetPurchaseRecovery(context.Context, string) (*PurchaseRecoveryResponse, error)
+	GetIntentRecovery(context.Context, string, string) (*PurchaseRecoveryResponse, error)
 	// CreatePurchaseCharge charges a buyer's purchase and opens the escrow:
 	// it reads the artwork price from Mongo, applies the configured platform
 	// fee (the ArtDrop share of that price, not a surcharge on it), charges
@@ -146,7 +148,7 @@ func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, char
 // the artwork price in Mongo, the configured platform fee, and the current
 // FLOW/USD price from the Pyth oracle. The buyer is charged the full artwork
 // price in USD; the escrow carries only the platform fee, converted to FLOW.
-func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (*PurchaseCharge, error) {
+func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchaseChargeInput) (result *PurchaseCharge, resultErr error) {
 	if in.UserID == "" {
 		return nil, fmt.Errorf("user id is required")
 	}
@@ -172,6 +174,63 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		return nil, fmt.Errorf("seller is required")
 	}
 
+	if !validIntent(in.IdempotencyKey) {
+		return nil, recoveryError(409, "LEGACY_INTENT_REQUIRES_REVIEW", in.IdempotencyKey)
+	}
+	durable, ok := s.store.(DurableStore)
+	if !ok {
+		return nil, recoveryError(503, "RESERVATION_UNAVAILABLE", in.IdempotencyKey)
+	}
+	hash := requestHash(in)
+	reservation, won, err := durable.Reserve(ctx, in, hash)
+	if err != nil {
+		return nil, recoveryError(503, "RESERVATION_UNAVAILABLE", in.IdempotencyKey)
+	}
+	if !won {
+		return replayIntent(reservation, hash)
+	}
+	// Consult the indexed obligation too: losing a reservation link must not
+	// turn positive purchase evidence into permission to call Stripe again.
+	_, existing, lookupErr := durable.ReadRecovery(ctx, in.UserID, in.IdempotencyKey)
+	if lookupErr != nil || existing != nil {
+		e := recoveryError(503, "LOOKUP_UNAVAILABLE", in.IdempotencyKey)
+		if existing != nil {
+			e.Status, e.Code, e.PurchaseID = 409, "RESULT_BODY_EXPIRED", existing.PurchaseID
+			if handlers.Value(existing.RequestHash) != hash || handlers.Value(existing.HashVersion) != 1 {
+				e.Code = "IDEMPOTENCY_TERMS_CONFLICT"
+			}
+		}
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = durable.FailIntent(cleanup, reservation, true, e)
+		return nil, e
+	}
+	effect := false
+	defer func() {
+		if resultErr == nil {
+			return
+		}
+		e := recoveryError(503, "RECONCILIATION_REQUIRED", in.IdempotencyKey)
+		e.cause = resultErr
+		if !effect {
+			e.Code = "NOT_CHARGED"
+			e.Message = "This execution stopped before calling the payment provider."
+		}
+		var specific *RecoveryError
+		if effect && errors.As(resultErr, &specific) && specific.Code == "PAYMENT_INTENT_CONFLICT" {
+			e.Code, e.Status = specific.Code, specific.Status
+		}
+		// Persist uncertainty even when the HTTP request was cancelled. Bounded and
+		// independent of that cancellation; failure never frees the reservation.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := durable.FailIntent(cleanup, reservation, effect, e); err != nil {
+			e.Code, e.Message = "RECONCILIATION_REQUIRED", "Result persistence unavailable; keep this identity for review."
+			_ = durable.FailIntent(cleanup, reservation, true, e)
+		}
+		resultErr = e
+	}()
+
 	// 1. Read the artwork price from Mongo. The price is in whole dollars
 	// (USD) as stored by Payload CMS.
 	if s.prices == nil {
@@ -192,7 +251,7 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	}
 	artworkCents := int64(math.Round(artworkPrice.PriceUSD * 100))
 	feeCents := int64(math.Round(float64(artworkCents) * float64(feeBps) / 10000))
-	if artworkCents <= 0 {
+	if artworkCents <= 0 || in.ShippingCents > math.MaxInt64-artworkCents {
 		return nil, fmt.Errorf("computed charge amount must be positive (got %d cents)", artworkCents)
 	}
 	// The escrow's FLOW amount is derived from feeCents alone (see step 3),
@@ -219,10 +278,13 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		}
 		return nil, fmt.Errorf("read pyth price: %w", err)
 	}
-	if pyth.PriceUSD <= 0 {
-		return nil, fmt.Errorf("pyth returned non-positive FLOW/USD price %f", pyth.PriceUSD)
+	if pyth == nil || pyth.PriceUSD <= 0 || math.IsNaN(pyth.PriceUSD) || math.IsInf(pyth.PriceUSD, 0) {
+		return nil, fmt.Errorf("pyth returned invalid FLOW/USD price")
 	}
 	flowAmount := float64(feeCents) / 100.0 / pyth.PriceUSD
+	if flowAmount <= 0 || math.IsInf(flowAmount, 0) || math.IsNaN(flowAmount) {
+		return nil, fmt.Errorf("invalid FLOW reserve")
+	}
 
 	// 4. Create and confirm one Stripe PaymentIntent for the artwork plus the
 	// carrier-calculated shipping amount. The platform fee and FLOW reserve
@@ -230,23 +292,52 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	if s.charge == nil {
 		return nil, ErrStripeDisabled
 	}
+	// Set the conservative local flag before CAS: an ambiguous SQL acknowledgement
+	// must never be reported as proof of not_charged.
+	effect = true
+	if err := durable.MarkEffect(ctx, reservation); err != nil {
+		return nil, err
+	}
 	intent, err := s.charge.CreateAndConfirm(ctx, studio.StripeChargeInput{
 		AmountCents:     artworkCents + in.ShippingCents,
 		Currency:        "usd",
 		CustomerID:      in.StripeCustomerID,
 		PaymentMethodID: in.PaymentMethodID,
-		IdempotencyKey:  in.IdempotencyKey,
+		IdempotencyKey:  handlers.Value(reservation.ProviderKey),
 		Metadata:        in.Metadata,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
 	}
-	intentStatus := ""
-	if intent != nil {
-		intentStatus = intent.Status
+
+	if intent == nil || intent.ID == "" {
+		return nil, fmt.Errorf("stripe returned no payment intent identity")
 	}
-	if intentStatus != "succeeded" {
-		return nil, fmt.Errorf("%w: payment intent status %q", ErrPaymentNotSucceeded, intentStatus)
+	observedAt := time.Now().UTC()
+	if err := durable.ObservePayment(ctx, reservation, intent.ID, intent.Status, observedAt); err != nil {
+		if isDuplicateKeyError(err) {
+			return nil, recoveryError(409, "PAYMENT_INTENT_CONFLICT", in.IdempotencyKey)
+		}
+		return nil, err
+	}
+	previous, err := durable.PurchaseByPI(ctx, intent.ID)
+	if err != nil {
+		return nil, err
+	}
+	if previous != nil {
+		// Normal replay never reaches Stripe. Unexpected PI reuse is accepted only
+		// with complete matching owner/identity/hash evidence, before any escrow.
+		if previous.UserID != in.UserID || handlers.Value(previous.ChargeIntentID) != in.IdempotencyKey ||
+			handlers.Value(previous.ChargeOperation) != handlers.PurchaseOperation || handlers.Value(previous.RequestHash) != hash || handlers.Value(previous.HashVersion) != 1 {
+			return nil, recoveryError(409, "PAYMENT_INTENT_CONFLICT", in.IdempotencyKey)
+		}
+		if err := durable.CompleteCharge(ctx, reservation, previous); err != nil {
+			return nil, err
+		}
+		return previous, nil
+	}
+	if intent.Status != "succeeded" {
+		return nil, fmt.Errorf("%w: observed status %q", ErrPaymentNotSucceeded, intent.Status)
 	}
 
 	// 5. The deployed legacy caller supplies a chip and keeps the original
@@ -301,7 +392,10 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 
 	// 6. Persist the audit record with the server-computed values.
 	charge := &PurchaseCharge{
-		PurchaseID:          uuid.NewString(),
+		PurchaseID:     uuid.NewString(),
+		ChargeIntentID: handlers.Ptr(in.IdempotencyKey), ChargeOperation: handlers.Ptr(handlers.PurchaseOperation),
+		RequestHash: handlers.Ptr(hash), HashVersion: handlers.Ptr(1), StripeCustomerID: handlers.Ptr(in.StripeCustomerID),
+		StripeStatusObserved: handlers.Ptr(intent.Status), StripeObservedAt: &observedAt,
 		Status:              status,
 		UserID:              in.UserID,
 		ArtworkKind:         string(in.ArtworkKind),
@@ -322,18 +416,11 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 		Metadata:            in.Metadata,
 		EscrowJobID:         escrowJobID,
 	}
-	if err := s.store.CreatePurchaseCharge(charge); err != nil {
-		if isDuplicateKeyError(err) {
-			return nil, ErrChargeAlreadyRecorded
-		}
-		log.WithFields(log.Fields{
-			"userId":              in.UserID,
-			"artworkKind":         in.ArtworkKind,
-			"artworkId":           in.ArtworkID,
-			"stripePaymentIntent": intent.ID,
-			"error":               err,
-		}).Error("failed to record purchase charge")
-		return nil, ErrChargeRecordFailed
+	if in.CertificateID != 0 {
+		charge.CertificateID = handlers.Ptr(in.CertificateID)
+	}
+	if err := durable.CompleteCharge(ctx, reservation, charge); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrChargeRecordFailed, err)
 	}
 
 	return charge, nil
@@ -436,5 +523,5 @@ func isDuplicateKeyError(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
+	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key") || strings.Contains(msg, "duplicate entry")
 }

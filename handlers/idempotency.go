@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -37,17 +38,19 @@ func (ist IdempotencyStoreType) String() string {
 }
 
 type IdempotencyHandlerOptions struct {
-	IgnorePaths []string
-	Expiry      time.Duration
+	IgnorePaths      []string
+	IgnoreOperations []IdempotencyOperation
+	Expiry           time.Duration
 }
 
 type IdempotencyRecord struct {
-	Key         string    `json:"key" gorm:"column:key;primary_key"`
-	ExpiryDate  time.Time `json:"expiryDate" gorm:"column:expiry_date"`
-	StatusCode  int       `json:"statusCode" gorm:"column:status_code"`
-	ContentType string    `json:"contentType" gorm:"column:content_type"`
-	Body        []byte    `json:"body" gorm:"column:body"`
-	Completed   bool      `json:"completed" gorm:"column:completed"`
+	PurchaseIntentFields `json:"-"`
+	Key                  string    `json:"key" gorm:"column:key;primary_key"`
+	ExpiryDate           time.Time `json:"expiryDate" gorm:"column:expiry_date"`
+	StatusCode           int       `json:"statusCode" gorm:"column:status_code"`
+	ContentType          string    `json:"contentType" gorm:"column:content_type"`
+	Body                 []byte    `json:"body" gorm:"column:body"`
+	Completed            bool      `json:"completed" gorm:"column:completed"`
 }
 
 type IdempotencyStore interface {
@@ -184,7 +187,7 @@ func NewIdempotencyStoreGorm(db *gorm.DB) *IdempotencyStoreGorm {
 
 func (g *IdempotencyStoreGorm) Get(key string) (*IdempotencyRecord, bool, error) {
 	item := IdempotencyRecord{}
-	err := g.db.First(&item, "key = ? and expiry_date > ?", key, time.Now()).Error
+	err := g.db.First(&item, "key = ? and expiry_date > ? AND (record_kind IS NULL OR record_kind <> 'purchase')", key, time.Now()).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		// key doesn't exist
 		return nil, false, nil
@@ -238,7 +241,7 @@ func (g *IdempotencyStoreGorm) TryReserve(key string, expiry time.Duration) (boo
 		row := tx.Raw(`
 			WITH expired AS (
 				DELETE FROM idempotency_keys
-				WHERE key = ? AND expiry_date <= ?
+				WHERE key = ? AND expiry_date <= ? AND (record_kind IS NULL OR record_kind <> 'purchase')
 			)
 			INSERT INTO idempotency_keys (key, expiry_date, status_code, content_type, body, completed)
 			SELECT ?, ?, 0, '', '', false
@@ -279,25 +282,26 @@ func (g *IdempotencyStoreGorm) SetResponse(
 	record.ExpiryDate = time.Now().Add(expiry)
 	record.Completed = true
 
-	return g.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"expiry_date",
-			"status_code",
-			"content_type",
-			"body",
-			"completed",
-		}),
-	}).Create(&record).Error
+	return g.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&record).Error; err != nil {
+			return err
+		}
+		return tx.Model(&IdempotencyRecord{}).Where("key = ? AND (record_kind IS NULL OR record_kind <> 'purchase')", key).
+			Updates(map[string]interface{}{"expiry_date": record.ExpiryDate, "status_code": record.StatusCode,
+				"content_type": record.ContentType, "body": record.Body, "completed": true}).Error
+	})
 }
 
 func (g *IdempotencyStoreGorm) Release(key string) error {
-	return g.db.Where("key = ?", key).Delete(&IdempotencyRecord{}).Error
+	return g.db.Where("key = ? AND (record_kind IS NULL OR record_kind <> 'purchase')", key).Delete(&IdempotencyRecord{}).Error
 }
 
 // Prune deletes all expired IdempotencyStoreGormItems from the database
 func (g *IdempotencyStoreGorm) Prune() error {
-	err := g.db.Delete(IdempotencyRecord{}, "expiry_date < ?", time.Now()).Error
+	if err := PurgePurchaseResponseBodies(context.Background(), g.db, time.Now()); err != nil {
+		return err
+	}
+	err := g.db.Delete(IdempotencyRecord{}, "expiry_date < ? AND (record_kind IS NULL OR record_kind <> 'purchase')", time.Now()).Error
 	return err
 }
 
@@ -429,6 +433,12 @@ func replayIdempotencyResponse(rw http.ResponseWriter, record *IdempotencyRecord
 // for request idempotency when applicable
 func IdempotencyHandler(h http.Handler, opts IdempotencyHandlerOptions, store IdempotencyStore) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		for _, op := range opts.IgnoreOperations {
+			if r.Method == op.Method && r.URL.Path == op.Path {
+				h.ServeHTTP(rw, r)
+				return
+			}
+		}
 		// Check for ignored paths
 		for _, path := range opts.IgnorePaths {
 			if strings.HasPrefix(r.URL.Path, path) {

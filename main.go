@@ -343,8 +343,9 @@ func runServer(cfg *configs.Config) {
 		}
 
 		h = handlers.UseIdempotency(h, handlers.IdempotencyHandlerOptions{
-			Expiry:      1 * time.Hour,
-			IgnorePaths: []string{"/v1/scripts"}, // Scripts are read-only
+			Expiry:           1 * time.Hour,
+			IgnoreOperations: []handlers.IdempotencyOperation{{Method: http.MethodPost, Path: "/v1/purchases:charge"}},
+			IgnorePaths:      []string{"/v1/scripts"}, // Scripts are read-only
 		}, is)
 	}
 
