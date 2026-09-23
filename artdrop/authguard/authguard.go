@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/flow-hydraulics/flow-wallet-api/errors"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
@@ -105,4 +106,20 @@ func RequireArtistSubject(r *http.Request, artistAddress string) error {
 		}
 	}
 	return nil
+}
+
+const ScopePurchaseRead = "purchase.read"
+const ScopePurchaseReadAny = "purchase.read.any"
+
+// PurchaseReader fails closed even when the global auth middleware is disabled.
+// Returns the subject and the separately granted cross-owner read capability.
+func PurchaseReader(r *http.Request) (string, bool, error) {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims == nil || (claims.ExpiresAt != nil && !time.Now().Before(claims.ExpiresAt.Time)) {
+		return "", false, &errors.RequestError{StatusCode: http.StatusUnauthorized, Err: fmt.Errorf("valid bearer claims required")}
+	}
+	if !middleware.HasScope(claims.Scope, ScopePurchaseRead) || claims.Subject == "" {
+		return "", false, &errors.RequestError{StatusCode: http.StatusForbidden, Err: fmt.Errorf("purchase.read and subject required")}
+	}
+	return claims.Subject, middleware.HasScope(claims.Scope, ScopePurchaseReadAny), nil
 }

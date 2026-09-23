@@ -166,8 +166,13 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 			RPCTimeout:      acfg.OracleRPCTimeout,
 		})
 	}
+	durability := purchase.DefaultDurabilityOptions()
+	if deps.Config != nil {
+		durability.ResponseRetention = deps.Config.PurchaseResponseRetention
+		durability.Lease = max(120*time.Second, 2*deps.Config.ServerRequestTimeout)
+	}
 	purchaseService := purchase.NewService(
-		purchase.NewGormStore(deps.DB),
+		purchase.NewGormStore(deps.DB, durability),
 		purchaseStore,
 		oracle,
 		stripeClient,
@@ -226,6 +231,8 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		return purchase.FlowAmountForArtworkPrice(artwork.PriceUSD, purchasePlatformFeeBps, oracle)
 	})
 	purchaseHandler := purchase.NewHandler(purchaseService)
+	router.Handle("/purchases/{purchaseId}", purchaseHandler.GetPurchase()).Methods(http.MethodGet)
+	router.Handle("/purchase-intents/{intentId}", purchaseHandler.GetIntent()).Methods(http.MethodGet)
 	router.Handle("/purchases:charge", purchaseHandler.CreatePurchaseCharge()).Methods(http.MethodPost)
 	router.Handle("/purchases/{purchaseId}:open-escrow", purchaseHandler.OpenEscrow()).Methods(http.MethodPost)
 

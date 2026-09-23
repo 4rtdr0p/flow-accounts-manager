@@ -379,10 +379,10 @@ func spotFromReserves(reserveStable, reserveWFLOW *big.Int, stableDec int) float
 //   - else: token0=stable(S), token1=WFLOW(18). token1/token0 human is
 //     WFLOW-per-stable; USD/WFLOW is its reciprocal = 10^(18-S) / priceRaw.
 func spotFromSqrtPriceX96(sqrtP *big.Int, wflowIsToken0 bool, stableDec int) float64 {
-	sq := new(big.Int).Mul(sqrtP, sqrtP)             // sqrtP^2
-	q192 := new(big.Int).Lsh(big.NewInt(1), 192)     // 2^192
-	priceRaw := new(big.Rat).SetFrac(sq, q192)       // raw token1 / raw token0
-	scale := ratPow10(wflowDecimals - stableDec)     // 10^(18-S)
+	sq := new(big.Int).Mul(sqrtP, sqrtP)         // sqrtP^2
+	q192 := new(big.Int).Lsh(big.NewInt(1), 192) // 2^192
+	priceRaw := new(big.Rat).SetFrac(sq, q192)   // raw token1 / raw token0
+	scale := ratPow10(wflowDecimals - stableDec) // 10^(18-S)
 
 	var priceRat *big.Rat
 	if wflowIsToken0 {

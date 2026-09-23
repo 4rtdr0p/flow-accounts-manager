@@ -56,3 +56,26 @@ func TestParseConfigRejectsDevPriceOnMainnet(t *testing.T) {
 		t.Fatal("expected fixed QA price on mainnet to be rejected")
 	}
 }
+
+func TestPurchaseRetentionConfiguration(t *testing.T) {
+	t.Setenv("FLOW_WALLET_ADMIN_ADDRESS", "admin-address")
+	t.Setenv("FLOW_WALLET_ADMIN_PRIVATE_KEY", "admin-private-key")
+	t.Setenv("FLOW_WALLET_ENCRYPTION_KEY", "encryption-key")
+	t.Setenv("FLOW_WALLET_ENCRYPTION_KEY_TYPE", "local")
+	t.Setenv("FLOW_WALLET_ACCESS_API_HOST", "access-api-host")
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{{"720h", true}, {"24h", true}, {"0s", false}, {"-1h", false}, {"invalid", false}} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Setenv("FLOW_WALLET_PURCHASE_RESPONSE_RETENTION", tc.value)
+			cfg, err := Parse()
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v err=%v", tc.valid, err)
+			}
+			if err == nil && cfg.PurchaseResponseRetention <= 0 {
+				t.Fatal("invalid retention")
+			}
+		})
+	}
+}

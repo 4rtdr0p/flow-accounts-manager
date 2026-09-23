@@ -488,7 +488,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 	allNonExempt := []string{
 		// reads
 		"account.read", "job.read", "ops.read", "pricing.read", "studio.charge.read",
-		"system.read", "token.read", "transaction.read", "health.read",
+		"system.read", "token.read", "transaction.read", "health.read", "purchase.read",
 		// user actions
 		"script.execute", "account.create", "account.setup", "studio.charge.create",
 		"account.transfer", "account.artdrop.escrow.activate",
@@ -500,7 +500,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		// capability scopes: granted by role but required by no route, so they
 		// are intentionally NOT in openapi.yml — a guard checks them.
 		"studio.charge.create.onbehalf",
-		"account.artdrop.artist.onbehalf",
+		"account.artdrop.artist.onbehalf", "purchase.read.any",
 		// admin break-glass
 		"account.sign", "transaction.create", "token.write",
 	}
@@ -531,4 +531,21 @@ func hasScopeInClaim(scopeClaim, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestPurchaseReadScopesByRole(t *testing.T) {
+	for _, role := range []string{"user", "artist", "operations", "admin"} {
+		scopes, ok := ScopesForRole(role)
+		if !ok {
+			t.Fatal(role)
+		}
+		set := toSet(scopes)
+		if _, ok := set["purchase.read"]; !ok {
+			t.Fatalf("%s lacks purchase.read", role)
+		}
+		_, any := set["purchase.read.any"]
+		if any != (role == "operations" || role == "admin") {
+			t.Fatalf("%s purchase.read.any=%v", role, any)
+		}
+	}
 }

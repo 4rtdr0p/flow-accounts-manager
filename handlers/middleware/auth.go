@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -106,14 +107,14 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 		requiredScope, ok := requiredScopeForRequest(opts.Rules, r.Method, r.URL.Path)
 		if !ok {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path}).Warn("auth denied: endpoint scope missing")
-			http.Error(rw, "forbidden", http.StatusForbidden)
+			authFailure(rw, requiredScope, "forbidden", http.StatusForbidden)
 			return
 		}
 
 		auth := r.Header.Get("Authorization")
 		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "reason": "missing_or_invalid_bearer"}).Warn("auth failed")
-			http.Error(rw, "missing or invalid bearer token", http.StatusUnauthorized)
+			authFailure(rw, requiredScope, "missing or invalid bearer token", http.StatusUnauthorized)
 			return
 		}
 
@@ -133,13 +134,13 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 		})
 		if err != nil || !token.Valid {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "reason": "invalid_or_expired_token", "error": err}).Warn("auth failed")
-			http.Error(rw, "invalid or expired token", http.StatusUnauthorized)
+			authFailure(rw, requiredScope, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
 		if opts.Issuer != "" && claims.Issuer != opts.Issuer {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "reason": "issuer_mismatch"}).Warn("auth failed")
-			http.Error(rw, "invalid issuer", http.StatusUnauthorized)
+			authFailure(rw, requiredScope, "invalid issuer", http.StatusUnauthorized)
 			return
 		}
 
@@ -153,7 +154,7 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 			}
 			if !matched {
 				log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "reason": "audience_mismatch"}).Warn("auth failed")
-				http.Error(rw, "invalid audience", http.StatusUnauthorized)
+				authFailure(rw, requiredScope, "invalid audience", http.StatusUnauthorized)
 				return
 			}
 		}
@@ -161,13 +162,13 @@ func AuthHandler(h http.Handler, opts AuthOptions) http.Handler {
 		scopeClaim := claims.Scope
 		if scopeClaim == "" {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "reason": "scope_claim_missing"}).Warn("auth failed")
-			http.Error(rw, "invalid token scope", http.StatusUnauthorized)
+			authFailure(rw, requiredScope, "invalid token scope", http.StatusUnauthorized)
 			return
 		}
 
 		if !hasScope(scopeClaim, requiredScope) {
 			log.WithFields(log.Fields{"method": r.Method, "path": r.URL.Path, "required_scope": requiredScope, "reason": "scope_denied"}).Warn("auth denied")
-			http.Error(rw, "insufficient scope", http.StatusForbidden)
+			authFailure(rw, requiredScope, "insufficient scope", http.StatusForbidden)
 			return
 		}
 
@@ -209,4 +210,24 @@ func compilePathTemplate(pathTemplate string) *regexp.Regexp {
 	expr := regexp.QuoteMeta(pathTemplate)
 	expr = pathParamPattern.ReplaceAllString(expr, `[^/]+`)
 	return regexp.MustCompile("^" + expr + "$")
+}
+
+// Recovery endpoints promise JSON/no-store even when authentication fails
+// outside the router, before the purchase handler can execute.
+func authFailure(w http.ResponseWriter, scope, message string, status int) {
+	if scope != "purchase.read" {
+		http.Error(w, message, status)
+		return
+	}
+	code := "FORBIDDEN"
+	if status == http.StatusUnauthorized {
+		code = "UNAUTHORIZED"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}{code, message})
 }

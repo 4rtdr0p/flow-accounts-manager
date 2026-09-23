@@ -3,6 +3,7 @@ package purchase
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,16 +41,15 @@ func (m *mockPurchaseService) CreatePurchaseCharge(ctx context.Context, in Creat
 	if m.err != nil {
 		return nil, m.err
 	}
-	return &PurchaseCharge{
-		ID:                  1,
-		UserID:              in.UserID,
-		StripePaymentIntent: "pi_123",
-	}, nil
+	p := &PurchaseCharge{ID: 1, UserID: in.UserID, StripePaymentIntent: "pi_123"}
+	p.responseBody, _ = json.Marshal(p)
+	return p, nil
 }
 
 // withClaims attaches auth claims to the request context the same way the auth
 // middleware does, so the identity guard sees an authenticated caller.
 func withClaims(r *http.Request, subject, scope string) *http.Request {
+	r.Header.Set("Idempotency-Key", validPurchaseInput().IdempotencyKey)
 	claims := &middleware.AuthClaims{
 		Scope:            scope,
 		RegisteredClaims: jwt.RegisteredClaims{Subject: subject},
@@ -95,7 +95,7 @@ func TestCreatePurchaseChargeGuardOnBehalfBypass(t *testing.T) {
 	svc := &mockPurchaseService{}
 	h := NewHandler(svc)
 
-	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/purchases:charge", bytes.NewBufferString(purchaseBody)), "operator-9", authguard.ScopeChargeOnBehalf)
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/purchases:charge", bytes.NewBufferString(purchaseBody)), "operator-9", "studio.charge.create "+authguard.ScopeChargeOnBehalf)
 	rr := httptest.NewRecorder()
 
 	h.CreatePurchaseCharge().ServeHTTP(rr, req)
@@ -119,8 +119,8 @@ func TestCreatePurchaseChargeGuardEmptySubjectForbidden(t *testing.T) {
 	}
 }
 
-func TestCreatePurchaseChargeGuardAuthOffPassthrough(t *testing.T) {
-	// No claims in context (auth disabled): the request must pass unchanged.
+func TestCreatePurchaseChargeGuardAuthOffFailsClosed(t *testing.T) {
+	// Durable financial requests require claims, including with auth disabled.
 	svc := &mockPurchaseService{}
 	h := NewHandler(svc)
 
@@ -129,8 +129,8 @@ func TestCreatePurchaseChargeGuardAuthOffPassthrough(t *testing.T) {
 
 	h.CreatePurchaseCharge().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("expected 201 with auth off, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnauthorized || svc.calls != 0 {
+		t.Fatalf("expected 401 with auth off, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -195,4 +195,11 @@ func TestOpenEscrowForbiddenWithoutOperationsScope(t *testing.T) {
 	if rr.Code != http.StatusForbidden || svc.openCalls != 0 {
 		t.Fatalf("got status=%d calls=%d, want 403 and no service call", rr.Code, svc.openCalls)
 	}
+}
+
+func (m *mockPurchaseService) GetPurchaseRecovery(context.Context, string) (*PurchaseRecoveryResponse, error) {
+	return nil, ErrPurchaseNotFound
+}
+func (m *mockPurchaseService) GetIntentRecovery(context.Context, string, string) (*PurchaseRecoveryResponse, error) {
+	return nil, ErrPurchaseNotFound
 }

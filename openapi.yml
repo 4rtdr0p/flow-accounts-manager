@@ -1879,6 +1879,7 @@ paths:
                 - seller
                 - editionId
                 - nonce
+              additionalProperties: false
               properties:
                 userId:
                   type: string
@@ -1941,19 +1942,30 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/PurchaseChargeResponse'
         '400':
           description: Bad Request - malformed body
         '404':
           description: Not Found - artwork does not exist
         '409':
-          description: Conflict - duplicate attempt for the same Idempotency-Key or already-recorded charge
+          description: IDEMPOTENCY_TERMS_CONFLICT, INTENT_IN_PROGRESS, RECONCILIATION_REQUIRED, RESULT_BODY_EXPIRED, PAYMENT_INTENT_CONFLICT or LEGACY_INTENT_REQUIRES_REVIEW. Never rotate identity automatically.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PurchaseRecoveryError'}
         '422':
           description: Unprocessable Entity - artwork price is missing
         '503':
           description: Service Unavailable - pricing, FLOW/USD oracle, Stripe or escrow is disabled
       parameters:
-        - $ref: '#/components/parameters/idempotencyKey'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Financial intent identity, generated and persisted before sending. New purchases require purchase-v2 UUID; legacy attempts require review. Retain exactly the same request terms. After response retention expires use GET, never create another identity automatically.
+          schema:
+            type: string
+            maxLength: 128
+            pattern: '^purchase-v2:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
   /purchases/{purchaseId}:open-escrow:
     post:
       summary: Open escrow for an already-paid purchase obligation.
@@ -2048,13 +2060,527 @@ paths:
         '400':
           description: Bad Request
 
+  /purchases/{purchaseId}:
+    get:
+      operationId: getPurchaseCharge
+      x-required-scopes:
+      - purchase.read
+      parameters:
+      - name: purchaseId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Persisted evidence only; does not verify payment. No provider
+            or escrow calls.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                - no-store
+              description: Responses must not be cached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseRecoveryResponse'
+        '400':
+          $ref: '#/components/responses/PurchaseBadRequest'
+        '401':
+          $ref: '#/components/responses/PurchaseUnauthorized'
+        '403':
+          $ref: '#/components/responses/PurchaseForbidden'
+        '404':
+          $ref: '#/components/responses/PurchaseNotFound'
+        '503':
+          $ref: '#/components/responses/PurchaseLookupUnavailable'
+  /purchase-intents/{intentId}:
+    get:
+      operationId: getPurchaseIntent
+      x-required-scopes:
+      - purchase.read
+      parameters:
+      - name: intentId
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 128
+          pattern: ^purchase-v2:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+      - name: userId
+        in: query
+        description: Owner selector; another owner requires purchase.read.any.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Persisted evidence only; does not verify payment. No provider
+            or escrow calls.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                enum:
+                - no-store
+              description: Responses must not be cached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseRecoveryResponse'
+        '400':
+          $ref: '#/components/responses/PurchaseBadRequest'
+        '401':
+          $ref: '#/components/responses/PurchaseUnauthorized'
+        '403':
+          $ref: '#/components/responses/PurchaseForbidden'
+        '404':
+          $ref: '#/components/responses/PurchaseNotFound'
+        '503':
+          $ref: '#/components/responses/PurchaseLookupUnavailable'
 components:
+  responses:
+    PurchaseBadRequest:
+      description: Invalid identity or request.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+            - no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PurchaseRecoveryError'
+    PurchaseUnauthorized:
+      description: Missing, invalid or expired token.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+            - no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PurchaseRecoveryError'
+    PurchaseForbidden:
+      description: Insufficient scope or forbidden owner selector.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+            - no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PurchaseRecoveryError'
+    PurchaseNotFound:
+      description: Record absent or another owner. Absence never proves that Stripe
+        did not charge.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+            - no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PurchaseRecoveryError'
+    PurchaseLookupUnavailable:
+      description: SQL lookup unavailable. Keep the same financial identity for review.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+            - no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PurchaseRecoveryError'
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
   schemas:
+    PurchaseRecoveryError:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        intentId:
+          type: string
+        purchaseId:
+          type: string
+    PurchaseFinancial:
+      type: object
+      required:
+      - status
+      - stripePaymentIntentId
+      - stripeCustomerId
+      - customerSource
+      - stripeStatusObserved
+      - stripeObservedAt
+      - amountReceivedCents
+      - stripeAccountId
+      - livemode
+      - verifiedAt
+      - evidenceSource
+      properties:
+        status:
+          type: string
+          enum:
+          - unknown
+          - not_charged
+          - paid_verified
+          - pending
+          - failed_verified
+          - refunded
+        stripePaymentIntentId:
+          type: string
+          nullable: true
+        stripeCustomerId:
+          type: string
+          nullable: true
+        customerSource:
+          type: string
+          enum:
+          - request
+          - null
+          nullable: true
+        stripeStatusObserved:
+          type: string
+          nullable: true
+        stripeObservedAt:
+          type: string
+          format: date-time
+          nullable: true
+        amountReceivedCents:
+          type: integer
+          format: int64
+          nullable: true
+        stripeAccountId:
+          type: string
+          nullable: true
+        livemode:
+          type: boolean
+          nullable: true
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        evidenceSource:
+          type: string
+          enum:
+          - wallet_reservation
+          - wallet_pre_effect_validation
+          - stripe_create_response_unverified
+          - legacy_record
+      description: Phase A never reports paid_verified. Customer is from the request;
+        observed Stripe status is unverified. Unavailable evidence is null.
+    PurchaseAmounts:
+      type: object
+      required:
+      - artworkCents
+      - presentationCents
+      - shippingCents
+      - totalCents
+      - currency
+      - platformFeeCents
+      - flowAmount
+      - flowPriceUsd
+      properties:
+        artworkCents:
+          type: integer
+          format: int64
+        presentationCents:
+          type: integer
+          format: int64
+          nullable: true
+        shippingCents:
+          type: integer
+          format: int64
+        totalCents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        platformFeeCents:
+          type: integer
+          format: int64
+        flowAmount:
+          type: number
+          format: double
+        flowPriceUsd:
+          type: number
+          format: double
+    PurchaseEscrow:
+      type: object
+      required:
+      - status
+      - legacyStatus
+      - chipId
+      - jobId
+      - escrowId
+      - certificateId
+      - nonce
+      - unlockAt
+      properties:
+        status:
+          type: string
+          enum:
+          - pending
+          - opening
+          - unknown
+        legacyStatus:
+          type: string
+        chipId:
+          type: string
+          nullable: true
+        jobId:
+          type: string
+          nullable: true
+        escrowId:
+          type: integer
+          format: uint64
+          nullable: true
+        certificateId:
+          type: integer
+          format: uint64
+          nullable: true
+        nonce:
+          type: integer
+          format: uint64
+          minimum: 0
+        unlockAt:
+          type: number
+          format: double
+    RecoveredPurchase:
+      type: object
+      required:
+      - purchaseId
+      - userId
+      - artworkKind
+      - artworkId
+      - buyer
+      - seller
+      - editionId
+      - requestHash
+      - hashVersion
+      - metadata
+      - amounts
+      - financial
+      - escrow
+      - createdAt
+      - updatedAt
+      properties:
+        purchaseId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        artworkKind:
+          type: string
+          enum:
+          - edition
+          - painting
+        artworkId:
+          type: string
+        buyer:
+          type: string
+        seller:
+          type: string
+        editionId:
+          type: integer
+          format: uint64
+          minimum: 0
+        requestHash:
+          type: string
+          nullable: true
+        hashVersion:
+          type: integer
+          nullable: true
+        metadata:
+          type: string
+        amounts:
+          $ref: '#/components/schemas/PurchaseAmounts'
+        financial:
+          $ref: '#/components/schemas/PurchaseFinancial'
+        escrow:
+          $ref: '#/components/schemas/PurchaseEscrow'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      nullable: true
+    PurchaseRecoveryResponse:
+      type: object
+      required:
+      - intentId
+      - executionStatus
+      - resolutionCode
+      - purchase
+      - updatedAt
+      properties:
+        intentId:
+          type: string
+          nullable: true
+        executionStatus:
+          type: string
+          enum:
+          - in_progress
+          - recorded
+          - unknown
+          - not_charged
+        resolutionCode:
+          type: string
+          enum:
+          - INTENT_IN_PROGRESS
+          - FINANCIAL_VERIFICATION_REQUIRED
+          - RECONCILIATION_REQUIRED
+          - NOT_CHARGED
+          - EVIDENCE_CONFLICT
+        purchase:
+          allOf:
+          - $ref: '#/components/schemas/RecoveredPurchase'
+          nullable: true
+          type: object
+        financial:
+          $ref: '#/components/schemas/PurchaseFinancial'
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PurchaseChargeResponse:
+      type: object
+      required:
+      - id
+      - purchaseId
+      - intentId
+      - requestHash
+      - hashVersion
+      - status
+      - userId
+      - artworkKind
+      - artworkId
+      - amountCents
+      - shippingCents
+      - platformFeeCents
+      - currency
+      - flowAmount
+      - flowPriceUsd
+      - stripePaymentIntentId
+      - stripeCustomerId
+      - stripeStatusObserved
+      - stripeObservedAt
+      - buyer
+      - seller
+      - editionId
+      - chipId
+      - unlockAt
+      - nonce
+      - metadata
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: integer
+          format: uint64
+          minimum: 0
+        purchaseId:
+          type: string
+          format: uuid
+        intentId:
+          type: string
+        requestHash:
+          type: string
+        hashVersion:
+          type: integer
+        status:
+          type: string
+        userId:
+          type: string
+        artworkKind:
+          type: string
+        artworkId:
+          type: string
+        amountCents:
+          type: integer
+          format: int64
+        shippingCents:
+          type: integer
+          format: int64
+        platformFeeCents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        flowAmount:
+          type: number
+          format: double
+        flowPriceUsd:
+          type: number
+          format: double
+        stripePaymentIntentId:
+          type: string
+        stripeCustomerId:
+          type: string
+          nullable: true
+        stripeStatusObserved:
+          type: string
+          nullable: true
+        stripeObservedAt:
+          type: string
+          format: date-time
+          nullable: true
+        buyer:
+          type: string
+        seller:
+          type: string
+        editionId:
+          type: integer
+          format: uint64
+          minimum: 0
+        chipId:
+          type: string
+        unlockAt:
+          type: number
+          format: double
+        nonce:
+          type: integer
+          format: uint64
+          minimum: 0
+        metadata:
+          type: string
+        escrowJobId:
+          type: string
+        escrowId:
+          type: integer
+          format: uint64
+          minimum: 0
+        certificateId:
+          type: integer
+          format: uint64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     StudioQuoteConfig:
       type: object
       description: >-

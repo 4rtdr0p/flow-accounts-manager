@@ -19,6 +19,8 @@ const (
 // role map auditable and keeps a typo from silently granting the wrong access.
 const (
 	// Read scopes.
+	scopePurchaseRead     = "purchase.read"
+	scopePurchaseReadAny  = "purchase.read.any"
 	scopeAccountRead      = "account.read"
 	scopeJobRead          = "job.read"
 	scopeOpsRead          = "ops.read"
@@ -73,6 +75,7 @@ const (
 // health.read is included for completeness even though the health routes are
 // auth-exempt.
 var readScopes = []string{
+	scopePurchaseRead,
 	scopeAccountRead,
 	scopeJobRead,
 	scopeOpsRead,
@@ -115,6 +118,7 @@ var artistScopes = concatScopes(userScopes, []string{
 // the escrow lifecycle, original/edition creation, artist onboarding, custodial
 // key management, chip provisioning, watchlist writes, and ops/system.* writes.
 var operationsScopes = concatScopes(userScopes, []string{
+	scopePurchaseReadAny,
 	scopeEscrowVoid,
 	scopeEscrowReescrow,
 	scopeOriginalCreate,
