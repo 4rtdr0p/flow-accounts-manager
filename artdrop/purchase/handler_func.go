@@ -140,6 +140,8 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 		switch {
 		case stdErrors.Is(err, ErrChargeAlreadyRecorded):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
+		case stdErrors.Is(err, ErrPaymentNotSucceeded):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusPaymentRequired, Err: err})
 		case stdErrors.Is(err, ErrArtworkNotFound):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
 		case stdErrors.Is(err, ErrArtworkPriceMissing):

@@ -134,6 +134,19 @@ func TestCreatePurchaseChargeGuardAuthOffPassthrough(t *testing.T) {
 	}
 }
 
+func TestCreatePurchaseChargePaymentNotSucceededReturnsPaymentRequired(t *testing.T) {
+	svc := &mockPurchaseService{err: ErrPaymentNotSucceeded}
+	h := NewHandler(svc)
+	req := withClaims(httptest.NewRequest(http.MethodPost, "/v1/purchases:charge", bytes.NewBufferString(purchaseBody)), "user-1", "studio.charge.create")
+	rr := httptest.NewRecorder()
+
+	h.CreatePurchaseCharge().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402 for payment not succeeded, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestOpenEscrowRejectsFieldsOutsideAllowList(t *testing.T) {
 	svc := &mockPurchaseService{}
 	h := NewHandler(svc)

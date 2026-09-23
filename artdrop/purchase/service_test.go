@@ -176,6 +176,12 @@ func (m *mockStore) ResetEscrowOpening(context.Context, string) error     { retu
 // fresh in-memory DB.
 func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) Service {
 	t.Helper()
+	_, svc := newPurchaseTestServiceWithDB(t, prices, oracle, charge, escrow, platformFeeBps)
+	return svc
+}
+
+func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) (*gorm.DB, Service) {
+	t.Helper()
 	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -184,7 +190,7 @@ func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle Pric
 	if err := db.AutoMigrate(&PurchaseCharge{}); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, platformFeeBps, testClaimWindowSeconds)
+	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, platformFeeBps, testClaimWindowSeconds)
 }
 
 func validPurchaseInput() CreatePurchaseChargeInput {
@@ -317,6 +323,46 @@ func TestCreatePurchaseCharge_WithoutChipCreatesPaidObligation(t *testing.T) {
 	}
 	if !stripe.called || got.FlowAmount != 10 {
 		t.Fatalf("chipless charge must charge and freeze FLOW amount, got stripe=%v flow=%v", stripe.called, got.FlowAmount)
+	}
+}
+
+func TestCreatePurchaseCharge_OnlyRecordsSucceededPaymentIntent(t *testing.T) {
+	for _, status := range []string{"processing", "requires_action", "succeeded"} {
+		t.Run(status, func(t *testing.T) {
+			prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+			stripe := &mockChargeClient{intent: &studio.StripePaymentIntent{ID: "pi_" + status, Status: status}}
+			escrow := &mockEscrowCreator{}
+			db, svc := newPurchaseTestServiceWithDB(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500)
+
+			charge, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+			var count int64
+			if err := db.Model(&PurchaseCharge{}).Count(&count).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			if status == "succeeded" {
+				if err != nil {
+					t.Fatalf("CreatePurchaseCharge: %v", err)
+				}
+				if charge == nil || count != 1 {
+					t.Fatalf("succeeded payment intent recorded charge=%v rows=%d, want charge and 1 row", charge != nil, count)
+				}
+				return
+			}
+
+			if !errors.Is(err, ErrPaymentNotSucceeded) {
+				t.Fatalf("CreatePurchaseCharge error = %v, want ErrPaymentNotSucceeded", err)
+			}
+			if !strings.Contains(err.Error(), status) {
+				t.Fatalf("CreatePurchaseCharge error = %q, want payment intent status %q", err, status)
+			}
+			if charge != nil || count != 0 {
+				t.Fatalf("non-succeeded payment intent recorded charge=%v rows=%d, want no charge and 0 rows", charge != nil, count)
+			}
+			if escrow.called || escrow.reEscrowCalled {
+				t.Fatal("non-succeeded payment intent must not create escrow")
+			}
+		})
 	}
 }
 

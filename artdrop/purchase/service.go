@@ -22,6 +22,11 @@ import (
 // duplicate charge record.
 var ErrChargeAlreadyRecorded = errors.New("charge already recorded")
 
+// ErrPaymentNotSucceeded is returned when Stripe has not completed the
+// automatic off-session PaymentIntent. No purchase obligation is recorded in
+// that case.
+var ErrPaymentNotSucceeded = errors.New("payment not succeeded")
+
 // ErrArtworkNotFound is returned when the requested artwork does not exist in
 // Mongo (no matching edition or painting).
 var ErrArtworkNotFound = errors.New("artwork not found")
@@ -235,6 +240,13 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
+	}
+	intentStatus := ""
+	if intent != nil {
+		intentStatus = intent.Status
+	}
+	if intentStatus != "succeeded" {
+		return nil, fmt.Errorf("%w: payment intent status %q", ErrPaymentNotSucceeded, intentStatus)
 	}
 
 	// 5. The deployed legacy caller supplies a chip and keeps the original
