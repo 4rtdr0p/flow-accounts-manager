@@ -225,6 +225,87 @@ func TestExchangeCarriesFlowAddress(t *testing.T) {
 	}
 }
 
+// TestExchangeCarriesStripeCustomerID verifies that a stripe_customer_id claim
+// on the Payload assertion is copied into the minted access token and is
+// visible to a downstream handler via ClaimsFromContext after the real
+// middleware validates the token. Backward-compat: an assertion without
+// stripe_customer_id mints a token whose StripeCustomerID is empty.
+func TestExchangeCarriesStripeCustomerID(t *testing.T) {
+	key, pubPEM := newTestKeypair(t)
+	ex := testExchanger(pubPEM)
+
+	const wantCustomerID = "cus_abc123"
+
+	// Sign an assertion that carries stripe_customer_id alongside sub + role.
+	claims := assertionClaims{
+		Role:             "user",
+		StripeCustomerID: wantCustomerID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			Issuer:    testAssertionIssuer,
+			Audience:  jwt.ClaimStrings{testAssertionAudience},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	assertion, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	if err != nil {
+		t.Fatalf("sign assertion: %v", err)
+	}
+
+	result, err := ex.Exchange(assertion)
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+
+	// Feed the minted token through the REAL middleware and read the claims a
+	// downstream guard would see.
+	rule := middleware.NewAuthRule(http.MethodGet, "/{apiVersion}/accounts", scopeAccountRead)
+	var gotClaims *middleware.AuthClaims
+	next := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		gotClaims, _ = middleware.ClaimsFromContext(r.Context())
+		rw.WriteHeader(http.StatusOK)
+	})
+	handler := middleware.AuthHandler(next, middleware.AuthOptions{
+		Enabled: true, Secret: testSecret, Issuer: testAccessIssuer, Audience: testAccessAudience,
+		Rules: []middleware.AuthRule{rule},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts", nil)
+	req.Header.Set("Authorization", "Bearer "+result.Token)
+	rw := httptest.NewRecorder()
+	handler.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("middleware rejected minted token: status %d body %q", rw.Code, rw.Body.String())
+	}
+	if gotClaims == nil {
+		t.Fatal("claims not found in context after validation")
+	}
+	if gotClaims.Subject != "user-123" {
+		t.Fatalf("subject = %q, want user-123", gotClaims.Subject)
+	}
+	if gotClaims.StripeCustomerID != wantCustomerID {
+		t.Fatalf("stripe_customer_id = %q, want %q", gotClaims.StripeCustomerID, wantCustomerID)
+	}
+
+	// Backward-compat: no stripe_customer_id on the assertion ⇒ empty on the
+	// token.
+	plain := signAssertion(t, key, "user", "user-456", time.Now().Add(time.Minute), testAssertionIssuer, testAssertionAudience)
+	plainResult, err := ex.Exchange(plain)
+	if err != nil {
+		t.Fatalf("Exchange (no stripe_customer_id): %v", err)
+	}
+	parsed := &middleware.AuthClaims{}
+	if _, err := jwt.NewParser().ParseWithClaims(plainResult.Token, parsed, func(*jwt.Token) (any, error) {
+		return []byte(testSecret), nil
+	}); err != nil {
+		t.Fatalf("parse minted token: %v", err)
+	}
+	if parsed.StripeCustomerID != "" {
+		t.Fatalf("stripe_customer_id = %q, want empty when assertion omits it", parsed.StripeCustomerID)
+	}
+}
+
 // TestOperationsRoleGetsEscrowScopes confirms an operations assertion mints a
 // token accepted for an escrow-ops-scoped route.
 func TestOperationsRoleGetsEscrowScopes(t *testing.T) {

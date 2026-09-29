@@ -24,6 +24,17 @@ func withClaims(r *http.Request, subject, scope string) *http.Request {
 	return r.WithContext(middleware.ContextWithClaims(r.Context(), claims))
 }
 
+// withStripeClaims is withClaims plus a stripe_customer_id claim, for tests of
+// the Stripe-customer identity guard.
+func withStripeClaims(r *http.Request, subject, scope, stripeCustomerID string) *http.Request {
+	claims := &middleware.AuthClaims{
+		Scope:            scope,
+		StripeCustomerID: stripeCustomerID,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: subject},
+	}
+	return r.WithContext(middleware.ContextWithClaims(r.Context(), claims))
+}
+
 // mockStudioService is a minimal in-memory implementation of Service
 // for handler tests.
 type mockStudioService struct {
@@ -343,6 +354,39 @@ func TestCreateStockRequestGuardAuthOffPassthrough(t *testing.T) {
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201 with auth off, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateStockRequestGuardStripeCustomerMismatchForbidden(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withStripeClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "user-1", "studio.charge.create", "cus_999")
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when stripe_customer_id claim != stripeCustomerId, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(svc.charges) != 0 {
+		t.Fatalf("expected no charge recorded on a blocked request, got %d", len(svc.charges))
+	}
+}
+
+func TestCreateStockRequestGuardStripeCustomerMatches(t *testing.T) {
+	svc := &mockStudioService{}
+	h := newStudioHandler(svc)
+
+	body := `{"userId":"user-1","quoteId":"quote-1","quantityRequested":10,"stripeCustomerId":"cus_123"}`
+	req := withStripeClaims(httptest.NewRequest(http.MethodPost, "/v1/stock-requests:create", bytes.NewBufferString(body)), "user-1", "studio.charge.create", "cus_123")
+	rr := httptest.NewRecorder()
+
+	h.CreateStockRequest().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 when stripe_customer_id claim matches stripeCustomerId, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

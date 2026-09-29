@@ -117,6 +117,11 @@ type assertionClaims struct {
 	// in the assertion. It is optional and backward-compatible: the front does
 	// not send it yet, so an empty value is carried through unchanged.
 	FlowAddress string `json:"flow_address"`
+	// StripeCustomerID is the caller's Stripe customer id, if Payload includes
+	// it in the assertion. Optional and backward-compatible like FlowAddress:
+	// the front does not send it yet, so an empty value is carried through
+	// unchanged.
+	StripeCustomerID string `json:"stripe_customer_id"`
 	jwt.RegisteredClaims
 }
 
@@ -167,15 +172,16 @@ func (e *Exchanger) Exchange(assertion string) (*Result, error) {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownRole, claims.Role)
 	}
 
-	return e.mint(claims.Subject, claims.FlowAddress, scopes)
+	return e.mint(claims.Subject, claims.FlowAddress, claims.StripeCustomerID, scopes)
 }
 
 // mint produces an access token in the exact shape the wallet's auth middleware
 // validates: HS256 with the shared secret, a space-separated `scope` claim, the
 // subject carried through, and matching iss/aud/exp. The caller's flow_address
-// (if the assertion carried one) is copied through unchanged so downstream
-// guards can bind the token to an on-chain identity.
-func (e *Exchanger) mint(subject, flowAddress string, scopes []string) (*Result, error) {
+// and stripe_customer_id (if the assertion carried them) are copied through
+// unchanged so downstream guards can bind the token to an on-chain identity or
+// a Stripe customer.
+func (e *Exchanger) mint(subject, flowAddress, stripeCustomerID string, scopes []string) (*Result, error) {
 	now := time.Now()
 	expiresAt := now.Add(e.cfg.AccessTokenTTL)
 
@@ -195,6 +201,7 @@ func (e *Exchanger) mint(subject, flowAddress string, scopes []string) (*Result,
 	claims := middleware.AuthClaims{
 		Scope:            strings.Join(scopes, " "),
 		FlowAddress:      flowAddress,
+		StripeCustomerID: stripeCustomerID,
 		RegisteredClaims: registered,
 	}
 
