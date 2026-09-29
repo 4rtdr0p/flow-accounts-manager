@@ -65,6 +65,8 @@ func (h *Handler) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request
 		switch {
 		case stdErrors.Is(err, ErrChargeAlreadyRecorded):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusConflict, Err: err})
+		case stdErrors.Is(err, ErrPaymentNotSucceeded):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusPaymentRequired, Err: err})
 		case stdErrors.Is(err, ErrQuoteNotFound):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
 		case stdErrors.Is(err, ErrQuantityExceedsMaxTier):
