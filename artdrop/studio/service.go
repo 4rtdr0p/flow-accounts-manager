@@ -27,6 +27,14 @@ var ErrPricingDisabled = errors.New("studio pricing is disabled")
 // ErrStripeDisabled is returned when the Stripe client is not configured.
 var ErrStripeDisabled = errors.New("stripe is disabled")
 
+// ErrPaymentNotSucceeded is returned when Stripe has not completed the
+// automatic off-session PaymentIntent for a Studio charge. No production
+// charge is recorded in that case. This mirrors purchase.ErrPaymentNotSucceeded;
+// it is redefined here rather than imported because the purchase package
+// already imports studio (for StripeChargeInput/StripePaymentIntent), and
+// studio importing purchase back would create an import cycle.
+var ErrPaymentNotSucceeded = errors.New("payment not succeeded")
+
 // ErrChargeRecordFailed is returned when the audit record could not be
 // persisted for a reason other than a duplicate payment intent. Callers must
 // map it to a 5xx so the idempotency middleware releases the key reservation.
@@ -211,6 +219,9 @@ func (s *ServiceImpl) CreateStockRequestCharge(ctx context.Context, in CreateSto
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create stripe payment intent: %w", err)
+	}
+	if intent.Status != "succeeded" {
+		return nil, fmt.Errorf("%w: observed status %q", ErrPaymentNotSucceeded, intent.Status)
 	}
 
 	// 6. Persist the audit record with the server-computed values, split into

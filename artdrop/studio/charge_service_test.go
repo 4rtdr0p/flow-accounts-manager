@@ -310,6 +310,31 @@ func TestCreateStockRequestChargeStripeError(t *testing.T) {
 	}
 }
 
+// TestCreateStockRequestChargePaymentNotSucceeded verifies that a PaymentIntent
+// which Stripe did not report as "succeeded" (e.g. still "requires_action" or
+// "processing") is rejected: no ProductionCharge row is created and the
+// caller gets ErrPaymentNotSucceeded.
+func TestCreateStockRequestChargePaymentNotSucceeded(t *testing.T) {
+	quotes := &mockQuoteReader{quote: &datastoremongo.StudioQuote{ID: "quote-1", UserID: "user-1", Config: validQuoteConfig()}}
+	engine := &mockPriceEngine{amountCents: 2500}
+	charge := &mockChargeClient{intent: &StripePaymentIntent{ID: "pi_123", Status: "requires_action"}}
+
+	svc := newChargeTestService(t, quotes, engine, charge)
+
+	_, err := svc.CreateStockRequestCharge(context.Background(), validChargeInput())
+	if !errors.Is(err, ErrPaymentNotSucceeded) {
+		t.Fatalf("expected ErrPaymentNotSucceeded, got %v", err)
+	}
+
+	charges, err := svc.ListProductionChargesByUser("user-1")
+	if err != nil {
+		t.Fatalf("unexpected error listing: %v", err)
+	}
+	if len(charges) != 0 {
+		t.Fatalf("expected no charge recorded for a non-succeeded payment intent, got %d", len(charges))
+	}
+}
+
 // TestCreateStockRequestChargeIdempotentByPaymentIntent verifies the audit
 // layer's idempotency guard: replaying the same logical purchase (same Stripe
 // payment intent) must not create a duplicate audit row.
