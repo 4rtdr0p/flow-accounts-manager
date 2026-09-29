@@ -35,6 +35,12 @@ type AuthClaims struct {
 	// caller is acting on their own account. Empty when the assertion did not
 	// carry it (backward-compatible: the front does not send it yet).
 	FlowAddress string `json:"flow_address,omitempty"`
+	// StripeCustomerID is the caller's Stripe customer id, carried through from
+	// the Payload identity assertion at token-exchange time. It binds the token
+	// to a specific Stripe customer so downstream guards can enforce that a
+	// charge request pays with the caller's own card. Empty when the assertion
+	// did not carry it (backward-compatible: the front does not send it yet).
+	StripeCustomerID string `json:"stripe_customer_id,omitempty"`
 	jwt.RegisteredClaims
 }
 

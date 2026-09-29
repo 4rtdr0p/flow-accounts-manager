@@ -50,6 +50,13 @@ func (h *Handler) CreateStockRequestFunc(rw http.ResponseWriter, r *http.Request
 		handlers.HandleError(rw, r, err)
 		return
 	}
+	// Bind the stripeCustomerId in the body to the authenticated token's
+	// stripe_customer_id claim: a caller may only charge their own Stripe
+	// customer. See authguard.RequireStripeCustomer.
+	if err := authguard.RequireStripeCustomer(r, req.StripeCustomerID); err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
 
 	charge, err := h.service.CreateStockRequestCharge(r.Context(), CreateStockRequestChargeInput{
 		UserID:            req.UserID,

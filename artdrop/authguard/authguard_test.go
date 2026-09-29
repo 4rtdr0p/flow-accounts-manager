@@ -160,3 +160,52 @@ func TestRequireArtistSubject_EmptyFlowAddressForbidden(t *testing.T) {
 		t.Fatalf("expected 403 for empty flow_address, got status %d (err %v)", got, err)
 	}
 }
+
+func claimsWithStripeCustomer(stripeCustomerID, scope string) *middleware.AuthClaims {
+	return &middleware.AuthClaims{
+		Scope:            scope,
+		StripeCustomerID: stripeCustomerID,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "payload-user-1"},
+	}
+}
+
+const stripeCustomerID = "cus_abc123"
+
+func TestRequireStripeCustomer_NoClaimsPassthrough(t *testing.T) {
+	// Auth disabled (middleware never ran): the guard must not block.
+	if err := RequireStripeCustomer(reqWithClaims(nil), stripeCustomerID); err != nil {
+		t.Fatalf("expected passthrough with no claims, got %v", err)
+	}
+}
+
+func TestRequireStripeCustomer_EmptyClaimPassthrough(t *testing.T) {
+	// Backward-compatible rollout: the assertion does not carry
+	// stripe_customer_id yet, so the request must not be blocked.
+	err := RequireStripeCustomer(reqWithClaims(claimsWithStripeCustomer("", "studio.charge.create")), stripeCustomerID)
+	if err != nil {
+		t.Fatalf("expected passthrough for empty stripe_customer_id claim, got %v", err)
+	}
+}
+
+func TestRequireStripeCustomer_Matches(t *testing.T) {
+	err := RequireStripeCustomer(reqWithClaims(claimsWithStripeCustomer(stripeCustomerID, "studio.charge.create")), stripeCustomerID)
+	if err != nil {
+		t.Fatalf("expected pass for matching stripe_customer_id, got %v", err)
+	}
+}
+
+func TestRequireStripeCustomer_MismatchForbidden(t *testing.T) {
+	err := RequireStripeCustomer(reqWithClaims(claimsWithStripeCustomer(stripeCustomerID, "studio.charge.create")), "cus_other000000")
+	if got := statusOf(err); got != http.StatusForbidden {
+		t.Fatalf("expected 403 for stripe_customer_id mismatch, got status %d (err %v)", got, err)
+	}
+}
+
+func TestRequireStripeCustomer_CaseSensitive(t *testing.T) {
+	// Stripe customer ids are case-sensitive: a differing case must NOT match,
+	// unlike RequireArtistSubject's EqualFold on Flow addresses.
+	err := RequireStripeCustomer(reqWithClaims(claimsWithStripeCustomer(stripeCustomerID, "studio.charge.create")), "CUS_ABC123")
+	if got := statusOf(err); got != http.StatusForbidden {
+		t.Fatalf("expected 403 for case-differing stripe_customer_id, got status %d (err %v)", got, err)
+	}
+}

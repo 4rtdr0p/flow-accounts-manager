@@ -57,6 +57,18 @@ func withClaims(r *http.Request, subject, scope string) *http.Request {
 	return r.WithContext(middleware.ContextWithClaims(r.Context(), claims))
 }
 
+// withStripeClaims is withClaims plus a stripe_customer_id claim, for tests of
+// the Stripe-customer identity guard.
+func withStripeClaims(r *http.Request, subject, scope, stripeCustomerID string) *http.Request {
+	r.Header.Set("Idempotency-Key", validPurchaseInput().IdempotencyKey)
+	claims := &middleware.AuthClaims{
+		Scope:            scope,
+		StripeCustomerID: stripeCustomerID,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: subject},
+	}
+	return r.WithContext(middleware.ContextWithClaims(r.Context(), claims))
+}
+
 const purchaseBody = `{"userId":"user-1","artworkKind":"edition","artworkId":"art-1","stripeCustomerId":"cus_123","buyer":"0x1","seller":"0x2","editionId":1}`
 
 func TestCreatePurchaseChargeGuardSubjectMatches(t *testing.T) {
@@ -131,6 +143,39 @@ func TestCreatePurchaseChargeGuardAuthOffFailsClosed(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized || svc.calls != 0 {
 		t.Fatalf("expected 401 with auth off, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreatePurchaseChargeGuardStripeCustomerMismatchForbidden(t *testing.T) {
+	svc := &mockPurchaseService{}
+	h := NewHandler(svc)
+
+	// Body requests cus_123 (see purchaseBody); token is bound to a different
+	// customer.
+	req := withStripeClaims(httptest.NewRequest(http.MethodPost, "/v1/purchases:charge", bytes.NewBufferString(purchaseBody)), "user-1", "studio.charge.create", "cus_999")
+	rr := httptest.NewRecorder()
+
+	h.CreatePurchaseCharge().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when stripe_customer_id claim != stripeCustomerId, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if svc.calls != 0 {
+		t.Fatalf("expected service not called on a blocked request, got %d calls", svc.calls)
+	}
+}
+
+func TestCreatePurchaseChargeGuardStripeCustomerMatches(t *testing.T) {
+	svc := &mockPurchaseService{}
+	h := NewHandler(svc)
+
+	req := withStripeClaims(httptest.NewRequest(http.MethodPost, "/v1/purchases:charge", bytes.NewBufferString(purchaseBody)), "user-1", "studio.charge.create", "cus_123")
+	rr := httptest.NewRecorder()
+
+	h.CreatePurchaseCharge().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 when stripe_customer_id claim matches stripeCustomerId, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

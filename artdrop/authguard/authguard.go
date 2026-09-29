@@ -108,6 +108,39 @@ func RequireArtistSubject(r *http.Request, artistAddress string) error {
 	return nil
 }
 
+// RequireStripeCustomer binds the stripeCustomerId a charge request pays with
+// to the authenticated token's stripe_customer_id claim, closing a cross-
+// account billing hole on the charge endpoints that take a Stripe customer id
+// from the request body: without this check, a caller with a valid token could
+// pass ANY stripeCustomerId and charge a card that is not theirs.
+//
+// Behavior:
+//   - No claims in context: auth is disabled (the middleware did not run, e.g.
+//     local dev), so this is a passthrough and the pre-existing behavior is
+//     unchanged.
+//   - claims.StripeCustomerID == "": the assertion does not carry the claim yet
+//     (backward-compatible rollout), so this is a passthrough.
+//   - Otherwise fail-closed: stripeCustomerID must be a byte-for-byte match.
+//     Stripe customer ids (cus_...) are case-sensitive, so — unlike
+//     RequireArtistSubject's EqualFold on Flow addresses — this must NOT
+//     normalize case.
+func RequireStripeCustomer(r *http.Request, stripeCustomerID string) error {
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		return nil
+	}
+	if claims.StripeCustomerID == "" {
+		return nil
+	}
+	if stripeCustomerID != claims.StripeCustomerID {
+		return &errors.RequestError{
+			StatusCode: http.StatusForbidden,
+			Err:        fmt.Errorf("token stripe_customer_id does not match stripeCustomerId"),
+		}
+	}
+	return nil
+}
+
 const ScopePurchaseRead = "purchase.read"
 const ScopePurchaseReadAny = "purchase.read.any"
 
