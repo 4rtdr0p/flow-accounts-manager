@@ -40,6 +40,24 @@ type purchaseEscrowCreator struct {
 
 type purchaseChipReader struct{ store chips.Store }
 
+// purchaseEditionArtistReader adapts *Service.GetEditionSummary to the
+// primitive-based purchase.EditionArtistReader interface (issue #135): it
+// resolves an edition's on-chain artist so the purchase flow can confirm a
+// fresh purchase's client-supplied Seller is really entitled to EditionID
+// before minting a certificate and opening its escrow.
+type purchaseEditionArtistReader struct{ svc *Service }
+
+func (a purchaseEditionArtistReader) GetEditionArtist(ctx context.Context, editionID uint64) (string, error) {
+	summary, err := a.svc.GetEditionSummary(ctx, editionID)
+	if err != nil {
+		return "", fmt.Errorf("get edition summary: %w", err)
+	}
+	if summary == nil || summary.Artist == "" {
+		return "", fmt.Errorf("edition %d does not exist", editionID)
+	}
+	return summary.Artist, nil
+}
+
 func (r purchaseChipReader) IsProvisioned(ctx context.Context, chipID string) (bool, error) {
 	chip, err := r.store.GetChip(ctx, chipID)
 	return chip != nil, err
@@ -178,6 +196,7 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		stripeClient,
 		purchaseEscrowCreator{svc: p.svc},
 		purchaseChipReader{store: chips.NewGormStore(deps.DB)},
+		purchaseEditionArtistReader{svc: p.svc},
 		purchasePlatformFeeBps,
 		p.svc.cfg.EscrowClaimWindowSeconds,
 	)

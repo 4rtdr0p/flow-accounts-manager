@@ -179,7 +179,11 @@ func (h *Handler) CreatePurchaseChargeFunc(rw http.ResponseWriter, r *http.Reque
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
 		case stdErrors.Is(err, ErrArtworkPriceMissing):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusUnprocessableEntity, Err: err})
-		case stdErrors.Is(err, ErrPricingDisabled), stdErrors.Is(err, ErrOracleDisabled), stdErrors.Is(err, ErrStripeDisabled), stdErrors.Is(err, ErrEscrowDisabled):
+		case stdErrors.Is(err, ErrEditionNotFound):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusNotFound, Err: err})
+		case stdErrors.Is(err, ErrSellerMismatch):
+			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusUnprocessableEntity, Err: err})
+		case stdErrors.Is(err, ErrPricingDisabled), stdErrors.Is(err, ErrOracleDisabled), stdErrors.Is(err, ErrStripeDisabled), stdErrors.Is(err, ErrEscrowDisabled), stdErrors.Is(err, ErrEditionArtistUnavailable):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusServiceUnavailable, Err: err})
 		case stdErrors.Is(err, ErrOracleStale):
 			handlers.HandleError(rw, r, &errors.RequestError{StatusCode: http.StatusServiceUnavailable, Err: err})
