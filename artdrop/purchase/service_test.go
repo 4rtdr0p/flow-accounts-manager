@@ -3,6 +3,7 @@ package purchase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -27,11 +28,26 @@ type mockArtworkPriceReader struct {
 	editionPrice  *datastoremongo.ArtworkPrice
 	paintingPrice *datastoremongo.ArtworkPrice
 	err           error
+	// byEditionID, when set, keys the returned price by the lookup key
+	// GetEditionPrice was actually called with — issue #135's tests use this
+	// to prove the price charged tracks EditionID, not the client's ArtworkID.
+	byEditionID map[string]*datastoremongo.ArtworkPrice
+	// lastEditionArtworkID records the last key GetEditionPrice was called
+	// with.
+	lastEditionArtworkID string
 }
 
 func (m *mockArtworkPriceReader) GetEditionPrice(ctx context.Context, editionID string) (*datastoremongo.ArtworkPrice, error) {
+	m.lastEditionArtworkID = editionID
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.byEditionID != nil {
+		price, ok := m.byEditionID[editionID]
+		if !ok {
+			return nil, datastoremongo.ErrArtworkNotFound
+		}
+		return price, nil
 	}
 	if m.editionPrice == nil {
 		return nil, datastoremongo.ErrArtworkNotFound
@@ -121,6 +137,33 @@ func (m *mockChipReader) IsProvisioned(_ context.Context, _ string) (bool, error
 	return m.provisioned, m.err
 }
 
+// mockEditionArtistReader is a scripted EditionArtistReader for tests
+// (issue #135). artists maps editionID -> its on-chain artist address; a
+// miss (unless err is set) is reported as "edition not found", mirroring
+// GetEditionSummary returning a nil summary for an unknown id.
+type mockEditionArtistReader struct {
+	artists map[uint64]string
+	err     error
+}
+
+func (m *mockEditionArtistReader) GetEditionArtist(_ context.Context, editionID uint64) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	if artist, ok := m.artists[editionID]; ok {
+		return artist, nil
+	}
+	return "", fmt.Errorf("edition %d does not exist", editionID)
+}
+
+// defaultTestEditionArtist is validPurchaseInput()'s Seller, kept in sync
+// with its EditionID (1) so every existing happy-path test — none of which
+// know about issue #135's seller/edition-artist check — keeps passing
+// unchanged through newPurchaseTestServiceWithDB's default wiring.
+func defaultTestEditionArtists() *mockEditionArtistReader {
+	return &mockEditionArtistReader{artists: map[uint64]string{1: "0xf3fcd2c1a78f5eee"}}
+}
+
 func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address string, buyer, seller string, editionID uint64, chipID string, unlockAt float64, nonce uint64, amount float64) (*jobs.Job, *transactions.Transaction, error) {
 	m.called = true
 	m.amount = amount
@@ -175,13 +218,19 @@ func (m *mockStore) ResetEscrowOpening(context.Context, string) error     { retu
 
 // newPurchaseTestService builds a ServiceImpl wired with the given mocks and a
 // fresh in-memory DB.
-func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) Service {
+func newPurchaseTestService(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int, editionArtists ...map[uint64]string) Service {
 	t.Helper()
-	_, svc := newPurchaseTestServiceWithDB(t, prices, oracle, charge, escrow, platformFeeBps)
+	_, svc := newPurchaseTestServiceWithDB(t, prices, oracle, charge, escrow, platformFeeBps, editionArtists...)
 	return svc
 }
 
-func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int) (*gorm.DB, Service) {
+// editionArtists is an optional override of the editionID -> artist mapping
+// used by the default EditionArtistReader (issue #135). Most callers omit it
+// and get defaultTestEditionArtists() (matching validPurchaseInput()'s
+// EditionID/Seller pairing); the handful of tests built around
+// handler_test.go's raw-JSON purchaseBody fixture (editionId=1,
+// seller="0x2") pass their own map instead of fighting that default.
+func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, platformFeeBps int, editionArtists ...map[uint64]string) (*gorm.DB, Service) {
 	t.Helper()
 	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -191,7 +240,11 @@ func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracl
 	if err := db.AutoMigrate(&PurchaseCharge{}, &handlers.PurchaseIntent{}); err != nil {
 		t.Fatal(err)
 	}
-	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, platformFeeBps, testClaimWindowSeconds)
+	artists := defaultTestEditionArtists()
+	if len(editionArtists) > 0 {
+		artists = &mockEditionArtistReader{artists: editionArtists[0]}
+	}
+	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, artists, platformFeeBps, testClaimWindowSeconds)
 }
 
 func validPurchaseInput() CreatePurchaseChargeInput {
@@ -653,10 +706,128 @@ func TestCreatePurchaseCharge_EscrowDisabled(t *testing.T) {
 	}
 }
 
+// TestCreatePurchaseCharge_SellerMismatchRejected pins issue #135: a fresh
+// purchase (CertificateID == 0) must not mint a certificate and open its
+// escrow for a Seller that isn't EditionID's real on-chain artist.
+// create_escrow.cdc accepts seller as a free, contract-unvalidated argument,
+// so nothing on-chain would have caught this — the buyer would pay the
+// price of whatever ArtworkID they named while a certificate for EditionID
+// got escrowed to an unrelated Seller.
+func TestCreatePurchaseCharge_SellerMismatchRejected(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100.0}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	// EditionID 1's real artist is 0xaaaaaaaaaaaaaaaa; validPurchaseInput's
+	// Seller (0xf3fcd2c1a78f5eee) is someone else entirely.
+	editions := map[uint64]string{1: "0xaaaaaaaaaaaaaaaa"}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500, editions)
+
+	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if !errors.Is(err, ErrSellerMismatch) {
+		t.Fatalf("err = %v, want ErrSellerMismatch", err)
+	}
+	if stripe.called {
+		t.Fatal("mismatched seller must not charge the buyer")
+	}
+	if escrow.called || escrow.reEscrowCalled {
+		t.Fatal("mismatched seller must not create an escrow")
+	}
+}
+
+// TestCreatePurchaseCharge_SellerMatchesNormalizedAddress confirms the
+// seller check compares addresses, not raw strings: a differently-formatted
+// (unpadded/uppercase) rendering of the same address must still be accepted.
+func TestCreatePurchaseCharge_SellerMatchesNormalizedAddress(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100.0}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	editions := map[uint64]string{1: "0x00f3fcd2c1a78f5eee"} // zero-padded form of the same address
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500, editions)
+
+	if _, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput()); err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+}
+
+// TestCreatePurchaseCharge_UnknownEditionRejected pins issue #135: a fresh
+// purchase against an EditionID that doesn't exist on-chain must be
+// rejected, not silently escrowed.
+func TestCreatePurchaseCharge_UnknownEditionRejected(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100.0}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500, map[uint64]string{} /* edition 1 unknown */)
+
+	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if !errors.Is(err, ErrEditionNotFound) {
+		t.Fatalf("err = %v, want ErrEditionNotFound", err)
+	}
+	if stripe.called || escrow.called {
+		t.Fatal("unknown edition must not charge or create an escrow")
+	}
+}
+
+// TestCreatePurchaseCharge_EditionArtistUnavailableFailsClosed pins issue
+// #135's fail-closed discipline: an unconfigured edition-artist lookup must
+// block a fresh purchase rather than silently skip the seller check.
+func TestCreatePurchaseCharge_EditionArtistUnavailableFailsClosed(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100.0}}
+	stripe := &mockChargeClient{}
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&PurchaseCharge{}, &handlers.PurchaseIntent{}); err != nil {
+		t.Fatal(err)
+	}
+	svcImpl := NewService(NewGormStore(db), prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, &mockEscrowCreator{}, &mockChipReader{provisioned: true}, nil /* no EditionArtistReader configured */, 500, testClaimWindowSeconds)
+
+	_, chargeErr := svcImpl.CreatePurchaseCharge(context.Background(), validPurchaseInput())
+	if !errors.Is(chargeErr, ErrEditionArtistUnavailable) {
+		t.Fatalf("err = %v, want ErrEditionArtistUnavailable", chargeErr)
+	}
+	if stripe.called {
+		t.Fatal("unavailable edition-artist lookup must not charge the buyer")
+	}
+}
+
+// TestCreatePurchaseCharge_PriceDerivedFromEditionIDNotClientArtworkID pins
+// issue #135's other half: the price actually charged for a fresh edition
+// purchase must be the price of the edition that gets escrowed (EditionID),
+// never whatever a separately-supplied, unrelated ArtworkID would have
+// priced — closing "charge the buyer for a cheap artwork, escrow a
+// certificate against a different, expensive edition" by construction
+// rather than by comparing two client-supplied ids against each other.
+func TestCreatePurchaseCharge_PriceDerivedFromEditionIDNotClientArtworkID(t *testing.T) {
+	prices := &mockArtworkPriceReader{byEditionID: map[string]*datastoremongo.ArtworkPrice{
+		// EditionID 1 (validPurchaseInput's, the one actually escrowed) is
+		// priced at $100; a document keyed by the client's claimed ArtworkID
+		// ("edition-1") is deliberately absent/cheap-looking to prove it's
+		// never consulted for a fresh purchase.
+		"1": {PriceUSD: 100.0},
+	}}
+	stripe := &mockChargeClient{}
+	escrow := &mockEscrowCreator{}
+	svc := newPurchaseTestService(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, escrow, 500)
+
+	in := validPurchaseInput()
+	in.ArtworkID = "edition-1" // unrelated to EditionID's Mongo key ("1")
+	got, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreatePurchaseCharge: %v", err)
+	}
+	if prices.lastEditionArtworkID != "1" {
+		t.Fatalf("GetEditionPrice called with %q, want the EditionID-derived key %q", prices.lastEditionArtworkID, "1")
+	}
+	if got.AmountCents != 10000 {
+		t.Errorf("AmountCents = %d, want 10000 (EditionID's real price)", got.AmountCents)
+	}
+}
+
 // A store without durable primitives must fail closed before any effects.
 func TestCreatePurchaseCharge_RequiresDurableStore(t *testing.T) {
 	stripe := &mockChargeClient{}
-	svc := NewService(&mockStore{}, nil, nil, stripe, nil, nil, 500, testClaimWindowSeconds)
+	svc := NewService(&mockStore{}, nil, nil, stripe, nil, nil, nil, 500, testClaimWindowSeconds)
 	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	var re *RecoveryError
 	if !errors.As(err, &re) || re.Code != "RESERVATION_UNAVAILABLE" || stripe.called {

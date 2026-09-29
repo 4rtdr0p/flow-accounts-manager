@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/handlers"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/google/uuid"
+	"github.com/onflow/flow-go-sdk"
 	"gorm.io/gorm"
 )
 
@@ -63,6 +65,22 @@ var ErrChipUnavailable = errors.New("chip lookup is unavailable")
 var ErrInvalidOpenEscrowInput = errors.New("invalid open escrow request")
 var ErrEscrowUnavailable = errors.New("escrow queue is unavailable")
 
+// ErrEditionNotFound is returned when a fresh purchase's EditionID does not
+// exist on-chain (issue #135's seller/edition ownership check).
+var ErrEditionNotFound = errors.New("edition not found")
+
+// ErrSellerMismatch is returned when a fresh purchase's client-supplied
+// Seller does not match EditionID's on-chain artist (issue #135). Nothing on
+// the contract side rejects an arbitrary seller for a fresh CreateEscrow
+// call, so this must be enforced here, before the buyer is charged.
+var ErrSellerMismatch = errors.New("seller does not match the edition's artist")
+
+// ErrEditionArtistUnavailable is returned when the edition-artist lookup
+// required by issue #135's seller check is not configured. This fails
+// closed: a fresh purchase's seller is never trusted without being verified
+// against the edition's on-chain artist.
+var ErrEditionArtistUnavailable = errors.New("edition artist lookup is unavailable")
+
 // Service lists all functionality provided by the purchase service.
 type Service interface {
 	GetPurchaseRecovery(context.Context, string) (*PurchaseRecoveryResponse, error)
@@ -87,6 +105,9 @@ type ServiceImpl struct {
 	charge             ChargeClient
 	escrow             EscrowCreator
 	chips              ChipReader
+	// editions resolves EditionID's on-chain artist for the fresh-mint seller
+	// check (issue #135). See EditionArtistReader's doc comment.
+	editions           EditionArtistReader
 	platformFeeBps     int
 	shippingRatePerUSD float64
 
@@ -123,13 +144,15 @@ func FlowAmountForArtworkPrice(priceUSD float64, platformFeeBps int, oracle Pric
 
 // NewService initiates a new purchase service wired for the full charge flow.
 // Any of the optional deps may be nil; the corresponding step reports its
-// disabled error. platformFeeBps is the platform fee in basis points, applied
+// disabled error — editions included: a nil EditionArtistReader fails a fresh
+// purchase closed with ErrEditionArtistUnavailable rather than skip the
+// seller/edition-artist check (issue #135). platformFeeBps is the platform fee in basis points, applied
 // as ArtDrop's share of the artwork price rather than a surcharge added on top
 // of it (see Config.PurchasePlatformFeeBasisPoints). claimWindowSeconds is the
 // server-computed unlock_at window (issue #111; see
 // Config.EscrowClaimWindowSeconds) — the buyer's on-chain claim deadline is
 // now() + claimWindowSeconds, never client-supplied.
-func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, chips ChipReader, platformFeeBps int, claimWindowSeconds float64) Service {
+func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, chips ChipReader, editions EditionArtistReader, platformFeeBps int, claimWindowSeconds float64) Service {
 	return &ServiceImpl{
 		store:              store,
 		prices:             prices,
@@ -137,6 +160,7 @@ func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, char
 		charge:             charge,
 		escrow:             escrow,
 		chips:              chips,
+		editions:           editions,
 		platformFeeBps:     platformFeeBps,
 		claimWindowSeconds: claimWindowSeconds,
 		now:                time.Now,
@@ -239,6 +263,32 @@ func (s *ServiceImpl) CreatePurchaseCharge(ctx context.Context, in CreatePurchas
 	artworkPrice, err := s.readArtworkPrice(ctx, in)
 	if err != nil {
 		return nil, err
+	}
+
+	// 1b. A fresh purchase (CertificateID == 0) is about to mint a brand-new
+	// certificate against EditionID and pay its escrow reserve to Seller —
+	// both client-supplied, separately from the ArtworkID priced above, and
+	// neither is checked against the artwork actually charged anywhere else
+	// (issue #135). The re-escrow branch below (CertificateID != 0) is not
+	// touched here: it re-offers an EXISTING certificate, and the artdrop
+	// plugin's re-escrow amount resolver already verifies on-chain that the
+	// certificate belongs to Seller before this method is ever reached.
+	//
+	// Confirm that Seller is really EditionID's on-chain artist. This closes
+	// the "otro seller" half of #135: create_escrow.cdc takes seller as a
+	// free, contract-unvalidated argument, so nothing on-chain stops a
+	// mismatched seller from receiving a freshly-minted certificate's escrow.
+	if in.CertificateID == 0 {
+		if s.editions == nil {
+			return nil, ErrEditionArtistUnavailable
+		}
+		artist, err := s.editions.GetEditionArtist(ctx, in.EditionID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrEditionNotFound, err)
+		}
+		if artist == "" || !sameFlowAddress(artist, in.Seller) {
+			return nil, ErrSellerMismatch
+		}
 	}
 
 	// 2. Compute the configured platform fee (in basis points) as ArtDrop's
@@ -489,6 +539,28 @@ func (s *ServiceImpl) OpenEscrow(ctx context.Context, in OpenEscrowInput) (*Purc
 
 // readArtworkPrice reads the server-side price of the artwork from Mongo,
 // selecting the collection by artwork kind.
+//
+// For a fresh edition purchase (CertificateID == 0, issue #135), the Mongo
+// lookup key is the escrowed EditionID's decimal string, not the client's
+// ArtworkID: editionId, buyer and seller arrive separately from the client,
+// and nothing else ties the price actually charged to the edition a fresh
+// CreateEscrow call mints a certificate against. Payload's editions
+// collection is keyed by that same decimal edition id — see the artdrop
+// plugin's re-escrow amount resolver, which derives an edition's price the
+// same way (purchaseStore.GetEditionPrice(strconv.FormatUint(editionID,
+// 10))) from a certificate's on-chain edition id, with no artwork id in
+// play at all. Deriving the key here closes the mismatch by construction:
+// the buyer is always charged the price of the edition that gets escrowed,
+// regardless of what ArtworkID the client separately sends. ArtworkID is
+// still recorded on the audit row for display/reconciliation, and the
+// re-escrow branch (CertificateID != 0) is intentionally left on the
+// client's ArtworkID — that branch never uses EditionID for the escrow call
+// and its certificate is already ownership-checked on-chain before this
+// method runs (see CreatePurchaseCharge's 1b).
+//
+// Painting purchases keep using ArtworkID as before: no equivalent
+// EditionID<->Payload-id convention for paintings is established anywhere
+// in this codebase to derive from (see issue #135's report).
 func (s *ServiceImpl) readArtworkPrice(ctx context.Context, in CreatePurchaseChargeInput) (*datastoremongo.ArtworkPrice, error) {
 	var (
 		price *datastoremongo.ArtworkPrice
@@ -496,7 +568,11 @@ func (s *ServiceImpl) readArtworkPrice(ctx context.Context, in CreatePurchaseCha
 	)
 	switch in.ArtworkKind {
 	case ArtworkEdition:
-		price, err = s.prices.GetEditionPrice(ctx, in.ArtworkID)
+		editionArtworkID := in.ArtworkID
+		if in.CertificateID == 0 {
+			editionArtworkID = strconv.FormatUint(in.EditionID, 10)
+		}
+		price, err = s.prices.GetEditionPrice(ctx, editionArtworkID)
 	case ArtworkPainting:
 		price, err = s.prices.GetPaintingPrice(ctx, in.ArtworkID)
 	default:
@@ -512,6 +588,16 @@ func (s *ServiceImpl) readArtworkPrice(ctx context.Context, in CreatePurchaseCha
 		return nil, fmt.Errorf("read artwork price: %w", err)
 	}
 	return price, nil
+}
+
+// sameFlowAddress compares two Flow address strings for equality regardless
+// of "0x" prefix, case, or missing leading zeros — flow.Address.Hex() always
+// normalizes to the same lowercase, zero-padded form, so this avoids
+// rejecting a legitimately-matching seller over formatting alone (issue
+// #135's seller check must not be defeated NOR falsely tripped by format
+// differences between the on-chain artist and the client's Seller string).
+func sameFlowAddress(a, b string) bool {
+	return flow.HexToAddress(a).Hex() == flow.HexToAddress(b).Hex()
 }
 
 // isDuplicateKeyError reports whether err is a unique-constraint violation.

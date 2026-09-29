@@ -56,3 +56,23 @@ type EscrowCreator interface {
 type ChipReader interface {
 	IsProvisioned(ctx context.Context, chipID string) (bool, error)
 }
+
+// EditionArtistReader resolves the on-chain artist address of an Edition
+// (issue #135). It is implemented by an adapter over
+// *artdrop.Service.GetEditionSummary (see the artdrop plugin wiring).
+//
+// A fresh purchase (CertificateID == 0) mints a brand-new certificate against
+// EditionID and pays its escrow reserve to Seller — both client-supplied,
+// separately from the ArtworkID the price was read for. Nothing on-chain
+// checks that Seller is entitled to that EditionID: create_escrow.cdc takes
+// seller as a free, contract-unvalidated argument (the re-escrow branch is
+// different — it re-offers an EXISTING certificate, and ownership of that
+// certificate is verified on-chain via the seller's collection, see the
+// re-escrow amount resolver in the artdrop plugin). So for a fresh mint,
+// CreatePurchaseCharge must independently confirm that the client's Seller
+// is really EditionID's artist before ever opening the escrow or persisting
+// the audit row (OpenEscrow later reopens escrow from that same persisted
+// row, unquestioned).
+type EditionArtistReader interface {
+	GetEditionArtist(ctx context.Context, editionID uint64) (string, error)
+}
