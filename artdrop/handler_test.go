@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flow-hydraulics/flow-wallet-api/artdrop/authguard"
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"github.com/flow-hydraulics/flow-wallet-api/handlers/middleware"
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
@@ -80,6 +81,173 @@ func TestTransferRequiresCertificateID(t *testing.T) {
 
 	if rw.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+// --- Identity guard (issue #133): transfer origin bound to the caller's
+// flow_address claim, closing an IDOR where any valid token could move a
+// certificate out of an arbitrary account by naming it in the path. These
+// mirror TestCreateOriginalHandlerRejectsMismatchedFlowAddress /
+// AllowsMatchingFlowAddress / AllowsNoClaims above, since TransferFunc reuses
+// the same requireArtistSubject guard on the {address} path segment. ---
+
+func TestTransferHandlerRejectsMismatchedFlowAddress(t *testing.T) {
+	txSvc := &captureTransactionService{}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config:       &configs.Config{ChainID: flow.Emulator},
+	}))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/accounts/0xf8d6e0586b0a20c7/transfer",
+		strings.NewReader(`{"certificateId":0,"to":"0xf8d6e0586b0a20c7"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	// A token whose flow_address is a different account must not be able to
+	// transfer a certificate out of 0xf8d6e0586b0a20c7's collection.
+	req = req.WithContext(middleware.ContextWithClaims(req.Context(), &middleware.AuthClaims{
+		FlowAddress:      "0xother00000000000",
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "payload-user-1"},
+	}))
+	rw := httptest.NewRecorder()
+
+	handler.Transfer().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d: %s", rw.Code, rw.Body.String())
+	}
+	if txSvc.args != nil {
+		t.Fatalf("expected no transaction to be created, got args %v", txSvc.args)
+	}
+}
+
+func TestTransferHandlerAllowsMatchingFlowAddress(t *testing.T) {
+	scriptFile, err := os.CreateTemp(t.TempDir(), "protocol_transfer_*.cdc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scriptFile.WriteString("transaction {}"); err != nil {
+		t.Fatal(err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	txSvc := &captureTransactionService{}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			ChainID:                    flow.Emulator,
+			ScriptPathProtocolTransfer: scriptFile.Name(),
+		},
+	}))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/accounts/0xf8d6e0586b0a20c7/transfer",
+		strings.NewReader(`{"certificateId":0,"to":"0xf8d6e0586b0a20c7"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	// flow_address matches the path origin (case-differing to exercise the
+	// EqualFold comparison — Flow hex addresses are case-insensitive).
+	req = req.WithContext(middleware.ContextWithClaims(req.Context(), &middleware.AuthClaims{
+		FlowAddress:      "0xF8D6E0586B0A20C7",
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "payload-user-1"},
+	}))
+	rw := httptest.NewRecorder()
+
+	handler.Transfer().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestTransferHandlerAllowsNoClaims(t *testing.T) {
+	// No claims in context means auth is disabled (the middleware never ran,
+	// e.g. local dev): requireArtistSubject is a passthrough, so the request
+	// proceeds exactly as it did before the guard was added.
+	scriptFile, err := os.CreateTemp(t.TempDir(), "protocol_transfer_*.cdc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scriptFile.WriteString("transaction {}"); err != nil {
+		t.Fatal(err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	txSvc := &captureTransactionService{}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			ChainID:                    flow.Emulator,
+			ScriptPathProtocolTransfer: scriptFile.Name(),
+		},
+	}))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/accounts/0xf8d6e0586b0a20c7/transfer",
+		strings.NewReader(`{"certificateId":0,"to":"0xf8d6e0586b0a20c7"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	rw := httptest.NewRecorder()
+
+	handler.Transfer().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201 with auth off, got %d: %s", rw.Code, rw.Body.String())
+	}
+}
+
+func TestTransferHandlerOnBehalfBypass(t *testing.T) {
+	// An operator token carrying ScopeArtistOnBehalf may transfer for an
+	// account other than its own flow_address (see requireArtistSubject's
+	// doc comment in handler.go for why this endpoint reuses that scope).
+	scriptFile, err := os.CreateTemp(t.TempDir(), "protocol_transfer_*.cdc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scriptFile.WriteString("transaction {}"); err != nil {
+		t.Fatal(err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	txSvc := &captureTransactionService{}
+	handler := NewHandler(mustNewService(t, plugins.PluginDeps{
+		Transactions: txSvc,
+		Config: &configs.Config{
+			ChainID:                    flow.Emulator,
+			ScriptPathProtocolTransfer: scriptFile.Name(),
+		},
+	}))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/accounts/0xf8d6e0586b0a20c7/transfer",
+		strings.NewReader(`{"certificateId":0,"to":"0xf8d6e0586b0a20c7"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = mux.SetURLVars(req, map[string]string{"address": "0xf8d6e0586b0a20c7"})
+	req = req.WithContext(middleware.ContextWithClaims(req.Context(), &middleware.AuthClaims{
+		FlowAddress:      "0xoperator00000000",
+		Scope:            authguard.ScopeArtistOnBehalf,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "operator-9"},
+	}))
+	rw := httptest.NewRecorder()
+
+	handler.Transfer().ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusCreated {
+		t.Fatalf("expected status 201 for on-behalf operator, got %d: %s", rw.Code, rw.Body.String())
 	}
 }
 

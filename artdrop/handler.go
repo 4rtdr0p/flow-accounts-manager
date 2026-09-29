@@ -14,13 +14,26 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// requireArtistSubject binds an artist-creation request to the caller's
-// flow_address claim. It delegates to authguard.RequireArtistSubject so the
-// artist guard lives next to the Studio/purchase guard (RequireUserSubject) and
-// the two share one consistent shape (fail-closed, on-behalf bypass, honors the
-// "*" wildcard). See authguard.RequireArtistSubject for the full contract.
-func requireArtistSubject(r *http.Request, artistAddress string) error {
-	return authguard.RequireArtistSubject(r, artistAddress)
+// requireArtistSubject binds a request to the caller's flow_address claim. It
+// delegates to authguard.RequireArtistSubject so this guard lives next to the
+// Studio/purchase guard (RequireUserSubject) and the two share one consistent
+// shape (fail-closed, on-behalf bypass, honors the "*" wildcard). See
+// authguard.RequireArtistSubject for the full contract.
+//
+// Despite the name, it is not limited to artist-creation routes: it binds any
+// {address}-shaped Flow account path parameter to the token's own on-chain
+// identity. TransferFunc reuses it for the transfer origin below (issue #133)
+// rather than adding a near-duplicate guard, since the check is identical:
+// bind a Flow address path segment to claims.FlowAddress. That reuse also
+// pulls in ScopeArtistOnBehalf as the bypass scope; no account.transfer-
+// specific on-behalf scope exists in auth/exchange/policy.go, and
+// ScopeArtistOnBehalf is granted only to the operations/admin roles, which
+// already hold higher-trust break-glass scopes (account.sign,
+// transaction.create) capable of moving funds directly. If a transfer-
+// specific on-behalf capability is ever needed, split this back into its own
+// guard/scope instead of stretching ScopeArtistOnBehalf further.
+func requireArtistSubject(r *http.Request, address string) error {
+	return authguard.RequireArtistSubject(r, address)
 }
 
 // Handler exposes HTTP endpoints for the artdrop plugin.
@@ -38,6 +51,12 @@ func (h *Handler) Transfer() http.Handler {
 }
 
 func (h *Handler) TransferFunc(rw http.ResponseWriter, r *http.Request) {
+	address := mux.Vars(r)["address"]
+	if err := requireArtistSubject(r, address); err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+
 	if r.Body == nil || r.Body == http.NoBody {
 		handlers.HandleError(rw, r, handlers.EmptyBodyError)
 		return
@@ -69,7 +88,7 @@ func (h *Handler) TransferFunc(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	sync := r.FormValue(handlers.SyncQueryParameter) != ""
-	job, tx, err := h.svc.Transfer(r.Context(), sync, mux.Vars(r)["address"], req)
+	job, tx, err := h.svc.Transfer(r.Context(), sync, address, req)
 	if err != nil {
 		handlers.HandleError(rw, r, err)
 		return
