@@ -57,6 +57,18 @@ type ChipReader interface {
 	IsProvisioned(ctx context.Context, chipID string) (bool, error)
 }
 
+// JobStateReader reports whether a wallet job has terminally failed. It is
+// implemented by an adapter over jobs.Store (see the artdrop plugin wiring).
+//
+// OpenEscrow uses it to release an escrow claim whose submission job died
+// without creating anything on-chain (a FAILED Cadence job reverts atomically).
+// Only terminal failure counts: a pending, accepted or errored (retryable) job
+// may still seal, and releasing its claim could double-mint a certificate, so
+// the adapter — not the caller — owns the FAILED-vs-retryable distinction.
+type JobStateReader interface {
+	IsJobFailed(ctx context.Context, jobID string) (bool, error)
+}
+
 // EditionArtistReader resolves the on-chain artist address of an Edition
 // (issue #135). It is implemented by an adapter over
 // *artdrop.Service.GetEditionSummary (see the artdrop plugin wiring).

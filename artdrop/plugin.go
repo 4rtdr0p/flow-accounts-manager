@@ -19,6 +19,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/flow-hydraulics/flow-wallet-api/plugins"
 	"github.com/flow-hydraulics/flow-wallet-api/transactions"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/onflow/flow-go-sdk"
 	log "github.com/sirupsen/logrus"
@@ -39,6 +40,27 @@ type purchaseEscrowCreator struct {
 }
 
 type purchaseChipReader struct{ store chips.Store }
+
+// purchaseJobStateReader adapts jobs.Store to the primitive-based
+// purchase.JobStateReader interface: OpenEscrow uses it to decide whether an
+// escrow claim's submission job terminally failed and can be released. Only
+// jobs.Failed counts — terminal, executed and reverted — while INIT/ACCEPTED
+// (possibly still sealing) and ERROR (schedulable for retry) keep the claim,
+// because a second CreateEscrow against a live submission would double-mint
+// the certificate.
+type purchaseJobStateReader struct{ store jobs.Store }
+
+func (r purchaseJobStateReader) IsJobFailed(ctx context.Context, jobID string) (bool, error) {
+	id, err := uuid.Parse(jobID)
+	if err != nil {
+		return false, fmt.Errorf("parse escrow job id %q: %w", jobID, err)
+	}
+	job, err := r.store.Job(id)
+	if err != nil {
+		return false, err
+	}
+	return job.State == jobs.Failed, nil
+}
 
 // purchaseEditionArtistReader adapts *Service.GetEditionSummary to the
 // primitive-based purchase.EditionArtistReader interface (issue #135): it
@@ -197,6 +219,7 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 		purchaseEscrowCreator{svc: p.svc},
 		purchaseChipReader{store: chips.NewGormStore(deps.DB)},
 		purchaseEditionArtistReader{svc: p.svc},
+		purchaseJobStateReader{store: jobs.NewGormStore(deps.DB)},
 		purchasePlatformFeeBps,
 		p.svc.cfg.EscrowClaimWindowSeconds,
 	)

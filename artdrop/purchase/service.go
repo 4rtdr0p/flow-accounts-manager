@@ -15,6 +15,7 @@ import (
 	"github.com/flow-hydraulics/flow-wallet-api/jobs"
 	"github.com/google/uuid"
 	"github.com/onflow/flow-go-sdk"
+	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -109,6 +110,10 @@ type ServiceImpl struct {
 	// check (issue #135). See EditionArtistReader's doc comment.
 	editions       EditionArtistReader
 	platformFeeBps int
+	// jobStates reads a wallet job's terminal state for OpenEscrow's
+	// failed-claim release (see JobStateReader). Nil keeps the historical
+	// fail-closed behavior: an ESCROW_OPENING purchase is never re-openable.
+	jobStates JobStateReader
 
 	// claimWindowSeconds is the buyer's on-chain claim deadline window (issue
 	// #111): the escrow's unlock_at is computed as now() + claimWindowSeconds,
@@ -150,8 +155,10 @@ func FlowAmountForArtworkPrice(priceUSD float64, platformFeeBps int, oracle Pric
 // of it (see Config.PurchasePlatformFeeBasisPoints). claimWindowSeconds is the
 // server-computed unlock_at window (issue #111; see
 // Config.EscrowClaimWindowSeconds) — the buyer's on-chain claim deadline is
-// now() + claimWindowSeconds, never client-supplied.
-func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, chips ChipReader, editions EditionArtistReader, platformFeeBps int, claimWindowSeconds float64) Service {
+// now() + claimWindowSeconds, never client-supplied. jobStates may be nil;
+// that only disables the terminally-failed-claim release in OpenEscrow, which
+// then keeps its historical fail-closed ErrPurchaseNotOpenable.
+func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, charge ChargeClient, escrow EscrowCreator, chips ChipReader, editions EditionArtistReader, jobStates JobStateReader, platformFeeBps int, claimWindowSeconds float64) Service {
 	return &ServiceImpl{
 		store:              store,
 		prices:             prices,
@@ -160,6 +167,7 @@ func NewService(store Store, prices ArtworkPriceReader, oracle PriceOracle, char
 		escrow:             escrow,
 		chips:              chips,
 		editions:           editions,
+		jobStates:          jobStates,
 		platformFeeBps:     platformFeeBps,
 		claimWindowSeconds: claimWindowSeconds,
 		now:                time.Now,
@@ -496,7 +504,18 @@ func (s *ServiceImpl) OpenEscrow(ctx context.Context, in OpenEscrowInput) (*Purc
 		return charge, nil
 	}
 	if charge.Status != PurchaseStatusPaidPendingEscrow || charge.EscrowJobID != "" {
-		return nil, ErrPurchaseNotOpenable
+		// A terminally FAILED escrow job reverted atomically — nothing was
+		// created on-chain — so with no escrowId ever recorded the claim is
+		// dead weight that would keep this purchase 409-locked forever (a
+		// Flow transaction expiry strands exactly this state). Release it and
+		// fall through to a fresh claim; every other state stays fail-closed.
+		released, err := s.releaseFailedEscrowClaim(ctx, charge)
+		if err != nil {
+			return nil, err
+		}
+		if !released {
+			return nil, ErrPurchaseNotOpenable
+		}
 	}
 	if s.chips == nil {
 		return nil, ErrEscrowDisabled
@@ -534,6 +553,46 @@ func (s *ServiceImpl) OpenEscrow(ctx context.Context, in OpenEscrowInput) (*Purc
 	}
 	charge.ChipID, charge.Nonce, charge.EscrowJobID, charge.Status = in.ChipID, in.Nonce, job.ID.String(), PurchaseStatusEscrowOpening
 	return charge, nil
+}
+
+// releaseFailedEscrowClaim releases a purchase's ESCROW_OPENING claim when the
+// wallet job that holds it terminally FAILED. A FAILED Cadence job reverts
+// atomically — no escrow, no certificate exists on-chain — so the claim is
+// unrecoverable: resubmitting the dead job can never succeed, yet without this
+// release the purchase answers ErrPurchaseNotOpenable forever.
+//
+// Fail-closed everywhere else:
+//   - only an ESCROW_OPENING claim with a recorded job can be released (a
+//     claim with no job may have a live in-flight submission);
+//   - only a terminal FAILED state releases (pending, accepted or errored
+//     jobs may still seal, and a second CreateEscrow would double-mint);
+//   - a job-state read error is returned (wrapped in ErrEscrowUnavailable so
+//     callers see a retryable 503, not a misleading permanent 409);
+//   - the store reset is conditional on the row still holding that exact job
+//     id, so a concurrent retry that already re-opened is never clobbered.
+func (s *ServiceImpl) releaseFailedEscrowClaim(ctx context.Context, charge *PurchaseCharge) (bool, error) {
+	if charge.Status != PurchaseStatusEscrowOpening || charge.EscrowJobID == "" || s.jobStates == nil {
+		return false, nil
+	}
+	failed, err := s.jobStates.IsJobFailed(ctx, charge.EscrowJobID)
+	if err != nil {
+		return false, fmt.Errorf("%w: read escrow job %s: %v", ErrEscrowUnavailable, charge.EscrowJobID, err)
+	}
+	if !failed {
+		return false, nil
+	}
+	released, err := s.store.ResetEscrowOpeningAfterFailedJob(ctx, charge.PurchaseID, charge.EscrowJobID)
+	if err != nil {
+		return false, fmt.Errorf("reset failed escrow claim for purchase %s: %w", charge.PurchaseID, err)
+	}
+	if released {
+		log.WithFields(log.Fields{
+			"purchaseId":  charge.PurchaseID,
+			"failedJobId": charge.EscrowJobID,
+			"chipId":      charge.ChipID,
+		}).Warn("released terminally failed escrow claim; obligation is openable again")
+	}
+	return released, nil
 }
 
 // readArtworkPrice reads the server-side price of the artwork from Mongo,
