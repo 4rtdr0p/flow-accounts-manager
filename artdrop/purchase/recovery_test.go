@@ -24,7 +24,7 @@ func TestRecoveryAuthScopesOwnerAndSelector(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Recovery cannot rely on live dependencies or invoke any effects.
-	svc = NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, 0, 0)
+	svc = NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, nil, 0, 0)
 	router := mux.NewRouter()
 	h := NewHandler(svc)
 	router.Handle("/v1/purchases/{purchaseId}", h.GetPurchase())

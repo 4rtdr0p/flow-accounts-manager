@@ -12,4 +12,10 @@ type Store interface {
 	ClaimEscrowOpening(ctx context.Context, purchaseID, chipID string, nonce uint64, idempotencyKey string) (bool, error)
 	SetEscrowJobID(ctx context.Context, purchaseID, jobID string) error
 	ResetEscrowOpening(ctx context.Context, purchaseID string) error
+	// ResetEscrowOpeningAfterFailedJob releases an escrow claim whose wallet
+	// job terminally FAILED (atomic on-chain revert — no escrow or certificate
+	// was created). Conditional on the purchase still holding exactly
+	// failedJobID, so a concurrent fresh claim can never be cleared; a false
+	// result means the row moved on and the caller must not re-open.
+	ResetEscrowOpeningAfterFailedJob(ctx context.Context, purchaseID, failedJobID string) (bool, error)
 }

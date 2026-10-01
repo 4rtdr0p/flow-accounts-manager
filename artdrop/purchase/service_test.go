@@ -174,9 +174,9 @@ func (m *mockEscrowCreator) CreateEscrow(ctx context.Context, sync bool, address
 	if m.returnNilJob {
 		return nil, nil, nil
 	}
-	if m.job == nil {
-		m.job = &jobs.Job{ID: uuid.New()}
-	}
+	// A fresh job per submission, like the real escrow creator: the re-open
+	// path must submit a NEW job, never replay the dead one.
+	m.job = &jobs.Job{ID: uuid.New()}
 	return m.job, nil, nil
 }
 
@@ -215,6 +215,9 @@ func (m *mockStore) ClaimEscrowOpening(context.Context, string, string, uint64, 
 }
 func (m *mockStore) SetEscrowJobID(context.Context, string, string) error { return nil }
 func (m *mockStore) ResetEscrowOpening(context.Context, string) error     { return nil }
+func (m *mockStore) ResetEscrowOpeningAfterFailedJob(context.Context, string, string) (bool, error) {
+	return false, nil
+}
 
 // newPurchaseTestService builds a ServiceImpl wired with the given mocks and a
 // fresh in-memory DB.
@@ -244,7 +247,7 @@ func newPurchaseTestServiceWithDB(t *testing.T, prices ArtworkPriceReader, oracl
 	if len(editionArtists) > 0 {
 		artists = &mockEditionArtistReader{artists: editionArtists[0]}
 	}
-	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, artists, platformFeeBps, testClaimWindowSeconds)
+	return db, NewService(NewGormStore(db), prices, oracle, charge, escrow, &mockChipReader{provisioned: true}, artists, nil, platformFeeBps, testClaimWindowSeconds)
 }
 
 func validPurchaseInput() CreatePurchaseChargeInput {
@@ -465,6 +468,181 @@ func TestOpenEscrow_RejectsUnknownChip(t *testing.T) {
 	_, err = svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "missing", IdempotencyKey: "open-1"})
 	if !errors.Is(err, ErrChipNotProvisioned) {
 		t.Fatalf("err = %v, want ErrChipNotProvisioned", err)
+	}
+}
+
+// mockJobStateReader is a scripted JobStateReader: failed maps job id ->
+// terminal failure, and err simulates the jobs store being unreadable.
+type mockJobStateReader struct {
+	failed map[string]bool
+	err    error
+	reads  int
+}
+
+func (m *mockJobStateReader) IsJobFailed(_ context.Context, jobID string) (bool, error) {
+	m.reads++
+	if m.err != nil {
+		return false, m.err
+	}
+	return m.failed[jobID], nil
+}
+
+// TestOpenEscrow_ReopensAfterTerminalJobFailure pins the recovery this fix
+// exists for: a Flow transaction expiry (or any terminal Cadence revert)
+// strands the purchase in ESCROW_OPENING with a dead job id and no on-chain
+// escrow. A retry with a fresh idempotency key must release the dead claim
+// and submit a NEW job, reusing the frozen paid obligation (amount,
+// unlock_at, parties) — never resubmitting or mutating them.
+func TestOpenEscrow_ReopensAfterTerminalJobFailure(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	escrow := &mockEscrowCreator{}
+	db, svcIface := newPurchaseTestServiceWithDB(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, &mockChargeClient{}, escrow, 500)
+	svc := svcIface.(*ServiceImpl)
+	in := validPurchaseInput()
+	in.ChipID = ""
+	paid, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 19, IdempotencyKey: "open-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstJobID := first.EscrowJobID
+
+	// Simulate the terminal on-chain failure: the job ran, reverted atomically.
+	// This is the exact state production reported (Flow tx expiry): without the
+	// release path, the retry below would 409 forever.
+	svc.jobStates = &mockJobStateReader{failed: map[string]bool{firstJobID: true}}
+
+	retry := OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 20, IdempotencyKey: "open-1-retry-after:" + firstJobID}
+
+	second, err := svc.OpenEscrow(context.Background(), retry)
+	if err != nil {
+		t.Fatalf("re-open after terminal failure: %v", err)
+	}
+	if second.EscrowJobID == "" || second.EscrowJobID == firstJobID {
+		t.Fatalf("re-open escrowJobId = %q, want a fresh job distinct from %q", second.EscrowJobID, firstJobID)
+	}
+	if second.Status != PurchaseStatusEscrowOpening {
+		t.Fatalf("re-open status = %q, want %q", second.Status, PurchaseStatusEscrowOpening)
+	}
+	if !escrow.called || escrow.job == nil || escrow.job.ID.String() != second.EscrowJobID {
+		t.Fatal("re-open did not submit a fresh escrow job")
+	}
+	if escrow.amount != paid.FlowAmount || escrow.unlockAt != paid.UnlockAt {
+		t.Fatal("re-open did not reuse the frozen paid obligation values")
+	}
+
+	// The durable row carries the new claim, not the dead one.
+	var row PurchaseCharge
+	if err := db.Where("purchase_id = ?", paid.PurchaseID).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != PurchaseStatusEscrowOpening || row.EscrowJobID != second.EscrowJobID || row.EscrowIdempotencyKey != retry.IdempotencyKey {
+		t.Fatalf("durable row after re-open = status %q job %q key %q, want %q/%s/%s", row.Status, row.EscrowJobID, row.EscrowIdempotencyKey, PurchaseStatusEscrowOpening, second.EscrowJobID, retry.IdempotencyKey)
+	}
+}
+
+// TestOpenEscrow_FailedClaimReleaseFailClosed pins every non-release path:
+// only a READABLE, terminal FAILED job releases the claim. A retryable or
+// in-flight job, an unwired reader, or an unreadable jobs store must keep
+// the claim — a second CreateEscrow against a submission that might still
+// seal would double-mint the certificate.
+func TestOpenEscrow_FailedClaimReleaseFailClosed(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+
+	openClaimed := func(t *testing.T) (*mockEscrowCreator, *ServiceImpl, string, OpenEscrowInput) {
+		t.Helper()
+		escrow := &mockEscrowCreator{}
+		_, svcIface := newPurchaseTestServiceWithDB(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, &mockChargeClient{}, escrow, 500)
+		svc := svcIface.(*ServiceImpl)
+		in := validPurchaseInput()
+		in.ChipID = ""
+		paid, err := svc.CreatePurchaseCharge(context.Background(), in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		open := OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 19, IdempotencyKey: "open-1"}
+		first, err := svc.OpenEscrow(context.Background(), open)
+		if err != nil {
+			t.Fatal(err)
+		}
+		retry := OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 20, IdempotencyKey: "open-2"}
+		return escrow, svc, first.EscrowJobID, retry
+	}
+
+	t.Run("job still retryable or in flight", func(t *testing.T) {
+		escrow, svc, jobID, retry := openClaimed(t)
+		svc.jobStates = &mockJobStateReader{failed: map[string]bool{}} // INIT/ACCEPTED/ERROR: not terminal
+		if _, err := svc.OpenEscrow(context.Background(), retry); !errors.Is(err, ErrPurchaseNotOpenable) {
+			t.Fatalf("err = %v, want ErrPurchaseNotOpenable", err)
+		}
+		// The mock mints a fresh job per CreateEscrow call, so the last job
+		// still being the FIRST one proves no second submission ran.
+		if escrow.job == nil || escrow.job.ID.String() != jobID {
+			t.Fatal("claim must be kept and no second CreateEscrow may run while the job is not terminally failed")
+		}
+	})
+	t.Run("job state reader unwired keeps historical behavior", func(t *testing.T) {
+		_, svc, _, retry := openClaimed(t)
+		if _, err := svc.OpenEscrow(context.Background(), retry); !errors.Is(err, ErrPurchaseNotOpenable) {
+			t.Fatalf("err = %v, want ErrPurchaseNotOpenable", err)
+		}
+	})
+	t.Run("job state unreadable is retryable unavailable", func(t *testing.T) {
+		_, svc, _, retry := openClaimed(t)
+		svc.jobStates = &mockJobStateReader{err: errors.New("jobs store down")}
+		if _, err := svc.OpenEscrow(context.Background(), retry); !errors.Is(err, ErrEscrowUnavailable) {
+			t.Fatalf("err = %v, want ErrEscrowUnavailable", err)
+		}
+	})
+}
+
+// TestResetEscrowOpeningAfterFailedJob_OnlyExactJob pins the store predicate
+// that makes concurrent retries safe: the reset matches only a row still
+// holding exactly the failed job, and the row is claimable again afterwards.
+func TestResetEscrowOpeningAfterFailedJob_OnlyExactJob(t *testing.T) {
+	prices := &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{ID: "edition-1", PriceUSD: 100}}
+	escrow := &mockEscrowCreator{}
+	db, svcIface := newPurchaseTestServiceWithDB(t, prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, &mockChargeClient{}, escrow, 500)
+	svc := svcIface.(*ServiceImpl)
+	in := validPurchaseInput()
+	in.ChipID = ""
+	paid, err := svc.CreatePurchaseCharge(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 19, IdempotencyKey: "open-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewGormStore(db)
+
+	// A different job id (a concurrent retry already re-opened) must not reset.
+	released, err := store.ResetEscrowOpeningAfterFailedJob(context.Background(), paid.PurchaseID, "not-the-job")
+	if err != nil || released {
+		t.Fatalf("reset with foreign job = %v/%v, want false/nil", released, err)
+	}
+
+	// The exact failed job releases exactly once.
+	released, err = store.ResetEscrowOpeningAfterFailedJob(context.Background(), paid.PurchaseID, first.EscrowJobID)
+	if err != nil || !released {
+		t.Fatalf("reset with exact job = %v/%v, want true/nil", released, err)
+	}
+	released, err = store.ResetEscrowOpeningAfterFailedJob(context.Background(), paid.PurchaseID, first.EscrowJobID)
+	if err != nil || released {
+		t.Fatalf("second reset = %v/%v, want false/nil (row already moved on)", released, err)
+	}
+
+	// The released obligation is claimable again by a fresh open.
+	second, err := svc.OpenEscrow(context.Background(), OpenEscrowInput{PurchaseID: paid.PurchaseID, ChipID: "chip-9", Nonce: 21, IdempotencyKey: "open-2"})
+	if err != nil {
+		t.Fatalf("re-claim after reset: %v", err)
+	}
+	if second.EscrowJobID == first.EscrowJobID {
+		t.Fatal("re-claim reused the dead job id")
 	}
 }
 
@@ -780,7 +958,7 @@ func TestCreatePurchaseCharge_EditionArtistUnavailableFailsClosed(t *testing.T) 
 	if err := db.AutoMigrate(&PurchaseCharge{}, &handlers.PurchaseIntent{}); err != nil {
 		t.Fatal(err)
 	}
-	svcImpl := NewService(NewGormStore(db), prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, &mockEscrowCreator{}, &mockChipReader{provisioned: true}, nil /* no EditionArtistReader configured */, 500, testClaimWindowSeconds)
+	svcImpl := NewService(NewGormStore(db), prices, &mockPriceOracle{price: &PythPrice{PriceUSD: 0.5}}, stripe, &mockEscrowCreator{}, &mockChipReader{provisioned: true}, nil /* no EditionArtistReader configured */, nil, 500, testClaimWindowSeconds)
 
 	_, chargeErr := svcImpl.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	if !errors.Is(chargeErr, ErrEditionArtistUnavailable) {
@@ -827,7 +1005,7 @@ func TestCreatePurchaseCharge_PriceDerivedFromEditionIDNotClientArtworkID(t *tes
 // A store without durable primitives must fail closed before any effects.
 func TestCreatePurchaseCharge_RequiresDurableStore(t *testing.T) {
 	stripe := &mockChargeClient{}
-	svc := NewService(&mockStore{}, nil, nil, stripe, nil, nil, nil, 500, testClaimWindowSeconds)
+	svc := NewService(&mockStore{}, nil, nil, stripe, nil, nil, nil, nil, 500, testClaimWindowSeconds)
 	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	var re *RecoveryError
 	if !errors.As(err, &re) || re.Code != "RESERVATION_UNAVAILABLE" || stripe.called {

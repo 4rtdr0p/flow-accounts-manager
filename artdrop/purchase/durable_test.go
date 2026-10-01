@@ -34,7 +34,7 @@ func goodPrices() *mockArtworkPriceReader {
 	return &mockArtworkPriceReader{editionPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100}, paintingPrice: &datastoremongo.ArtworkPrice{PriceUSD: 100}}
 }
 func serviceOn(db *gorm.DB, stripe ChargeClient, escrow EscrowCreator) *ServiceImpl {
-	return NewService(NewGormStore(db), goodPrices(), &mockPriceOracle{}, stripe, escrow, nil, defaultTestEditionArtists(), 500, testClaimWindowSeconds).(*ServiceImpl)
+	return NewService(NewGormStore(db), goodPrices(), &mockPriceOracle{}, stripe, escrow, nil, defaultTestEditionArtists(), nil, 500, testClaimWindowSeconds).(*ServiceImpl)
 }
 func codeIs(t *testing.T, err error, code string) {
 	t.Helper()
@@ -84,7 +84,7 @@ func concurrentRecovery(t *testing.T, db1, db2 *gorm.DB) {
 		t.Fatal(err)
 	}
 	// Reconstruct the service: replay must not need prices, oracle, Stripe or escrow.
-	restarted := NewService(NewGormStore(db2), nil, nil, nil, nil, nil, nil, 0, 0)
+	restarted := NewService(NewGormStore(db2), nil, nil, nil, nil, nil, nil, nil, 0, 0)
 	replay, err := restarted.CreatePurchaseCharge(context.Background(), in)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestDurableTermsConflictBeforeDependenciesAndAfterBodyExpiry(t *testing.T) 
 	if err := handlers.PurgePurchaseResponseBodies(context.Background(), db, time.Now().Add(31*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, 0, 0)
+	restarted := NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, nil, 0, 0)
 	for _, tc := range changes {
 		t.Run(tc.name, func(t *testing.T) {
 			changed := in
@@ -402,7 +402,7 @@ func TestDurableHTTPReplayCanonicalJSONAndLostResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Discard the response entirely and recreate service; GET still recovers it.
-	restarted := NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, 0, 0)
+	restarted := NewService(NewGormStore(db), nil, nil, nil, nil, nil, nil, nil, 0, 0)
 	got, err := restarted.GetIntentRecovery(context.Background(), "user-1", validPurchaseInput().IdempotencyKey)
 	if err != nil || got.Purchase.PurchaseID != p.PurchaseID {
 		t.Fatalf("%v", err)
@@ -588,7 +588,7 @@ func TestDurablePreEffectHTTPResultIsExactReplay(t *testing.T) {
 func TestDurableInvalidConfigurationNeverCharges(t *testing.T) {
 	stripe := &mockChargeClient{}
 	db, _ := newPurchaseTestServiceWithDB(t, nil, nil, nil, nil, 500)
-	svc := NewService(NewGormStore(db, DurabilityOptions{}), goodPrices(), &mockPriceOracle{}, stripe, nil, nil, nil, 500, 0)
+	svc := NewService(NewGormStore(db, DurabilityOptions{}), goodPrices(), &mockPriceOracle{}, stripe, nil, nil, nil, nil, 500, 0)
 	_, err := svc.CreatePurchaseCharge(context.Background(), validPurchaseInput())
 	codeIs(t, err, "RESERVATION_UNAVAILABLE")
 	if stripe.called {
@@ -608,7 +608,7 @@ func TestDurableCommittedResultSurvivesReportedCommitFailure(t *testing.T) {
 	stripe := &mockChargeClient{}
 	db, _ := newPurchaseTestServiceWithDB(t, nil, nil, nil, nil, 500)
 	store := commitAcknowledgementLost{NewGormStore(db).(*GormStore)}
-	svc := NewService(store, goodPrices(), &mockPriceOracle{}, stripe, nil, nil, defaultTestEditionArtists(), 500, testClaimWindowSeconds)
+	svc := NewService(store, goodPrices(), &mockPriceOracle{}, stripe, nil, nil, defaultTestEditionArtists(), nil, 500, testClaimWindowSeconds)
 	in := validPurchaseInput()
 	in.ChipID = ""
 	_, err := svc.CreatePurchaseCharge(context.Background(), in)
