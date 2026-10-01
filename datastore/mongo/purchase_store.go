@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/flow-hydraulics/flow-wallet-api/configs"
 	"go.mongodb.org/mongo-driver/bson"
@@ -36,6 +37,7 @@ type PurchaseStore struct {
 	client        *Client
 	editionsColl  string
 	paintingsColl string
+	mirrorColl    string
 }
 
 // NewPurchaseStore creates a read-only store for the editions and paintings
@@ -48,6 +50,7 @@ func NewPurchaseStore(client *Client, cfg *configs.Config) *PurchaseStore {
 		client:        client,
 		editionsColl:  cfg.MongoEditionsCollection,
 		paintingsColl: cfg.MongoPaintingsCollection,
+		mirrorColl:    cfg.MongoBlockchainEditionsCollection,
 	}
 }
 
@@ -63,6 +66,19 @@ func (s *PurchaseStore) GetEditionPrice(ctx context.Context, editionID string) (
 	}
 
 	raw, err := s.findArtwork(ctx, s.editionsColl, editionID)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		// Fresh purchases (#135) key the lookup by the numeric on-chain
+		// edition id, but the editions collection is keyed by Payload ids
+		// (ObjectIds). Resolve the on-chain id through the blockchain
+		// editions mirror and retry — the priced document must stay bound
+		// to the edition being escrowed, so the client-supplied artworkId
+		// is deliberately NOT used here.
+		resolved, rerr := s.resolveEditionIDByChainID(ctx, editionID)
+		if rerr == nil && resolved != "" && resolved != editionID {
+			raw, err = s.findArtwork(ctx, s.editionsColl, resolved)
+			editionID = resolved
+		}
+	}
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrArtworkNotFound
@@ -114,6 +130,34 @@ func (s *PurchaseStore) GetPaintingPrice(ctx context.Context, paintingID string)
 	}
 
 	return &ArtworkPrice{ID: paintingID, PriceUSD: *doc.OriginalPrice}, nil
+}
+
+// resolveEditionIDByChainID maps a numeric on-chain edition id (what the
+// purchase charge sends for fresh escrows, issue #135) to the Payload
+// edition id through the blockchain-editions mirror. Non-numeric ids and
+// missing mirror rows resolve to "" without an error — the caller keeps its
+// own not-found handling.
+func (s *PurchaseStore) resolveEditionIDByChainID(ctx context.Context, chainID string) (string, error) {
+	numeric, err := strconv.ParseUint(chainID, 10, 64)
+	if err != nil {
+		return "", nil // not a numeric on-chain id — nothing to resolve
+	}
+	if s.mirrorColl == "" {
+		return "", nil // mirror not configured — keep legacy behavior
+	}
+	var doc struct {
+		EditionID string `bson:"editionId"`
+	}
+	// MongoDB compares numeric types by value (int32/int64/double), so an
+	// int64 query matches however Payload stored the field.
+	err = s.client.Collection(s.mirrorColl).FindOne(ctx, bson.M{"blockchainEditionId": int64(numeric)}).Decode(&doc)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", nil
+		}
+		return "", err
+	}
+	return doc.EditionID, nil
 }
 
 // findArtwork resolves Payload artwork ids across documents that store the

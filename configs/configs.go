@@ -218,6 +218,13 @@ type Config struct {
 	// whose documents carry the original artwork price in dollars
 	// (paintings.originalPrice). Read-only, keyed by painting id.
 	MongoPaintingsCollection string `env:"MONGO_PAINTINGS_COLLECTION" envDefault:"paintings"`
+	// MongoBlockchainEditionsCollection is the on-chain edition mirror
+	// (Payload's blockchain-editions): each document carries the numeric
+	// on-chain blockchainEditionId and the Payload edition id it belongs to.
+	// The purchase price lookup resolves numeric on-chain edition ids
+	// through this mirror (#135) — the editions collection itself is keyed
+	// by Payload ids, not by the on-chain number.
+	MongoBlockchainEditionsCollection string `env:"MONGO_BLOCKCHAIN_EDITIONS_COLLECTION" envDefault:"blockchain-editions"`
 	// MongoConnectTimeout is the timeout for establishing the Mongo connection.
 	MongoConnectTimeout time.Duration `env:"MONGO_CONNECT_TIMEOUT" envDefault:"10s"`
 	// StudioPricingCacheTTL is how long the in-memory cache of the active

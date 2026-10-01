@@ -99,17 +99,16 @@ type Service interface {
 
 // ServiceImpl implements the purchase Service.
 type ServiceImpl struct {
-	store              Store
-	prices             ArtworkPriceReader
-	oracle             PriceOracle
-	charge             ChargeClient
-	escrow             EscrowCreator
-	chips              ChipReader
+	store  Store
+	prices ArtworkPriceReader
+	oracle PriceOracle
+	charge ChargeClient
+	escrow EscrowCreator
+	chips  ChipReader
 	// editions resolves EditionID's on-chain artist for the fresh-mint seller
 	// check (issue #135). See EditionArtistReader's doc comment.
-	editions           EditionArtistReader
-	platformFeeBps     int
-	shippingRatePerUSD float64
+	editions       EditionArtistReader
+	platformFeeBps int
 
 	// claimWindowSeconds is the buyer's on-chain claim deadline window (issue
 	// #111): the escrow's unlock_at is computed as now() + claimWindowSeconds,
