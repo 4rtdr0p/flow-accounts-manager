@@ -156,7 +156,77 @@ func newPurchaseStoreForTest(mt *mtest.T, collection string) *PurchaseStore {
 		client:        &Client{client: mt.Client, db: mt.Client.Database("payload")},
 		editionsColl:  collection,
 		paintingsColl: collection,
+		mirrorColl:    "blockchain-editions",
 	}
+}
+
+// #135 keys fresh-purchase price lookups by the numeric on-chain edition id,
+// but the editions collection is keyed by Payload ObjectIds. The lookup must
+// resolve the numeric id through the blockchain-editions mirror instead of
+// failing with ErrArtworkNotFound.
+func TestPurchaseStoreGetEditionPriceByChainIDMirror(t *testing.T) {
+	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+	mt.Run("resolves the numeric chain id through the mirror", func(mt *mtest.T) {
+		id := primitive.NewObjectID()
+		mt.AddMockResponses(
+			// editions _id:"16" (string) → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// editions id:"16" → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// mirror {blockchainEditionId: 16, editionId: <hex>} → hit
+			mtest.CreateCursorResponse(1, "payload.blockchain-editions", mtest.FirstBatch,
+				bson.D{{Key: "blockchainEditionId", Value: int64(16)}, {Key: "editionId", Value: id.Hex()}}),
+			// ack for the mirror cursor teardown (killCursors)
+			mtest.CreateSuccessResponse(),
+			// editions _id:ObjectID(<hex>) → hit with price
+			mtest.CreateCursorResponse(1, "payload.editions", mtest.FirstBatch,
+				bson.D{{Key: "_id", Value: id}, {Key: "price", Value: 12.5}}),
+		)
+
+		price, err := newPurchaseStoreForTest(mt, "editions").GetEditionPrice(context.Background(), "16")
+		if err != nil {
+			mt.Fatalf("GetEditionPrice: %v", err)
+		}
+		if price.PriceUSD != 12.5 {
+			mt.Fatalf("price = %v, want 12.5", price.PriceUSD)
+		}
+		if price.ID != id.Hex() {
+			mt.Fatalf("price.ID = %q, want the resolved Payload id %q", price.ID, id.Hex())
+		}
+		// Four finds: editions(_id), editions(id), mirror(blockchainEditionId),
+		// editions(_id resolved).
+		finds := 0
+		for _, e := range mt.GetAllStartedEvents() {
+			if e.CommandName == "find" {
+				finds++
+			}
+		}
+		if finds != 4 {
+			mt.Fatalf("find count = %d, want 4", finds)
+		}
+	})
+
+	mt.Run("keeps ErrArtworkNotFound when the mirror misses too", func(mt *mtest.T) {
+		mt.AddMockResponses(
+			// editions _id:"16" (string) → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// editions id:"16" → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// mirror → miss
+			mtest.CreateCursorResponse(0, "payload.blockchain-editions", mtest.FirstBatch),
+			// resolved editions _id:ObjectID → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// resolved editions _id:<hex string> → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+			// resolved editions id:<hex> → miss
+			mtest.CreateCursorResponse(0, "payload.editions", mtest.FirstBatch),
+		)
+
+		_, err := newPurchaseStoreForTest(mt, "editions").GetEditionPrice(context.Background(), "16")
+		if !errors.Is(err, ErrArtworkNotFound) {
+			mt.Fatalf("error = %v, want ErrArtworkNotFound", err)
+		}
+	})
 }
 
 func assertArtworkLookup(t *mtest.T, field string) {
