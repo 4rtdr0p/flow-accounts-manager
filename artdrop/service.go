@@ -451,9 +451,16 @@ func (s *Service) ActivateEdition(ctx context.Context, sync bool, editionID uint
 		return nil, nil, nil
 	}
 
-	adminAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
+	// The ProtocolAdmin RESOURCE holder signs — NOT necessarily the wallet's
+	// AdminAddress (which holds only narrow capabilities). Emulator keeps the
+	// single-account default.
+	signer := s.deps.Config.AdminAddress
+	if s.cfg.ArtDropProtocolAdminAddress != "" {
+		signer = s.cfg.ArtDropProtocolAdminAddress
+	}
+	adminAddress, err := flow_helpers.ValidateAddress(signer, s.deps.Config.ChainID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("validate admin address: %w", err)
+		return nil, nil, fmt.Errorf("validate protocol admin address: %w", err)
 	}
 
 	job, tx, err := s.deps.Transactions.Create(

@@ -39,6 +39,14 @@ type Config struct {
 
 	// ArtDropCoreAddress is the account ArtDropCore is deployed to.
 	ArtDropCoreAddress string `env:"ARTDROP_CORE_ADDRESS,notEmpty" envDefault:"0xd97d6774544fcd9c"`
+	// ArtDropProtocolAdminAddress is the account holding the ProtocolAdmin
+	// RESOURCE (the ArtDropCore deployer). The wallet's AdminAddress only holds
+	// narrow capabilities (ArtistOnboarding/ArtistDirect) — activation needs the
+	// GovernanceAdmin entitlement, which the protocol deliberately does NOT
+	// delegate via capabilities (G-04: resource holder or governance timelock
+	// only). The deployer account must be imported into the wallet for this to
+	// sign; defaults to AdminAddress for single-account emulator deployments.
+	ArtDropProtocolAdminAddress string `env:"ARTDROP_PROTOCOL_ADMIN_ADDRESS" envDefault:""`
 
 	// ArtDropRegistryAddress is the account ArtDropRegistry is deployed to.
 	ArtDropRegistryAddress string `env:"ARTDROP_REGISTRY_ADDRESS,notEmpty" envDefault:"0xd97d6774544fcd9c"`
@@ -324,6 +332,17 @@ func (c *Config) normalizeAndValidate() error {
 			return fmt.Errorf("%s: %w", f.name, err)
 		}
 		*f.value = normalized
+	}
+
+	// Optional: the ProtocolAdmin RESOURCE holder (ArtDropCore deployer). Same
+	// canonical form as the contract addresses; empty keeps the AdminAddress
+	// default (single-account emulator deployments).
+	if c.ArtDropProtocolAdminAddress != "" {
+		normalized, err := validateContractAddress(c.ArtDropProtocolAdminAddress)
+		if err != nil {
+			return fmt.Errorf("ARTDROP_PROTOCOL_ADMIN_ADDRESS: %w", err)
+		}
+		c.ArtDropProtocolAdminAddress = normalized
 	}
 
 	return nil
