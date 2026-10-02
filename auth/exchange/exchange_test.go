@@ -576,6 +576,7 @@ func TestAdminCoversAllNonExemptScopes(t *testing.T) {
 		// operations actions
 		"account.artdrop.escrow.void", "account.artdrop.escrow.reescrow", "account.artdrop.escrow.open-paid",
 		"account.artdrop.original.create", "account.artdrop.edition.create",
+		"account.artdrop.edition.activate",
 		"account.artdrop.artist.onboard", "account.key.graduate", "account.key.sync",
 		"watchlist.write", "ops.run", "system.write", "chip.provision",
 		// capability scopes: granted by role but required by no route, so they

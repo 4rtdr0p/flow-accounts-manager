@@ -248,7 +248,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		onboardArtistCDC:               sub(onboardArtistCDC),
 		setupArtistDirectClaimCDC:      sub(setupArtistDirectClaimCDC),
 		createOriginalCDC:              sub(createOriginalCDC),
-		activateEditionCDC:            sub(activateEditionCDC),
+		activateEditionCDC:             sub(activateEditionCDC),
 		createEditionCDC:               sub(createEditionCDC),
 
 		escrowCache:   newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
