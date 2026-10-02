@@ -101,6 +101,9 @@ var createOriginalCDC string
 //go:embed cdc/create_edition.cdc
 var createEditionCDC string
 
+//go:embed cdc/activate_edition.cdc
+var activateEditionCDC string
+
 // defaultVaultIdentifier is the only storage path escrow creation is allowed
 // to withdraw from: the standard FLOW vault, matching the /storage/
 // flowTokenVault path release_escrow.cdc, cancel_escrow.cdc and
@@ -140,6 +143,7 @@ type Service struct {
 	isArtistCDC                    string
 	onboardArtistCDC               string
 	setupArtistDirectClaimCDC      string
+	activateEditionCDC             string
 	createOriginalCDC              string
 	createEditionCDC               string
 
@@ -244,6 +248,7 @@ func NewService(deps plugins.PluginDeps, cfg *Config) (*Service, error) {
 		onboardArtistCDC:               sub(onboardArtistCDC),
 		setupArtistDirectClaimCDC:      sub(setupArtistDirectClaimCDC),
 		createOriginalCDC:              sub(createOriginalCDC),
+		activateEditionCDC:            sub(activateEditionCDC),
 		createEditionCDC:               sub(createEditionCDC),
 
 		escrowCache:   newEscrowCache(escrowCacheCapacity, escrowCacheTTL),
@@ -419,6 +424,50 @@ func (s *Service) CreateOriginal(ctx context.Context, sync bool, artistAddress s
 		},
 		TxTypeCreateOriginal,
 	)
+}
+
+// ActivateEdition transitions an on-chain Edition from Draft to Active so
+// createEscrow can mint certificates against it (ArtDropCore requires Active
+// or Locked). Signed by the wallet-api admin account — the same ProtocolAdmin
+// holder onboard_artist.cdc signs as; artist accounts cannot activate.
+//
+// Idempotent: the on-chain state is read first and an edition that is already
+// Active (or beyond — Locked/SoldOut/Paused/Archived) returns a no-op result
+// (nil job) instead of submitting a transaction the contract would panic on
+// (activate_edition only accepts Draft as its source state). The caller
+// distinguishes the no-op from an error by the nil job AND nil error.
+func (s *Service) ActivateEdition(ctx context.Context, sync bool, editionID uint64) (*jobs.Job, *transactions.Transaction, error) {
+	summary, err := s.GetEditionSummary(ctx, editionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read edition state before activation: %w", err)
+	}
+	if summary == nil {
+		return nil, nil, fmt.Errorf("edition %d does not exist on-chain", editionID)
+	}
+	// get_edition_summary.cdc reports state as the EditionState rawValue
+	// string: 0=Draft, 1=Active, 2=Locked, 3=SoldOut, 4=Paused, 5=Archived.
+	if summary.State != "0" {
+		// Already activated (or terminal) — nothing to submit.
+		return nil, nil, nil
+	}
+
+	adminAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("validate admin address: %w", err)
+	}
+
+	job, tx, err := s.deps.Transactions.Create(
+		ctx,
+		sync,
+		adminAddress,
+		s.activateEditionCDC,
+		[]transactions.Argument{cadence.NewUInt64(editionID)},
+		TxTypeActivateEdition,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("activate edition: %w", err)
+	}
+	return job, tx, nil
 }
 
 // CreateEdition creates an Edition signed by the artist account.

@@ -318,6 +318,9 @@ func (p *Plugin) RegisterRoutes(router *mux.Router, deps plugins.PluginDeps) {
 	router.Handle("/artdrop/originals/{origId}", h.GetOriginalSummary()).Methods(http.MethodGet)
 	router.Handle("/artdrop/originals/{origId}/edition-ids", h.GetEditionIDsByOriginal()).Methods(http.MethodGet)
 	router.Handle("/artdrop/editions/{edId}", h.GetEditionSummary()).Methods(http.MethodGet)
+	// Admin-signed Draft→Active transition (ProtocolAdmin holder); idempotent
+	// no-op (200 {"alreadyActive":true}) when the edition is past Draft.
+	router.Handle("/artdrop/editions/{edId}/activate", h.ActivateEdition()).Methods(http.MethodPost)
 	router.Handle("/artdrop/config/platform-fee", h.GetPlatformFee()).Methods(http.MethodGet)
 	router.Handle("/artdrop/config/market-mode", h.GetMarketMode()).Methods(http.MethodGet)
 	router.Handle("/accounts/{address}/artdrop/is-artist", h.IsArtist()).Methods(http.MethodGet)
