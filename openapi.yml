@@ -1215,6 +1215,34 @@ paths:
           description: OK
         '404':
           description: Not Found
+  '/artdrop/editions/{edId}/activate':
+    post:
+      summary: Activate an ArtDrop edition (Draft to Active)
+      description: >-
+        Admin-signed on-chain transition so createEscrow can mint certificates
+        (ArtDropCore requires Active or Locked). Idempotent: answers
+        200 {"alreadyActive":true} with no transaction when the edition is
+        already past Draft.
+      operationId: activateArtDropEdition
+      x-required-scopes:
+        - account.artdrop.edition.activate
+      tags:
+        - Account Transactions
+      parameters:
+        - name: edId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/sync'
+      responses:
+        '200':
+          description: Already active (idempotent no-op)
+        '201':
+          description: Created
+        '400':
+          description: Invalid edition id
   '/artdrop/config/platform-fee':
     get:
       summary: Get ArtDrop platform fee

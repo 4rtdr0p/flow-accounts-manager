@@ -215,6 +215,39 @@ func (h *Handler) CreateEditionFunc(rw http.ResponseWriter, r *http.Request) {
 	h.handleTransactionResponse(rw, sync, job, tx)
 }
 
+func (h *Handler) ActivateEdition() http.Handler {
+	return handlers.UseJson(http.HandlerFunc(h.ActivateEditionFunc))
+}
+
+func (h *Handler) ActivateEditionFunc(rw http.ResponseWriter, r *http.Request) {
+	editionID, err := strconv.ParseUint(mux.Vars(r)["edId"], 10, 64)
+	if err != nil {
+		handlers.HandleError(rw, r, &errors.RequestError{
+			StatusCode: http.StatusBadRequest,
+			Err:        fmt.Errorf("invalid edition id: %w", err),
+		})
+		return
+	}
+
+	sync := r.FormValue(handlers.SyncQueryParameter) != ""
+	job, tx, err := h.svc.ActivateEdition(r.Context(), sync, editionID)
+	if err != nil {
+		handlers.HandleError(rw, r, err)
+		return
+	}
+	if job == nil && tx == nil {
+		// Idempotent no-op: the edition is already Active (or beyond).
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(
+			fmt.Sprintf(`{"alreadyActive":true,"editionId":%d}`, editionID),
+		))
+		return
+	}
+
+	h.handleTransactionResponse(rw, sync, job, tx)
+}
+
 func (h *Handler) ReEscrow() http.Handler {
 	return handlers.UseJson(http.HandlerFunc(h.ReEscrowFunc))
 }

@@ -44,6 +44,7 @@ const (
 	scopeEscrowReescrow  = "account.artdrop.escrow.reescrow"
 	scopeOriginalCreate  = "account.artdrop.original.create"
 	scopeEditionCreate   = "account.artdrop.edition.create"
+	scopeEditionActivate = "account.artdrop.edition.activate"
 	scopeArtistOnboard   = "account.artdrop.artist.onboard"
 	scopeAccountGraduate = "account.key.graduate"
 	scopeAccountKeySync  = "account.key.sync"
@@ -123,6 +124,7 @@ var operationsScopes = concatScopes(userScopes, []string{
 	scopeEscrowReescrow,
 	scopeOriginalCreate,
 	scopeEditionCreate,
+	scopeEditionActivate,
 	scopeArtistOnboard,
 	scopeAccountGraduate,
 	scopeAccountKeySync,

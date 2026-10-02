@@ -25,6 +25,7 @@ const (
 	TxTypeCreateOriginal    transactions.Type = "ArtdropCreateOriginal"
 	TxTypeCreateEdition     transactions.Type = "ArtdropCreateEdition"
 	TxTypeProvisionChip     transactions.Type = "ArtdropProvisionChip"
+	TxTypeActivateEdition   transactions.Type = "ArtdropActivateEdition"
 )
 
 // chipSigningModeCustodial is the only Chip.SigningMode value provisioning
