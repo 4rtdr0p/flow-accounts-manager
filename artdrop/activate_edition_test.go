@@ -36,13 +36,21 @@ func (s *activateTxService) ExecuteScript(_ context.Context, _ string, _ []trans
 
 func newActivateHandler(t *testing.T, txSvc *activateTxService) *Handler {
 	t.Helper()
-	return NewHandler(mustNewService(t, plugins.PluginDeps{
+	cfg := ParseTestConfig(t)
+	// A distinct ProtocolAdmin address proves activation does not select this
+	// legacy optional setting as its proposer.
+	cfg.ArtDropProtocolAdminAddress = "0x179b6b1cb6755e31"
+	svc, err := NewService(plugins.PluginDeps{
 		Transactions: txSvc,
 		Config: &configs.Config{
 			AdminAddress: "0xf8d6e0586b0a20c7",
 			ChainID:      flow.Emulator,
 		},
-	}))
+	}, cfg)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	return NewHandler(svc)
 }
 
 func TestActivateEditionSubmitsForDraftEdition(t *testing.T) {
@@ -66,10 +74,14 @@ func TestActivateEditionSubmitsForDraftEdition(t *testing.T) {
 	if len(txSvc.calls) != 1 {
 		t.Fatalf("expected exactly one tx submission, got %d", len(txSvc.calls))
 	}
-	// The ProtocolAdmin holder (the configured admin account) must propose —
-	// artist accounts cannot activate (GovernanceAdmin-gated).
+	// The normal wallet admin must propose, even when the optional legacy
+	// ProtocolAdmin address is configured separately.
 	if txSvc.calls[0].proposerAddress != "0xf8d6e0586b0a20c7" {
-		t.Fatalf("expected the admin proposer, got %q", txSvc.calls[0].proposerAddress)
+		t.Fatalf("expected the normal admin proposer, got %q", txSvc.calls[0].proposerAddress)
+	}
+	if !strings.Contains(txSvc.calls[0].code, "artdropOperationalAdminCap") ||
+		!strings.Contains(txSvc.calls[0].code, "auth(CopyValue)") {
+		t.Fatalf("expected delegated OperationalAdmin activation transaction, got %s", txSvc.calls[0].code)
 	}
 }
 
