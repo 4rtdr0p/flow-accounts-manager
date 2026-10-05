@@ -101,7 +101,7 @@ var createOriginalCDC string
 //go:embed cdc/create_edition.cdc
 var createEditionCDC string
 
-//go:embed cdc/activate_edition.cdc
+//go:embed cdc/activate_edition_via_delegated_cap.cdc
 var activateEditionCDC string
 
 // defaultVaultIdentifier is the only storage path escrow creation is allowed
@@ -428,13 +428,14 @@ func (s *Service) CreateOriginal(ctx context.Context, sync bool, artistAddress s
 
 // ActivateEdition transitions an on-chain Edition from Draft to Active so
 // createEscrow can mint certificates against it (ArtDropCore requires Active
-// or Locked). Signed by the wallet-api admin account — the same ProtocolAdmin
-// holder onboard_artist.cdc signs as; artist accounts cannot activate.
+// or Locked). It is signed by the wallet-api AdminAddress and uses that
+// account's delegated OperationalAdmin capability; artist accounts cannot
+// activate.
 //
 // Idempotent: the on-chain state is read first and an edition that is already
 // Active (or beyond — Locked/SoldOut/Paused/Archived) returns a no-op result
 // (nil job) instead of submitting a transaction the contract would panic on
-// (activate_edition only accepts Draft as its source state). The caller
+// (activateEdition only accepts Draft as its source state). The caller
 // distinguishes the no-op from an error by the nil job AND nil error.
 func (s *Service) ActivateEdition(ctx context.Context, sync bool, editionID uint64) (*jobs.Job, *transactions.Transaction, error) {
 	summary, err := s.GetEditionSummary(ctx, editionID)
@@ -451,16 +452,13 @@ func (s *Service) ActivateEdition(ctx context.Context, sync bool, editionID uint
 		return nil, nil, nil
 	}
 
-	// The ProtocolAdmin RESOURCE holder signs — NOT necessarily the wallet's
-	// AdminAddress (which holds only narrow capabilities). Emulator keeps the
-	// single-account default.
-	signer := s.deps.Config.AdminAddress
-	if s.cfg.ArtDropProtocolAdminAddress != "" {
-		signer = s.cfg.ArtDropProtocolAdminAddress
-	}
-	adminAddress, err := flow_helpers.ValidateAddress(signer, s.deps.Config.ChainID)
+	// OperationalAdmin is delegated privately to the wallet admin at
+	// /storage/artdropOperationalAdminCap. The transaction copies and borrows
+	// that capability, so it must be signed by the normal service AdminAddress,
+	// not by the ProtocolAdmin/GovernanceAdmin resource holder.
+	adminAddress, err := flow_helpers.ValidateAddress(s.deps.Config.AdminAddress, s.deps.Config.ChainID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("validate protocol admin address: %w", err)
+		return nil, nil, fmt.Errorf("validate admin address: %w", err)
 	}
 
 	job, tx, err := s.deps.Transactions.Create(
