@@ -11,29 +11,30 @@ import (
 // Shared by tests that need to walk the full embedded set.
 func embeddedCDCScripts() map[string]string {
 	return map[string]string{
-		"setup_collection.cdc":                setupCollectionCDC,
-		"register_provider.cdc":               registerProviderCDC,
-		"get_certificate_detail.cdc":          getCertificateDetailCDC,
-		"get_certificates.cdc":                getCertificatesCDC,
-		"get_escrow_summary.cdc":              getEscrowSummaryCDC,
-		"get_escrows_by_buyer.cdc":            getEscrowsByBuyerCDC,
-		"get_escrows_by_buyer_expanded.cdc":   getEscrowsByBuyerExpandedCDC,
-		"get_escrows_by_edition.cdc":          getEscrowsByEditionCDC,
-		"get_escrows_by_edition_expanded.cdc": getEscrowsByEditionExpandedCDC,
-		"get_escrows_by_seller_expanded.cdc":  getEscrowsBySellerExpandedCDC,
-		"create_escrow.cdc":                   createEscrowCDC,
-		"re_escrow.cdc":                       reEscrowCDC,
-		"activate_chip_and_settle.cdc":        activateChipAndSettleCDC,
-		"get_original_extended_summary.cdc":   getOriginalExtendedSummaryCDC,
-		"get_edition_summary.cdc":             getEditionSummaryCDC,
-		"get_edition_ids_by_original.cdc":     getEditionIDsByOriginalCDC,
-		"get_platform_fee.cdc":                getPlatformFeeCDC,
-		"get_market_mode_name.cdc":            getMarketModeNameCDC,
-		"is_artist.cdc":                       isArtistCDC,
-		"onboard_artist.cdc":                  onboardArtistCDC,
-		"setup_artist_direct_claim.cdc":       setupArtistDirectClaimCDC,
-		"create_original.cdc":                 createOriginalCDC,
-		"create_edition.cdc":                  createEditionCDC,
+		"setup_collection.cdc":                   setupCollectionCDC,
+		"register_provider.cdc":                  registerProviderCDC,
+		"get_certificate_detail.cdc":             getCertificateDetailCDC,
+		"get_certificates.cdc":                   getCertificatesCDC,
+		"get_escrow_summary.cdc":                 getEscrowSummaryCDC,
+		"get_escrows_by_buyer.cdc":               getEscrowsByBuyerCDC,
+		"get_escrows_by_buyer_expanded.cdc":      getEscrowsByBuyerExpandedCDC,
+		"get_escrows_by_edition.cdc":             getEscrowsByEditionCDC,
+		"get_escrows_by_edition_expanded.cdc":    getEscrowsByEditionExpandedCDC,
+		"get_escrows_by_seller_expanded.cdc":     getEscrowsBySellerExpandedCDC,
+		"create_escrow.cdc":                      createEscrowCDC,
+		"re_escrow.cdc":                          reEscrowCDC,
+		"activate_chip_and_settle.cdc":           activateChipAndSettleCDC,
+		"get_original_extended_summary.cdc":      getOriginalExtendedSummaryCDC,
+		"get_edition_summary.cdc":                getEditionSummaryCDC,
+		"get_edition_ids_by_original.cdc":        getEditionIDsByOriginalCDC,
+		"get_platform_fee.cdc":                   getPlatformFeeCDC,
+		"get_market_mode_name.cdc":               getMarketModeNameCDC,
+		"is_artist.cdc":                          isArtistCDC,
+		"onboard_artist.cdc":                     onboardArtistCDC,
+		"setup_artist_direct_claim.cdc":          setupArtistDirectClaimCDC,
+		"create_original.cdc":                    createOriginalCDC,
+		"create_edition.cdc":                     createEditionCDC,
+		"activate_edition_via_delegated_cap.cdc": activateEditionCDC,
 	}
 }
 
@@ -168,6 +169,34 @@ func TestEmbeddedCDCScriptsSubstituteCleanly(t *testing.T) {
 				if strings.Contains(script, "import "+contract+" from") && !strings.Contains(got, "import "+contract+" from "+addr) {
 					t.Fatalf("%s imports %s but substitution didn't rewrite it to %s, got:\n%s", name, contract, addr, got)
 				}
+			}
+		})
+	}
+}
+
+// bareStringImportRE matches the flow-CLI alias import form `import "X"`.
+// That form is only resolvable through a local flow.json aliases block; the
+// wallet binary submits transactions straight to the Access Node, where a
+// string import fails type-checking with "[Error Code: 1054] location (X)
+// is not a valid location" — and substituteAddresses can never rewrite it
+// because importLineRE only anchors the explicit "from 0x..." shape.
+var bareStringImportRE = regexp.MustCompile(`(?m)^import\s+"[^"]+"`)
+
+// TestEmbeddedCDCScriptsHaveNoBareStringImports guards against the exact bug
+// that shipped in PR #145 (found live on testnet 2026-10-06):
+// activate_edition_via_delegated_cap.cdc was copied from the artdrop-protocol
+// repo with its CLI-form `import "ArtDropCore"` intact. Every embedded script
+// test passed (substitution only asserts imports it recognizes, and the file
+// wasn't even in embeddedCDCScripts' map yet), CI was green, the image was
+// deployed — and every activation attempt then failed at preprocess time
+// with Error 1054. The fix is always the same: write the import as
+// `import <Contract> from 0x...` (any address — substituteAddresses rewrites
+// it to Config), never the bare string form.
+func TestEmbeddedCDCScriptsHaveNoBareStringImports(t *testing.T) {
+	for name, script := range embeddedCDCScripts() {
+		t.Run(name, func(t *testing.T) {
+			if line := bareStringImportRE.FindString(script); line != "" {
+				t.Fatalf("%s: bare string import %q — the Access Node cannot resolve flow.json aliases; use the \"import <Contract> from 0x...\" form so substituteAddresses rewrites it", name, line)
 			}
 		})
 	}
